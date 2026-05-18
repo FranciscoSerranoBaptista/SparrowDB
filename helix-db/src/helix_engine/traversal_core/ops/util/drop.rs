@@ -1,10 +1,10 @@
 use crate::helix_engine::{
     bm25::BM25,
-    storage_core::{HelixGraphStorage, storage_methods::StorageMethods},
-    traversal_core::traversal_value::TraversalValue,
+    storage_core::HelixGraphStorage,
+    storage_core::storage_methods::StorageMethods,
+    traversal_core::{WTxn, traversal_value::TraversalValue},
     types::GraphError,
 };
-use heed3::RwTxn;
 
 pub struct Drop<I> {
     pub iter: I,
@@ -17,7 +17,7 @@ where
     pub fn drop_traversal(
         iter: I,
         storage: &'db HelixGraphStorage,
-        txn: &'txn mut RwTxn<'db>,
+        txn: &'txn mut WTxn<'db>,
     ) -> Result<(), GraphError> {
         iter.into_iter().filter_map(|item| item.ok()).try_for_each(
             |item| -> Result<(), GraphError> {

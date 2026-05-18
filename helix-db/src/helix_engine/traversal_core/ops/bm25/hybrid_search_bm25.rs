@@ -3,7 +3,7 @@ use heed3::RoTxn;
 
 use super::super::tr_val::TraversalValue;
 use crate::helix_engine::{
-    bm25::bm25::{BM25, HybridSearch},
+    bm25::lmdb_bm25::{BM25, HybridSearch},
     graph_core::traversal_iter::RoTraversalIterator,
     storage_core::{HelixGraphStorage, storage_methods::StorageMethods},
     types::GraphError,
