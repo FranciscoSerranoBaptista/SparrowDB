@@ -15,6 +15,6 @@ pub mod rocks;
 #[cfg(feature = "rocks")]
 pub use rocks::{
     hnsw::HNSW,
-    vector_core::{HNSWConfig, VectorCore},
+    vector_core::{ENTRY_POINT_KEY, HNSWConfig, VectorCore},
     vector_distance::{self, DistanceCalc},
 };

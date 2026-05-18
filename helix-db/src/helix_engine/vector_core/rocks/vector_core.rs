@@ -96,8 +96,10 @@ fn remove(bytes: &mut Vec<u8>, target: [u8; 17]) {
     while index < bytes.len() {
         if bytes[index..index + step] == target {
             bytes.drain(index..index + step);
+            // don't advance — recheck same position for consecutive matches
+        } else {
+            index += step;
         }
-        index += step;
     }
 }
 
