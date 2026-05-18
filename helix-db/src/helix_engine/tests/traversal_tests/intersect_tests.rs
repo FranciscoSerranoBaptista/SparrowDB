@@ -100,39 +100,39 @@ fn test_intersect_user_scenario() {
 
     // src1 → tgt4, src1 → tgt5
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src1.id(), tgt4.id(), false, false)
+        .add_edge("links", None, src1.id(), tgt4.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src1.id(), tgt5.id(), false, false)
+        .add_edge("links", None, src1.id(), tgt5.id(), false)
         .collect_to_obj()
         .unwrap();
 
     // src2 → tgt4, src2 → tgt5, src2 → tgt6
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src2.id(), tgt4.id(), false, false)
+        .add_edge("links", None, src2.id(), tgt4.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src2.id(), tgt5.id(), false, false)
+        .add_edge("links", None, src2.id(), tgt5.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src2.id(), tgt6.id(), false, false)
+        .add_edge("links", None, src2.id(), tgt6.id(), false)
         .collect_to_obj()
         .unwrap();
 
     // src3 → tgt4, src3 → tgt5, src3 → tgt6
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src3.id(), tgt4.id(), false, false)
+        .add_edge("links", None, src3.id(), tgt4.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src3.id(), tgt5.id(), false, false)
+        .add_edge("links", None, src3.id(), tgt5.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("links", None, src3.id(), tgt6.id(), false, false)
+        .add_edge("links", None, src3.id(), tgt6.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -205,31 +205,31 @@ fn test_intersect_basic() {
 
     // A → X, Y
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), x.id(), false, false)
+        .add_edge("rel", None, a.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), y.id(), false, false)
+        .add_edge("rel", None, a.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
 
     // B → Y, Z
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, b.id(), y.id(), false, false)
+        .add_edge("rel", None, b.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, b.id(), z.id(), false, false)
+        .add_edge("rel", None, b.id(), z.id(), false)
         .collect_to_obj()
         .unwrap();
 
     // C → Y, W
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, c.id(), y.id(), false, false)
+        .add_edge("rel", None, c.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, c.id(), w.id(), false, false)
+        .add_edge("rel", None, c.id(), w.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -285,15 +285,15 @@ fn test_intersect_empty_result() {
         .unwrap();
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), x.id(), false, false)
+        .add_edge("rel", None, a.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, b.id(), y.id(), false, false)
+        .add_edge("rel", None, b.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, c.id(), z.id(), false, false)
+        .add_edge("rel", None, c.id(), z.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -340,15 +340,15 @@ fn test_intersect_single_upstream() {
         .unwrap();
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), x.id(), false, false)
+        .add_edge("rel", None, a.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), y.id(), false, false)
+        .add_edge("rel", None, a.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), z.id(), false, false)
+        .add_edge("rel", None, a.id(), z.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -435,11 +435,11 @@ fn test_intersect_all_same_targets() {
     // All three upstream → X, Y
     for src in [&a, &b, &c] {
         G::new_mut(&storage, &arena, &mut txn)
-            .add_edge("rel", None, src.id(), x.id(), false, false)
+            .add_edge("rel", None, src.id(), x.id(), false)
             .collect_to_obj()
             .unwrap();
         G::new_mut(&storage, &arena, &mut txn)
-            .add_edge("rel", None, src.id(), y.id(), false, false)
+            .add_edge("rel", None, src.id(), y.id(), false)
             .collect_to_obj()
             .unwrap();
     }
@@ -499,11 +499,11 @@ fn test_intersect_one_upstream_has_no_edges() {
 
     // A → X, Y
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), x.id(), false, false)
+        .add_edge("rel", None, a.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, a.id(), y.id(), false, false)
+        .add_edge("rel", None, a.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -511,11 +511,11 @@ fn test_intersect_one_upstream_has_no_edges() {
 
     // C → X, Z
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, c.id(), x.id(), false, false)
+        .add_edge("rel", None, c.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("rel", None, c.id(), z.id(), false, false)
+        .add_edge("rel", None, c.id(), z.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -576,27 +576,27 @@ fn test_intersect_with_in_edges() {
 
     // A → X, A → Y
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("points_to", None, a.id(), x.id(), false, false)
+        .add_edge("points_to", None, a.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("points_to", None, a.id(), y.id(), false, false)
+        .add_edge("points_to", None, a.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
 
     // B → X, B → Y
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("points_to", None, b.id(), x.id(), false, false)
+        .add_edge("points_to", None, b.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("points_to", None, b.id(), y.id(), false, false)
+        .add_edge("points_to", None, b.id(), y.id(), false)
         .collect_to_obj()
         .unwrap();
 
     // C → X only (not Y)
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("points_to", None, c.id(), x.id(), false, false)
+        .add_edge("points_to", None, c.id(), x.id(), false)
         .collect_to_obj()
         .unwrap();
 

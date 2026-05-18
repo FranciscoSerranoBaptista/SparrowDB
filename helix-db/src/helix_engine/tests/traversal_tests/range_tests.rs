@@ -91,7 +91,7 @@ fn test_range_chaining() {
     }
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, nodes[4].id(), nodes[0].id(), false, false)
+        .add_edge("knows", None, nodes[4].id(), nodes[0].id(), false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     txn.commit().unwrap();

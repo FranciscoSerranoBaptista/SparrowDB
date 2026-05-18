@@ -49,15 +49,15 @@ fn test_shortest_path_simple_chain() {
         .collect();
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, node_ids[0], node_ids[1], false, false)
+        .add_edge("knows", None, node_ids[0], node_ids[1], false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, node_ids[1], node_ids[2], false, false)
+        .add_edge("knows", None, node_ids[1], node_ids[2], false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, node_ids[2], node_ids[3], false, false)
+        .add_edge("knows", None, node_ids[2], node_ids[3], false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -553,17 +553,17 @@ fn test_shortest_path_with_constant_weight() {
 
     // Direct route
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("link", None, start, end, false, false)
+        .add_edge("link", None, start, end, false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
     // Route through mid (2 hops)
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("link", None, start, mid, false, false)
+        .add_edge("link", None, start, mid, false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("link", None, mid, end, false, false)
+        .add_edge("link", None, mid, end, false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     txn.commit().unwrap();

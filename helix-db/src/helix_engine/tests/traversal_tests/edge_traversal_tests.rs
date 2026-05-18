@@ -68,7 +68,7 @@ fn test_add_edge_creates_relationship() {
         .id();
 
     let edge = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, source_id, target_id, false, false)
+        .add_edge("knows", None, source_id, target_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -250,7 +250,7 @@ fn test_out_e_returns_edge() {
         .unwrap()[0]
         .id();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, source_id, target_id, false, false)
+        .add_edge("knows", None, source_id, target_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -283,7 +283,7 @@ fn test_in_e_returns_edge() {
         .unwrap()[0]
         .id();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, source_id, target_id, false, false)
+        .add_edge("knows", None, source_id, target_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -316,7 +316,7 @@ fn test_out_node_returns_neighbor() {
         .unwrap()[0]
         .id();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, source_id, neighbor_id, false, false)
+        .add_edge("knows", None, source_id, neighbor_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -400,7 +400,7 @@ fn test_vector_edges_roundtrip() {
         other => panic!("unexpected traversal value: {other:?}"),
     };
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("has_vector", None, node_id, vector_id, false, false)
+        .add_edge("has_vector", None, node_id, vector_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -461,7 +461,7 @@ fn test_e_from_id_with_deleted_edge() {
         .id();
 
     let edge = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, source_id, target_id, false, false)
+        .add_edge("knows", None, source_id, target_id, false)
         .collect_to_obj()
         .unwrap();
     let edge_id = edge.id();

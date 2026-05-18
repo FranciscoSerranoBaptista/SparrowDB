@@ -87,48 +87,44 @@ impl Display for AddE {
                 // Both singular - from and to already have .id() appended
                 write!(
                     f,
-                    "add_edge({}, {}, {}, {}, false, {})",
+                    "add_edge({}, {}, {}, {}, false)",
                     self.label,
                     write_properties(&self.properties),
                     self.from,
                     self.to,
-                    self.is_unique
                 )
             }
             (true, false) => {
                 // From is plural - iterate over from, to already has .id()
                 write!(
                     f,
-                    "{{\n    let mut edge = Vec::new();\n    for from_val in {}.iter() {{\n        let e = G::new_mut(&db, &arena, &mut txn)\n            .add_edge({}, {}, from_val.id(), {}, false, {})\n            .collect_to_obj()?;\n        edge.push(e);\n    }}\n    edge\n}}",
+                    "{{\n    let mut edge = Vec::new();\n    for from_val in {}.iter() {{\n        let e = G::new_mut(&db, &arena, &mut txn)\n            .add_edge({}, {}, from_val.id(), {}, false)\n            .collect_to_obj()?;\n        edge.push(e);\n    }}\n    edge\n}}",
                     self.from,
                     self.label,
                     write_properties(&self.properties),
                     self.to,
-                    self.is_unique
                 )
             }
             (false, true) => {
                 // To is plural - iterate over to, from already has .id()
                 write!(
                     f,
-                    "{{\n    let mut edge = Vec::new();\n    for to_val in {}.iter() {{\n        let e = G::new_mut(&db, &arena, &mut txn)\n            .add_edge({}, {}, {}, to_val.id(), false, {})\n            .collect_to_obj()?;\n        edge.push(e);\n    }}\n    edge\n}}",
+                    "{{\n    let mut edge = Vec::new();\n    for to_val in {}.iter() {{\n        let e = G::new_mut(&db, &arena, &mut txn)\n            .add_edge({}, {}, {}, to_val.id(), false)\n            .collect_to_obj()?;\n        edge.push(e);\n    }}\n    edge\n}}",
                     self.to,
                     self.label,
                     write_properties(&self.properties),
                     self.from,
-                    self.is_unique
                 )
             }
             (true, true) => {
                 // Both plural - nested iteration
                 write!(
                     f,
-                    "{{\n    let mut edge = Vec::new();\n    for from_val in {}.iter() {{\n        for to_val in {}.iter() {{\n            let e = G::new_mut(&db, &arena, &mut txn)\n                .add_edge({}, {}, from_val.id(), to_val.id(), false, {})\n                .collect_to_obj()?;\n            edge.push(e);\n        }}\n    }}\n    edge\n}}",
+                    "{{\n    let mut edge = Vec::new();\n    for from_val in {}.iter() {{\n        for to_val in {}.iter() {{\n            let e = G::new_mut(&db, &arena, &mut txn)\n                .add_edge({}, {}, from_val.id(), to_val.id(), false)\n                .collect_to_obj()?;\n            edge.push(e);\n        }}\n    }}\n    edge\n}}",
                     self.from,
                     self.to,
                     self.label,
                     write_properties(&self.properties),
-                    self.is_unique,
                 )
             }
         }

@@ -307,7 +307,7 @@ fn test_upsert_n_ignores_non_node_values() {
         .unwrap()[0]
         .clone();
     let edge = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, node1.id(), node2.id(), false, false)
+        .add_edge("knows", None, node1.id(), node2.id(), false)
         .collect_to_obj()
         .unwrap();
 
@@ -435,7 +435,7 @@ fn test_upsert_e_updates_existing_edge_with_no_properties() {
 
     // Create existing edge
     let existing_edge = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("likes", None, node1, node2, false, false)
+        .add_edge("likes", None, node1, node2, false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap()
         .into_iter()
@@ -1239,7 +1239,7 @@ fn test_upsert_e_preserves_edge_relationships() {
 
     // Create initial edge
     let edge = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("friends", None, node1_id, node2_id, false, false)
+        .add_edge("friends", None, node1_id, node2_id, false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap()[0]
         .clone();
@@ -1742,7 +1742,7 @@ fn test_upsert_e_creates_edge_between_correct_nodes_issue_850() {
 
     // Create existing edge A -> B
     let _existing = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, node_a, node_b, false, false)
+        .add_edge("knows", None, node_a, node_b, false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -2346,7 +2346,7 @@ fn test_upsert_n_updated_props_visible_via_traversal() {
         .id();
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, node_b_id, node_a_id, false, false)
+        .add_edge("knows", None, node_b_id, node_a_id, false)
         .collect_to_obj()
         .unwrap();
 
