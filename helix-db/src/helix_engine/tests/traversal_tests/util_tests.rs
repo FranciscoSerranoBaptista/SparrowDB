@@ -14,7 +14,6 @@ use crate::{
         vector_core::vector::HVector,
     },
     props,
-    protocol::value::Value,
 };
 
 use bumpalo::Bump;
@@ -153,7 +152,7 @@ fn test_order_edge_by_asc() {
     let traversal = G::new(&storage, &txn, &arena)
         .n_from_type("person")
         .out_e("knows")
-        .order_by_asc(|tv| tv.get_property("since").cloned().unwrap_or(Value::Empty))
+        .order_by_asc("since")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -211,7 +210,7 @@ fn test_order_edge_by_desc() {
     let traversal = G::new(&storage, &txn, &arena)
         .n_from_type("person")
         .out_e("knows")
-        .order_by_desc(|tv| tv.get_property("since").cloned().unwrap_or(Value::Empty))
+        .order_by_desc("since")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
