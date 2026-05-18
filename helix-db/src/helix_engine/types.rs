@@ -222,6 +222,20 @@ impl From<bincode::Error> for VectorError {
     }
 }
 
+#[cfg(feature = "rocks")]
+impl From<rocksdb::Error> for VectorError {
+    fn from(error: rocksdb::Error) -> Self {
+        VectorError::VectorCoreError(format!("rocksdb error: {error}"))
+    }
+}
+
+#[cfg(feature = "rocks")]
+impl From<rocksdb::Error> for GraphError {
+    fn from(error: rocksdb::Error) -> Self {
+        GraphError::StorageError(format!("rocksdb error: {error}"))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SecondaryIndex {
     Unique(String),
