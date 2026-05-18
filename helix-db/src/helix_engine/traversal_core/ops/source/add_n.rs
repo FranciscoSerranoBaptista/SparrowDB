@@ -167,7 +167,6 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         }
 
         for index in secondary_indices {
-            println!("{index}");
             match self.storage.get_secondary_index_cf_handle(index) {
                 Some(cf) => {
                     let key = match node.get_property(index) {

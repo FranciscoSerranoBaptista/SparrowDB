@@ -127,7 +127,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
             arena: self.arena,
             storage: self.storage,
             txn: self.txn,
-            inner: OrderByAsc {
+            inner: OrderByDesc {
                 iter: self.inner.sorted_by(|a, b| match (a, b) {
                     (Ok(a), Ok(b)) => match (a, b) {
                         (TraversalValue::Node(a), TraversalValue::Node(b)) => {
