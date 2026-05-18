@@ -576,6 +576,7 @@ pub mod lmdb {
 pub mod rocks {
 
     use super::*;
+    use crate::helix_engine::types::SecondaryIndex;
     use std::sync::Arc;
     pub struct HelixGraphStorage {
         pub graph_env: Arc<rocksdb::TransactionDB<rocksdb::MultiThreaded>>,
@@ -599,14 +600,13 @@ pub mod rocks {
         db_opts.set_max_write_buffer_number(4);
         db_opts.set_allow_concurrent_memtable_write(true);
         db_opts.set_enable_write_thread_adaptive_yield(true);
-        db_opts.increase_parallelism(num_cpus::get() as i32);
+        db_opts.increase_parallelism(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as i32);
 
         // Compression
         db_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
         db_opts
     }
 
-    #[cfg(feature = "rocks")]
     impl HelixGraphStorage {
         // Helper methods to get column family handles on-demand
         #[inline(always)]
@@ -698,8 +698,11 @@ pub mod rocks {
             let mut secondary_indices = HashMap::new();
             if let Some(indexes) = config.get_graph_config().secondary_indices.as_ref() {
                 for index in indexes {
-                    // let cf_name = format!("idx_{}", index);
-                    secondary_indices.insert(index.to_string(), index.to_string());
+                    let index_name = match index {
+                        SecondaryIndex::Unique(n) | SecondaryIndex::Index(n) => n.clone(),
+                        SecondaryIndex::None => continue,
+                    };
+                    secondary_indices.insert(index_name.clone(), index_name);
                 }
             }
             cf_descriptors.extend(
@@ -721,7 +724,7 @@ pub mod rocks {
                     path,
                     cf_descriptors,
                 )
-                .unwrap(),
+                .map_err(|e| GraphError::from(e.to_string()))?,
             );
 
             // Initialize vector storage
