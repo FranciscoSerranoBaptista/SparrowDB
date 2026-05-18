@@ -743,7 +743,6 @@ mod rocks {
         }
     }
 
-    #[cfg(feature = "rocks")]
     impl<'db, 'arena, 'txn, I, F, H> ShortestPathIterator<'db, 'arena, 'txn, I, F, H>
     where
         F: Fn(&Edge<'arena>, &Node<'arena>, &Node<'arena>) -> Result<f64, GraphError>,
@@ -989,7 +988,6 @@ mod rocks {
                             .to_vec()
                     },
                 );
-                println!("iterating");
                 let mut iter = self
                     .txn
                     .raw_prefix_iter(&self.storage.cf_out_edges(), &out_prefix);
