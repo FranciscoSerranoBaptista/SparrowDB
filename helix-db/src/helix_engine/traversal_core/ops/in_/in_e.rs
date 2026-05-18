@@ -67,7 +67,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
                                             Ok(data) => data,
                                             Err(e) => return Err(e),
                                         };
-                                    match self.storage.get_edge(self.txn, &edge_id, self.arena) {
+                                    match self.storage.get_edge(self.txn, edge_id, self.arena) {
                                         Ok(edge) => Ok(TraversalValue::Edge(edge)),
                                         Err(e) => Err(e),
                                     }

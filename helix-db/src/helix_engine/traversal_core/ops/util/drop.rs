@@ -1,5 +1,5 @@
 use crate::helix_engine::{
-    bm25::bm25::BM25,
+    bm25::lmdb_bm25::BM25,
     storage_core::{HelixGraphStorage, storage_methods::StorageMethods},
     traversal_core::traversal_value::TraversalValue,
     types::GraphError,

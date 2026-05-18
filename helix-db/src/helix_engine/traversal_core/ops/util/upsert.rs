@@ -3,7 +3,7 @@ use itertools::Itertools;
 
 use crate::{
     helix_engine::{
-        bm25::bm25::HBM25Config,
+        bm25::lmdb_bm25::HBM25Config,
         storage_core::{HelixGraphStorage, storage_methods::StorageMethods},
         traversal_core::{traversal_iter::RwTraversalIterator, traversal_value::TraversalValue},
         types::GraphError,
@@ -411,7 +411,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                     .map_err(|e| GraphError::DecodeError(e.to_string()))?;
                 let (edge_id, node_id) = HelixGraphStorage::unpack_adj_edge_data(data)?;
                 if node_id == to_node {
-                    return Ok(Some(self.storage.get_edge(self.txn, &edge_id, self.arena)?));
+                    return Ok(Some(self.storage.get_edge(self.txn, edge_id, self.arena)?));
                 }
             }
             Ok(None)
