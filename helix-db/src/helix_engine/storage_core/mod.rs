@@ -2,6 +2,7 @@ pub mod graph_visualization;
 pub mod metadata;
 pub mod storage_methods;
 pub mod storage_migration;
+pub mod txn;
 pub mod version_info;
 
 #[cfg(test)]
