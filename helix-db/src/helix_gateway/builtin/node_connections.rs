@@ -10,6 +10,8 @@ use tracing::info;
 
 use crate::helix_engine::storage_core::HelixGraphStorage;
 use crate::helix_engine::storage_core::storage_methods::StorageMethods;
+#[cfg(feature = "rocks")]
+use crate::helix_engine::storage_core::txn::ReadTransaction;
 use crate::helix_engine::traversal_core::traversal_value::TraversalValue;
 use crate::helix_engine::types::GraphError;
 use crate::helix_gateway::gateway::AppState;
@@ -32,7 +34,7 @@ pub async fn node_connections_handler(
     let mut req = protocol::request::Request {
         name: "node_connections".to_string(),
         req_type: RequestType::Query,
-        api_key: None,
+        api_key_hash: None,
         body: axum::body::Bytes::new(),
         in_fmt: protocol::Format::default(),
         out_fmt: protocol::Format::default(),
@@ -57,7 +59,7 @@ pub async fn node_connections_handler(
 
 pub fn node_connections_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
-    let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
+    let txn = db.graph_env.read_txn()?;
     let arena = bumpalo::Bump::new();
 
     let node_id_str = if !input.request.body.is_empty() {
@@ -85,54 +87,109 @@ pub fn node_connections_inner(input: HandlerInput) -> Result<protocol::Response,
         ));
     };
 
-    let mut connected_node_ids = HashSet::with_capacity(50);
-    let mut connected_nodes = Vec::with_capacity(50);
+    let mut connected_node_ids = HashSet::new();
+    let mut connected_nodes = Vec::new();
+    let mut incoming_edges = Vec::new();
+    let mut outgoing_edges = Vec::new();
 
-    let incoming_edges = db
-        .in_edges_db
-        .prefix_iter(&txn, &node_id.to_be_bytes())?
-        .filter_map(|result| match result {
-            Ok((_, value)) => match HelixGraphStorage::unpack_adj_edge_data(value) {
-                Ok((edge_id, from_node)) => {
-                    if connected_node_ids.insert(from_node)
-                        && let Ok(node) = db.get_node(&txn, &from_node, &arena)
+    #[cfg(feature = "lmdb")]
+    {
+        // LMDB implementation
+        incoming_edges.extend(
+            db.in_edges_db
+                .prefix_iter(&txn, &node_id.to_be_bytes())?
+                .filter_map(|result| {
+                    if let Ok((_, value)) = result
+                        && let Ok((edge_id, from_node)) =
+                            HelixGraphStorage::unpack_adj_edge_data(value)
                     {
-                        connected_nodes.push(TraversalValue::Node(node));
-                    }
+                        if connected_node_ids.insert(from_node)
+                            && let Ok(node) = db.get_node(&txn, from_node, &arena)
+                        {
+                            connected_nodes.push(TraversalValue::Node(node));
+                        }
 
-                    match db.get_edge(&txn, &edge_id, &arena) {
-                        Ok(edge) => Some(TraversalValue::Edge(edge)),
-                        Err(_) => None,
+                        match db.get_edge(&txn, edge_id, &arena) {
+                            Ok(edge) => Some(TraversalValue::Edge(edge)),
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
                     }
-                }
-                Err(_) => None,
-            },
-            Err(_) => None,
-        })
-        .collect::<Vec<_>>();
+                })
+                .collect::<Vec<_>>(),
+        );
 
-    let outgoing_edges = db
-        .out_edges_db
-        .prefix_iter(&txn, &node_id.to_be_bytes())?
-        .filter_map(|result| match result {
-            Ok((_, value)) => match HelixGraphStorage::unpack_adj_edge_data(value) {
-                Ok((edge_id, to_node)) => {
-                    if connected_node_ids.insert(to_node)
-                        && let Ok(node) = db.get_node(&txn, &to_node, &arena)
+        outgoing_edges.extend(
+            db.out_edges_db
+                .prefix_iter(&txn, &node_id.to_be_bytes())?
+                .filter_map(|result| {
+                    if let Ok((_, value)) = result
+                        && let Ok((edge_id, to_node)) =
+                            HelixGraphStorage::unpack_adj_edge_data(value)
                     {
-                        connected_nodes.push(TraversalValue::Node(node));
-                    }
+                        if connected_node_ids.insert(to_node)
+                            && let Ok(node) = db.get_node(&txn, to_node, &arena)
+                        {
+                            connected_nodes.push(TraversalValue::Node(node));
+                        }
 
-                    match db.get_edge(&txn, &edge_id, &arena) {
-                        Ok(edge) => Some(TraversalValue::Edge(edge)),
-                        Err(_) => None,
+                        match db.get_edge(&txn, edge_id, &arena) {
+                            Ok(edge) => Some(TraversalValue::Edge(edge)),
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
                     }
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[cfg(feature = "rocks")]
+    {
+        // RocksDB implementation - process incoming edges
+        let cf_in_edges = db.cf_in_edges();
+        let iter = txn.prefix_iterator_cf(&cf_in_edges, node_id.to_be_bytes());
+
+        for (key, _) in iter.flatten() {
+            assert!(key.len() >= 52);
+            if let Ok((_to_node_id, _label, from_node_id, edge_id)) =
+                HelixGraphStorage::unpack_adj_edge_key(&key)
+            {
+                if connected_node_ids.insert(from_node_id)
+                    && let Ok(node) = db.get_node(&txn, from_node_id, &arena)
+                {
+                    connected_nodes.push(TraversalValue::Node(node));
                 }
-                Err(_) => None,
-            },
-            Err(_) => None,
-        })
-        .collect::<Vec<_>>();
+
+                if let Ok(edge) = db.get_edge(&txn, edge_id, &arena) {
+                    incoming_edges.push(TraversalValue::Edge(edge));
+                }
+            }
+        }
+
+        // RocksDB implementation - process outgoing edges
+        let cf_out_edges = db.cf_out_edges();
+        let iter = txn.prefix_iterator_cf(&cf_out_edges, node_id.to_be_bytes());
+
+        for (key, _) in iter.flatten() {
+            assert!(key.len() >= 52);
+            if let Ok((_from_node_id, _label, to_node_id, edge_id)) =
+                HelixGraphStorage::unpack_adj_edge_key(&key)
+            {
+                if connected_node_ids.insert(to_node_id)
+                    && let Ok(node) = db.get_node(&txn, to_node_id, &arena)
+                {
+                    connected_nodes.push(TraversalValue::Node(node));
+                }
+
+                if let Ok(edge) = db.get_edge(&txn, edge_id, &arena) {
+                    outgoing_edges.push(TraversalValue::Edge(edge));
+                }
+            }
+        }
+    }
 
     let connected_nodes_json: Vec<sonic_rs::Value> = connected_nodes
         .into_iter()
@@ -203,13 +260,15 @@ pub fn node_connections_inner(input: HandlerInput) -> Result<protocol::Response,
 
 inventory::submit! {
     HandlerSubmission(
-        Handler::new("node_connections", node_connections_inner, false)
+        Handler::new("node_connections", node_connections_inner)
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "rocks")]
+    use crate::helix_engine::storage_core::txn::WriteTransaction;
     use crate::{
         helix_engine::{
             storage_core::version_info::VersionInfo,
@@ -263,7 +322,6 @@ mod tests {
                 node1.id(),
                 node2.id(),
                 false,
-                false,
             )
             .collect_to_obj()?;
 
@@ -275,7 +333,7 @@ mod tests {
         let request = Request {
             name: "node_connections".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -317,7 +375,6 @@ mod tests {
                 node1.id(),
                 node2.id(),
                 false,
-                false,
             )
             .collect_to_obj()?;
 
@@ -329,7 +386,7 @@ mod tests {
         let request = Request {
             name: "node_connections".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -367,7 +424,7 @@ mod tests {
         let request = Request {
             name: "node_connections".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -398,7 +455,7 @@ mod tests {
         let request = Request {
             name: "node_connections".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -420,7 +477,7 @@ mod tests {
         let request = Request {
             name: "node_connections".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,

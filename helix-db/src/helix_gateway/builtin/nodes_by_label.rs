@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
-use axum::body::Body;
-use axum::extract::{Query, State};
-use axum::response::IntoResponse;
-use serde::Deserialize;
-use sonic_rs::{JsonValueTrait, json};
-use tracing::info;
-
+#[cfg(feature = "rocks")]
+use crate::helix_engine::storage_core::txn::ReadTransaction;
 use crate::helix_engine::types::GraphError;
 use crate::helix_gateway::gateway::AppState;
 use crate::helix_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
 use crate::protocol::{self, request::RequestType};
 use crate::utils::id::ID;
 use crate::utils::items::Node;
+use axum::body::Body;
+use axum::extract::{Query, State};
+use axum::response::IntoResponse;
+use serde::Deserialize;
+use sonic_rs::{JsonValueTrait, json};
+use tracing::info;
 
 // get all nodes with a specific label
 // curl "http://localhost:PORT/nodes-by-label?label=YOUR_LABEL&limit=100"
@@ -30,7 +31,7 @@ pub async fn nodes_by_label_handler(
     let mut req = protocol::request::Request {
         name: "nodes_by_label".to_string(),
         req_type: RequestType::Query,
-        api_key: None,
+        api_key_hash: None,
         body: axum::body::Bytes::new(),
         in_fmt: protocol::Format::default(),
         out_fmt: protocol::Format::default(),
@@ -56,7 +57,7 @@ pub async fn nodes_by_label_handler(
 
 pub fn nodes_by_label_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
-    let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
+    let txn = db.graph_env.read_txn()?;
     let arena = bumpalo::Bump::new();
 
     let (label, limit) = if !input.request.body.is_empty() {
@@ -79,49 +80,86 @@ pub fn nodes_by_label_inner(input: HandlerInput) -> Result<protocol::Response, G
     };
 
     let label = label.ok_or_else(|| GraphError::New("label is required".to_string()))?;
-    const MAX_PREALLOCATE_CAPACITY: usize = 100_000;
 
-    let initial_capacity = match limit {
-        Some(n) if n <= MAX_PREALLOCATE_CAPACITY => n,
-        Some(_) => MAX_PREALLOCATE_CAPACITY,
-        None => 100,
-    };
-
-    let mut nodes_json = Vec::with_capacity(initial_capacity);
+    let mut nodes_json = Vec::new();
     let mut count = 0;
 
-    for result in db.nodes_db.iter(&txn)? {
-        let (id, node_data) = result?;
-        match Node::from_bincode_bytes(id, node_data, &arena) {
-            Ok(node) => {
-                if node.label == label {
-                    let id_str = ID::from(id).stringify();
+    #[cfg(feature = "lmdb")]
+    {
+        // LMDB implementation
+        for result in db.nodes_db.iter(&txn)? {
+            let (id, node_data) = result?;
+            match Node::from_bincode_bytes(id, node_data, &arena) {
+                Ok(node) => {
+                    if node.label == label {
+                        let id_str = ID::from(id).stringify();
 
-                    let mut node_json = json!({
-                        "id": id_str.clone(),
-                        "label": node.label,
-                        "title": id_str
-                    });
+                        let mut node_json = json!({
+                            "id": id_str.clone(),
+                            "label": node.label,
+                            "title": id_str
+                        });
 
-                    // Add node properties
-                    if let Some(properties) = &node.properties {
-                        for (key, value) in properties.iter() {
-                            node_json[key] = sonic_rs::to_value(&value.inner_stringify())
-                                .unwrap_or_else(|_| sonic_rs::Value::from(""));
+                        // Add node properties
+                        if let Some(properties) = &node.properties {
+                            for (key, value) in properties.iter() {
+                                node_json[key] = sonic_rs::to_value(&value.inner_stringify())
+                                    .unwrap_or_else(|_| sonic_rs::Value::from(""));
+                            }
+                        }
+
+                        nodes_json.push(node_json);
+                        count += 1;
+
+                        if let Some(limit_count) = limit
+                            && count >= limit_count
+                        {
+                            break;
                         }
                     }
+                }
+                Err(_) => continue,
+            }
+        }
+    }
 
-                    nodes_json.push(node_json);
-                    count += 1;
+    #[cfg(feature = "rocks")]
+    {
+        // RocksDB implementation
+        let cf_nodes = db.cf_nodes();
+        let iter = txn.iterator_cf(&cf_nodes, rocksdb::IteratorMode::Start);
 
-                    if let Some(limit_count) = limit
-                        && count >= limit_count
-                    {
-                        break;
+        for (key, value) in iter.flatten() {
+            assert!(key.len() == 16);
+            let id = u128::from_be_bytes(key[..].try_into().unwrap());
+            if let Ok(node) = Node::from_bincode_bytes(id, &value, &arena)
+                && node.label == label
+            {
+                let id_str = ID::from(id).stringify();
+
+                let mut node_json = json!({
+                    "id": id_str.clone(),
+                    "label": node.label,
+                    "title": id_str
+                });
+
+                // Add node properties
+                if let Some(properties) = &node.properties {
+                    for (key, value) in properties.iter() {
+                        node_json[key] = sonic_rs::to_value(&value.inner_stringify())
+                            .unwrap_or_else(|_| sonic_rs::Value::from(""));
                     }
                 }
+
+                nodes_json.push(node_json);
+                count += 1;
+
+                if let Some(limit_count) = limit
+                    && count >= limit_count
+                {
+                    break;
+                }
             }
-            Err(_) => continue,
         }
     }
 
@@ -138,13 +176,15 @@ pub fn nodes_by_label_inner(input: HandlerInput) -> Result<protocol::Response, G
 
 inventory::submit! {
     HandlerSubmission(
-        Handler::new("nodes_by_label", nodes_by_label_inner, false)
+        Handler::new("nodes_by_label", nodes_by_label_inner)
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "rocks")]
+    use crate::helix_engine::storage_core::txn::WriteTransaction;
     use crate::{
         helix_engine::{
             storage_core::version_info::VersionInfo,
@@ -181,7 +221,7 @@ mod tests {
         let mut txn = engine.storage.graph_env.write_txn().unwrap();
         let arena = bumpalo::Bump::new();
 
-        let props1 = [("name", Value::String("Alice".to_string()))];
+        let props1 = vec![("name", Value::String("Alice".to_string()))];
         let props_map1 = ImmutablePropertiesMap::new(
             props1.len(),
             props1
@@ -194,7 +234,7 @@ mod tests {
             .add_n(arena.alloc_str("person"), Some(props_map1), None)
             .collect_to_obj()?;
 
-        let props2 = [("name", Value::String("Bob".to_string()))];
+        let props2 = vec![("name", Value::String("Bob".to_string()))];
         let props_map2 = ImmutablePropertiesMap::new(
             props2.len(),
             props2
@@ -214,7 +254,7 @@ mod tests {
         let request = Request {
             name: "nodes_by_label".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -243,7 +283,7 @@ mod tests {
         let arena = bumpalo::Bump::new();
 
         for i in 0..10 {
-            let props = [("index", Value::I64(i))];
+            let props = vec![("index", Value::I64(i))];
             let props_map = ImmutablePropertiesMap::new(
                 props.len(),
                 props
@@ -264,7 +304,7 @@ mod tests {
         let request = Request {
             name: "nodes_by_label".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -293,7 +333,7 @@ mod tests {
         let request = Request {
             name: "nodes_by_label".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -319,7 +359,7 @@ mod tests {
         let request = Request {
             name: "nodes_by_label".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -355,7 +395,7 @@ mod tests {
         let request = Request {
             name: "nodes_by_label".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,

@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
+use crate::helix_engine::storage_core::storage_methods::StorageMethods;
+#[cfg(feature = "rocks")]
+use crate::helix_engine::storage_core::txn::ReadTransaction;
+use crate::helix_engine::types::GraphError;
+use crate::helix_gateway::gateway::AppState;
+use crate::helix_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
+use crate::protocol::{self, request::RequestType};
+use crate::utils::id::ID;
 use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use serde::Deserialize;
 use sonic_rs::{JsonValueTrait, json};
 use tracing::info;
-
-use crate::helix_engine::storage_core::storage_methods::StorageMethods;
-use crate::helix_engine::types::GraphError;
-use crate::helix_gateway::gateway::AppState;
-use crate::helix_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
-use crate::protocol::{self, request::RequestType};
-use crate::utils::id::ID;
 
 // get node details by ID
 // curl "http://localhost:PORT/node-details?id=YOUR_NODE_ID"
@@ -29,7 +30,7 @@ pub async fn node_details_handler(
     let mut req = protocol::request::Request {
         name: "node_details".to_string(),
         req_type: RequestType::Query,
-        api_key: None,
+        api_key_hash: None,
         body: axum::body::Bytes::new(),
         in_fmt: protocol::Format::default(),
         out_fmt: protocol::Format::default(),
@@ -54,7 +55,7 @@ pub async fn node_details_handler(
 
 pub fn node_details_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
-    let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
+    let txn = db.graph_env.read_txn()?;
     let arena = bumpalo::Bump::new();
 
     let node_id_str = if !input.request.body.is_empty() {
@@ -83,7 +84,7 @@ pub fn node_details_inner(input: HandlerInput) -> Result<protocol::Response, Gra
         },
     };
 
-    let result = match db.get_node(&txn, &node_id, &arena) {
+    let result = match db.get_node(&txn, node_id, &arena) {
         Ok(node) => {
             let id_str = ID::from(node_id).stringify();
 
@@ -121,13 +122,15 @@ pub fn node_details_inner(input: HandlerInput) -> Result<protocol::Response, Gra
 
 inventory::submit! {
     HandlerSubmission(
-        Handler::new("node_details", node_details_inner, false)
+        Handler::new("node_details", node_details_inner)
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "rocks")]
+    use crate::helix_engine::storage_core::txn::WriteTransaction;
     use crate::{
         helix_engine::{
             storage_core::version_info::VersionInfo,
@@ -165,7 +168,7 @@ mod tests {
         let mut txn = engine.storage.graph_env.write_txn().unwrap();
         let arena = bumpalo::Bump::new();
 
-        let props = [("name", Value::String("Alice".to_string()))];
+        let props = vec![("name", Value::String("Alice".to_string()))];
         let props_map = ImmutablePropertiesMap::new(
             props.len(),
             props
@@ -186,7 +189,7 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -216,7 +219,7 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -244,7 +247,7 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -266,7 +269,7 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -289,7 +292,7 @@ mod tests {
         let mut txn = engine.storage.graph_env.write_txn().unwrap();
         let arena = bumpalo::Bump::new();
 
-        let props = [
+        let props = vec![
             ("name", Value::String("Alice".to_string())),
             ("age", Value::I64(30)),
         ];
@@ -313,7 +316,7 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key: None,
+            api_key_hash: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,

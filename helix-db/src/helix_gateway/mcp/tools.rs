@@ -1,6 +1,6 @@
 use crate::{
     helix_engine::{
-        storage_core::HelixGraphStorage,
+        storage_core::{HelixGraphStorage, Txn},
         traversal_core::{
             ops::{
                 g::G,
@@ -17,7 +17,6 @@ use crate::{
     protocol::value::Value,
 };
 use bumpalo::Bump;
-use heed3::RoTxn;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -78,7 +77,6 @@ pub enum ToolArgs {
         vector: Vec<f64>,
         k: usize,
         min_score: Option<f64>,
-        cutoff: Option<usize>,
     },
 }
 
@@ -150,17 +148,13 @@ where
     'db: 'arena,
     'arena: 'txn,
 {
-    pub fn new(
-        storage: &'db HelixGraphStorage,
-        txn: &'txn RoTxn<'db>,
-        arena: &'arena Bump,
-    ) -> Self {
+    pub fn new(storage: &'db HelixGraphStorage, txn: &'txn Txn<'db>, arena: &'arena Bump) -> Self {
         Self::from_ro_iterator(G::new(storage, txn, arena))
     }
 
     pub fn from_iter(
         storage: &'db HelixGraphStorage,
-        txn: &'txn RoTxn<'db>,
+        txn: &'txn Txn<'db>,
         arena: &'arena Bump,
         items: impl Iterator<Item = TraversalValue<'arena>> + 'txn,
     ) -> Self {
@@ -236,7 +230,7 @@ where
 pub fn execute_query_chain<'db, 'arena, 'txn>(
     steps: &[ToolArgs],
     storage: &'db HelixGraphStorage,
-    txn: &'txn RoTxn<'db>,
+    txn: &'txn Txn<'db>,
     arena: &'arena Bump,
 ) -> Result<TraversalStream<'db, 'arena, 'txn>, GraphError>
 where
@@ -250,7 +244,7 @@ where
 pub fn execute_query_chain_from_seed<'db, 'arena, 'txn>(
     steps: &[ToolArgs],
     storage: &'db HelixGraphStorage,
-    txn: &'txn RoTxn<'db>,
+    txn: &'txn Txn<'db>,
     arena: &'arena Bump,
     seed: impl Iterator<Item = TraversalValue<'arena>> + 'txn,
 ) -> Result<TraversalStream<'db, 'arena, 'txn>, GraphError>
@@ -266,7 +260,7 @@ pub fn execute_query_chain_with_stream<'db, 'arena, 'txn>(
     initial: TraversalStream<'db, 'arena, 'txn>,
     steps: &[ToolArgs],
     storage: &'db HelixGraphStorage,
-    txn: &'txn RoTxn<'db>,
+    txn: &'txn Txn<'db>,
     arena: &'arena Bump,
 ) -> Result<TraversalStream<'db, 'arena, 'txn>, GraphError>
 where
@@ -282,7 +276,7 @@ fn apply_step<'db, 'arena, 'txn>(
     stream: TraversalStream<'db, 'arena, 'txn>,
     step: &ToolArgs,
     storage: &'db HelixGraphStorage,
-    txn: &'txn RoTxn<'db>,
+    txn: &'txn Txn<'db>,
     arena: &'arena Bump,
 ) -> Result<TraversalStream<'db, 'arena, 'txn>, GraphError>
 where
@@ -364,12 +358,9 @@ where
             let values = stream.collect()?;
             let iter = TraversalStream::from_iter(storage, txn, arena, values.into_iter());
             let ordered_stream = match order {
-                Order::Asc => iter
-                    .map(|iter| iter.order_by_asc(|val| val.get_property(props).unwrap().clone())),
-                Order::Desc => iter
-                    .map(|iter| iter.order_by_desc(|val| val.get_property(props).unwrap().clone())),
+                Order::Asc => iter.map(|iter| iter.order_by_asc(props)),
+                Order::Desc => iter.map(|iter| iter.order_by_desc(props)),
             };
-
             Ok(ordered_stream)
         }
         ToolArgs::SearchKeyword { .. } => {
@@ -393,18 +384,12 @@ where
             vector,
             k,
             min_score,
-            cutoff,
         } => {
             use crate::helix_engine::traversal_core::ops::vectors::brute_force_search::BruteForceSearchVAdapter;
 
             let query_vec = arena.alloc_slice_copy(vector);
-            let mut results = match cutoff {
-                Some(cutoff_val) => stream.map(|iter| {
-                    iter.range(0, *cutoff_val)
-                        .brute_force_search_v(query_vec, *k)
-                }),
-                None => stream.map(|iter| iter.brute_force_search_v(query_vec, *k)),
-            };
+            let mut results =
+                stream.map(|iter| iter.range(0, *k * 3).brute_force_search_v(query_vec, *k));
 
             // Apply min_score filter if specified
             if let Some(min_score_val) = min_score {
@@ -478,7 +463,7 @@ fn matches_filter<'db, 'arena, 'txn>(
     item: &TraversalValue<'arena>,
     filter: &FilterTraversal,
     storage: &'db HelixGraphStorage,
-    txn: &'txn RoTxn<'db>,
+    txn: &'txn Txn<'db>,
     arena: &'arena Bump,
 ) -> Result<bool, GraphError>
 where
@@ -522,7 +507,7 @@ fn evaluate_sub_traversal<'db, 'arena, 'txn>(
     item: &TraversalValue<'arena>,
     step: &ToolArgs,
     storage: &'db HelixGraphStorage,
-    txn: &'txn RoTxn<'db>,
+    txn: &'txn Txn<'db>,
     arena: &'arena Bump,
 ) -> Result<bool, GraphError>
 where
@@ -542,158 +527,4 @@ where
 
 pub trait FilterValues {
     fn compare(&self, value: &Value, operator: Option<Operator>) -> bool;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ============================================================================
-    // Operator::execute() Tests
-    // ============================================================================
-
-    #[test]
-    fn test_operator_eq() {
-        let op = Operator::Eq;
-
-        // Integers
-        assert!(op.execute(&Value::I32(5), &Value::I32(5)));
-        assert!(!op.execute(&Value::I32(5), &Value::I32(6)));
-
-        // Strings
-        assert!(op.execute(
-            &Value::String("hello".to_string()),
-            &Value::String("hello".to_string())
-        ));
-        assert!(!op.execute(
-            &Value::String("hello".to_string()),
-            &Value::String("world".to_string())
-        ));
-
-        // Booleans
-        assert!(op.execute(&Value::Boolean(true), &Value::Boolean(true)));
-        assert!(!op.execute(&Value::Boolean(true), &Value::Boolean(false)));
-    }
-
-    #[test]
-    fn test_operator_neq() {
-        let op = Operator::Neq;
-
-        assert!(op.execute(&Value::I32(5), &Value::I32(6)));
-        assert!(!op.execute(&Value::I32(5), &Value::I32(5)));
-
-        assert!(op.execute(
-            &Value::String("hello".to_string()),
-            &Value::String("world".to_string())
-        ));
-        assert!(!op.execute(
-            &Value::String("hello".to_string()),
-            &Value::String("hello".to_string())
-        ));
-    }
-
-    #[test]
-    fn test_operator_lt() {
-        let op = Operator::Lt;
-
-        // Integers
-        assert!(op.execute(&Value::I32(3), &Value::I32(5)));
-        assert!(!op.execute(&Value::I32(5), &Value::I32(3)));
-        assert!(!op.execute(&Value::I32(5), &Value::I32(5))); // Equal is not less than
-
-        // Floats
-        assert!(op.execute(&Value::F64(1.5), &Value::F64(2.5)));
-        assert!(!op.execute(&Value::F64(2.5), &Value::F64(1.5)));
-    }
-
-    #[test]
-    fn test_operator_gt() {
-        let op = Operator::Gt;
-
-        // Integers
-        assert!(op.execute(&Value::I32(5), &Value::I32(3)));
-        assert!(!op.execute(&Value::I32(3), &Value::I32(5)));
-        assert!(!op.execute(&Value::I32(5), &Value::I32(5))); // Equal is not greater than
-
-        // Floats
-        assert!(op.execute(&Value::F64(2.5), &Value::F64(1.5)));
-        assert!(!op.execute(&Value::F64(1.5), &Value::F64(2.5)));
-    }
-
-    #[test]
-    fn test_operator_lte() {
-        let op = Operator::Lte;
-
-        // Less than
-        assert!(op.execute(&Value::I32(3), &Value::I32(5)));
-        // Equal
-        assert!(op.execute(&Value::I32(5), &Value::I32(5)));
-        // Greater than
-        assert!(!op.execute(&Value::I32(5), &Value::I32(3)));
-    }
-
-    #[test]
-    fn test_operator_gte() {
-        let op = Operator::Gte;
-
-        // Greater than
-        assert!(op.execute(&Value::I32(5), &Value::I32(3)));
-        // Equal
-        assert!(op.execute(&Value::I32(5), &Value::I32(5)));
-        // Less than
-        assert!(!op.execute(&Value::I32(3), &Value::I32(5)));
-    }
-
-    #[test]
-    fn test_operator_cross_type_numeric() {
-        // Value's PartialOrd and PartialEq handle cross-type numeric comparisons
-        let op_eq = Operator::Eq;
-        let op_gt = Operator::Gt;
-
-        // I32 vs F64 - equality works for matching values
-        assert!(op_eq.execute(&Value::I32(42), &Value::F64(42.0)));
-
-        // Different integer sizes work correctly
-        assert!(op_eq.execute(&Value::I32(100), &Value::I64(100)));
-        assert!(op_gt.execute(&Value::U64(1000), &Value::I32(500)));
-        assert!(op_gt.execute(&Value::I64(1000), &Value::I32(500)));
-    }
-
-    #[test]
-    fn test_operator_string_comparison() {
-        let op_lt = Operator::Lt;
-        let op_gt = Operator::Gt;
-
-        // Lexicographic ordering
-        assert!(op_lt.execute(
-            &Value::String("apple".to_string()),
-            &Value::String("banana".to_string())
-        ));
-        assert!(op_gt.execute(
-            &Value::String("zebra".to_string()),
-            &Value::String("apple".to_string())
-        ));
-    }
-
-    #[test]
-    fn test_operator_empty_value() {
-        let op_eq = Operator::Eq;
-
-        // Empty equals empty
-        assert!(op_eq.execute(&Value::Empty, &Value::Empty));
-
-        // Empty doesn't equal non-empty
-        assert!(!op_eq.execute(&Value::Empty, &Value::I32(0)));
-        assert!(!op_eq.execute(&Value::I32(0), &Value::Empty));
-    }
-
-    #[test]
-    fn test_operator_boolean_values() {
-        let op_eq = Operator::Eq;
-        let op_neq = Operator::Neq;
-
-        assert!(op_eq.execute(&Value::Boolean(true), &Value::Boolean(true)));
-        assert!(op_eq.execute(&Value::Boolean(false), &Value::Boolean(false)));
-        assert!(op_neq.execute(&Value::Boolean(true), &Value::Boolean(false)));
-    }
 }

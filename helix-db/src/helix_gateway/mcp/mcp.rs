@@ -1,6 +1,8 @@
+#[cfg(feature = "rocks")]
+use crate::helix_engine::storage_core::txn::ReadTransaction;
 use crate::{
     helix_engine::{
-        storage_core::HelixGraphStorage,
+        storage_core::{HelixGraphStorage, Txn},
         traversal_core::{
             ops::util::{aggregate::AggregateAdapter, group_by::GroupByAdapter},
             traversal_value::TraversalValue,
@@ -964,13 +966,13 @@ pub fn search_vector_text(input: &mut MCPToolInput) -> Result<Response, GraphErr
         k_value
     );
     let results = G::new(storage, &txn, &arena)
-        .search_v::<fn(&crate::helix_engine::vector_core::vector::HVector, &heed3::RoTxn) -> bool, _>(
+        .search_v::<fn(&crate::helix_engine::vector_core::vector::HVector, &Txn) -> bool, _>(
             query_vec_arena,
             k_value,
             label_arena,
-            None
+            None,
         )
-        .collect::<Result<Vec<_>,_>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
 
     tracing::debug!("[VECTOR_SEARCH] Search returned {} results", results.len());
 
@@ -1034,7 +1036,6 @@ pub fn search_vector(input: &mut MCPToolInput) -> Result<Response, GraphError> {
         vector: req.data.vector,
         k: req.data.k,
         min_score: req.data.min_score,
-        cutoff: None,
     };
 
     execute_tool_step(input, &req.connection_id, tool)
