@@ -84,7 +84,6 @@ fn test_range_chaining() {
                 nodes[i].id(),
                 nodes[i + 1].id(),
                 false,
-                false,
             )
             .collect::<Result<Vec<_>, _>>()
             .unwrap();

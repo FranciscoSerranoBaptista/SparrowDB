@@ -58,7 +58,7 @@ fn test_order_node_by_asc() {
     let txn = storage.graph_env.read_txn().unwrap();
     let traversal = G::new(&storage, &txn, &arena)
         .n_from_type("person")
-        .order_by_asc(|tv| tv.get_property("age").cloned().unwrap_or(Value::Empty))
+        .order_by_asc("age")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -94,7 +94,7 @@ fn test_order_node_by_desc() {
     let txn = storage.graph_env.read_txn().unwrap();
     let traversal = G::new(&storage, &txn, &arena)
         .n_from_type("person")
-        .order_by_desc(|tv| tv.get_property("age").cloned().unwrap_or(Value::Empty))
+        .order_by_desc("age")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -132,7 +132,6 @@ fn test_order_edge_by_asc() {
             node.id(),
             node2.id(),
             false,
-            false,
         )
         .collect_to_obj()
         .unwrap();
@@ -143,7 +142,6 @@ fn test_order_edge_by_asc() {
             props_option(&arena, props! { "since" => 2014 }),
             node3.id(),
             node2.id(),
-            false,
             false,
         )
         .collect_to_obj()
@@ -192,7 +190,6 @@ fn test_order_edge_by_desc() {
             node.id(),
             node2.id(),
             false,
-            false,
         )
         .collect_to_obj()
         .unwrap();
@@ -203,7 +200,6 @@ fn test_order_edge_by_desc() {
             props_option(&arena, props! { "since" => 2014 }),
             node3.id(),
             node2.id(),
-            false,
             false,
         )
         .collect_to_obj()
@@ -263,7 +259,7 @@ fn test_order_vector_by_asc() {
     let txn = storage.graph_env.read_txn().unwrap();
     let traversal = G::new(&storage, &txn, &arena)
         .search_v::<FnTy, _>(&[1.0, 2.0, 3.0], 10, "vector", None)
-        .order_by_asc(|tv| tv.get_property("age").cloned().unwrap_or(Value::Empty))
+        .order_by_asc("age")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -312,7 +308,7 @@ fn test_order_vector_by_desc() {
     let txn = storage.graph_env.read_txn().unwrap();
     let traversal = G::new(&storage, &txn, &arena)
         .search_v::<FnTy, _>(&[1.0, 2.0, 3.0], 10, "vector", None)
-        .order_by_desc(|tv| tv.get_property("age").cloned().unwrap_or(Value::Empty))
+        .order_by_desc("age")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -350,7 +346,6 @@ fn test_dedup() {
             node.id(),
             node2.id(),
             false,
-            false,
         )
         .collect_to_obj()
         .unwrap();
@@ -361,7 +356,6 @@ fn test_dedup() {
             props_option(&arena, props! { "since" => 2010 }),
             node3.id(),
             node2.id(),
-            false,
             false,
         )
         .collect_to_obj()

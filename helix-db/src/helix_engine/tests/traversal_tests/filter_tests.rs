@@ -198,7 +198,6 @@ fn test_filter_edges() {
             person1.id(),
             person2.id(),
             false,
-            false,
         )
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
@@ -208,7 +207,6 @@ fn test_filter_edges() {
             props_option(&arena, props! { "since" => 2022 }),
             person2.id(),
             person1.id(),
-            false,
             false,
         )
         .collect_to_obj()

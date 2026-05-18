@@ -101,7 +101,7 @@ fn test_add_edge_creates_unique_relationship() {
         .id();
 
     let edge = G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, source_id, target_id, false, true)
+        .add_edge("knows", None, source_id, target_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -120,7 +120,7 @@ fn test_add_edge_creates_unique_relationship() {
     {
         let mut write_txn = storage.graph_env.write_txn().unwrap();
         let edge = G::new_mut(&storage, &arena, &mut write_txn)
-            .add_edge("knows", None, source_id, target_id, false, true)
+            .add_edge("knows", None, source_id, target_id, false)
             .collect_to_obj();
 
         assert!(edge.is_err());
@@ -159,11 +159,11 @@ fn test_add_edge_unique_allows_multiple_targets_from_same_source() {
         .id();
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("part_of", None, source_id, target_1, false, true)
+        .add_edge("part_of", None, source_id, target_1, false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("part_of", None, source_id, target_2, false, true)
+        .add_edge("part_of", None, source_id, target_2, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -204,11 +204,11 @@ fn test_add_edge_unique_allows_multiple_sources_to_same_target() {
         .id();
 
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("service_in_account", None, source_1, target_id, false, true)
+        .add_edge("service_in_account", None, source_1, target_id, false)
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("service_in_account", None, source_2, target_id, false, true)
+        .add_edge("service_in_account", None, source_2, target_id, false)
         .collect_to_obj()
         .unwrap();
     txn.commit().unwrap();
@@ -354,7 +354,6 @@ fn test_edge_properties_can_be_read() {
             props_option(&arena, props! { "since" => 2024 }),
             source_id,
             target_id,
-            false,
             false,
         )
         .collect_to_obj()

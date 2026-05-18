@@ -320,7 +320,7 @@ fn test_n_from_id_with_traversal() {
         .collect_to_obj()
         .unwrap();
     G::new_mut(&storage, &arena, &mut txn)
-        .add_edge("knows", None, person1.id(), person2.id(), true, false)
+        .add_edge("knows", None, person1.id(), person2.id(), false)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -502,7 +502,6 @@ fn test_double_add_and_double_fetch() {
             None,
             node1.first().unwrap().id(),
             node2.first().unwrap().id(),
-            false,
             false,
         )
         .collect_to_obj()

@@ -5,11 +5,7 @@ use tempfile::TempDir;
 
 use crate::helix_engine::{
     types::VectorError,
-    vector_core::{
-        hnsw::HNSW,
-        vector::HVector,
-        vector_core::{HNSWConfig, VectorCore},
-    },
+    vector_core::{HNSW, HNSWConfig, VectorCore, vector::HVector},
 };
 
 type Filter = fn(&HVector, &RoTxn) -> bool;

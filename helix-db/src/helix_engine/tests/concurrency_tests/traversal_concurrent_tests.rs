@@ -152,7 +152,6 @@ fn test_concurrent_edge_additions() {
                             node_ids[source_idx],
                             node_ids[target_idx],
                             false,
-                            false,
                         )
                         .collect_to_obj()
                         .unwrap();

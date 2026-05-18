@@ -492,7 +492,6 @@ fn test_upsert_e_updates_existing_edge_with_properties() {
             node1,
             node2,
             false,
-            false,
         )
         .collect::<Result<Vec<_>, _>>()
         .unwrap()
@@ -622,7 +621,6 @@ fn test_upsert_e_with_defaults_does_not_apply_on_update() {
             ),
             node1,
             node2,
-            false,
             false,
         )
         .collect::<Result<Vec<_>, _>>()
@@ -1802,7 +1800,6 @@ fn test_upsert_e_updates_correct_edge_when_multiple_edges_exist_issue_850() {
             node_a,
             node_b,
             false,
-            false,
         )
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
@@ -1819,7 +1816,6 @@ fn test_upsert_e_updates_correct_edge_when_multiple_edges_exist_issue_850() {
             props_option(&arena, props!("since" => 2021)),
             node_a,
             node_c,
-            false,
             false,
         )
         .collect::<Result<Vec<_>, _>>()
@@ -1947,7 +1943,6 @@ fn test_upsert_e_update_preserves_adjacency() {
             props_option(&arena, props!("since" => 2020)),
             source_id,
             target_id,
-            false,
             false,
         )
         .collect::<Result<Vec<_>, _>>()
