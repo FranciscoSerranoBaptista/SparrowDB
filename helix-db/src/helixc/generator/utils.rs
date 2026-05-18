@@ -4,7 +4,7 @@ use std::fmt::{self, Debug, Display};
 #[derive(Clone, PartialEq)]
 pub enum GenRef<T>
 where
-    T: Display + PartialEq,
+    T: Display,
 {
     Literal(T),
     Mut(T),
@@ -22,7 +22,7 @@ where
 
 impl<T> Display for GenRef<T>
 where
-    T: Display + PartialEq,
+    T: Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -44,7 +44,7 @@ where
 
 impl<T> GenRef<T>
 where
-    T: Display + PartialEq,
+    T: Display,
 {
     pub fn inner(&self) -> &T {
         match self {
@@ -59,28 +59,24 @@ where
             GenRef::RefLiteral(t) => t,
             GenRef::Unknown => {
                 // This should have been caught during analysis
-                debug_assert!(
-                    false,
+                // For now, panic with a descriptive message
+                panic!(
                     "Code generation error: Unknown reference type encountered. This indicates a bug in the analyzer."
-                );
-                // Return a placeholder that will cause a compile error downstream
-                unreachable!("GenRef::Unknown should have been caught by analyzer")
+                )
             }
             GenRef::Std(t) => t,
             GenRef::Id(_) => {
                 // Id doesn't have an inner T, it's just a String identifier
-                debug_assert!(
-                    false,
+                panic!(
                     "Code generation error: Cannot get inner value of Id type. Use the identifier directly."
-                );
-                unreachable!("GenRef::Id does not have an inner T")
+                )
             }
         }
     }
 }
 impl<T> Debug for GenRef<T>
 where
-    T: Display + PartialEq,
+    T: Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -221,13 +217,7 @@ pub fn write_properties_slice(properties: &Option<Vec<(String, GeneratedValue)>>
                     .join(", ")
             )
         }
-        None => {
-            debug_assert!(
-                false,
-                "write_properties_slice called with None - should be caught by analyzer"
-            );
-            "&[]".to_string()
-        }
+        None => unreachable!(),
     }
 }
 
@@ -269,19 +259,15 @@ impl GeneratedValue {
             GeneratedValue::Traversal(_) => {
                 // This should not be called for traversals
                 // The caller should handle traversals specially
-                debug_assert!(
-                    false,
+                panic!(
                     "Code generation error: Cannot get inner value of Traversal. Traversals should be handled specially."
-                );
-                unreachable!("GeneratedValue::Traversal does not have an inner GenRef")
+                )
             }
             GeneratedValue::Unknown => {
                 // This indicates a bug in the analyzer
-                debug_assert!(
-                    false,
+                panic!(
                     "Code generation error: Unknown GeneratedValue encountered. This indicates incomplete type inference in the analyzer."
-                );
-                unreachable!("GeneratedValue::Unknown should have been caught by analyzer")
+                )
             }
         }
     }
@@ -381,7 +367,7 @@ impl Display for RustType {
 impl RustType {
     pub fn to_ts(&self) -> String {
         let s = match self {
-            RustType::Str => "str",
+            RustType::Str => "string",
             RustType::String => "string",
             RustType::Usize => "number",
             RustType::I8 => "number",
@@ -445,7 +431,6 @@ pub fn write_headers() -> String {
 
 
 use bumpalo::Bump;
-use heed3::RoTxn;
 use helix_macros::{handler, tool_call, mcp_handler, migration};
 use helix_db::{
     helix_engine::{
@@ -453,7 +438,9 @@ use helix_db::{
             RerankAdapter,
             fusion::{RRFReranker, MMRReranker, DistanceMethod},
         },
+        storage_core::txn::{ReadTransaction, WriteTransaction},
         traversal_core::{
+            RTxn,
             config::{Config, GraphConfig, VectorConfig},
             ops::{
                 bm25::search_bm25::SearchBM25Adapter,
@@ -474,11 +461,10 @@ use helix_db::{
                     v_from_type::VFromTypeAdapter
                 },
                 util::{
-                    dedup::DedupAdapter, drop::Drop, exist::Exist, filter_mut::FilterMut,
-                    filter_ref::FilterRefAdapter, intersect::IntersectAdapter, map::MapAdapter, paths::{PathAlgorithm, ShortestPathAdapter},
+                    dedup::DedupAdapter, drop::Drop, exist::Exist,
+                    filter_ref::FilterRefAdapter, map::MapAdapter, paths::{PathAlgorithm, ShortestPathAdapter},
                     range::RangeAdapter, update::UpdateAdapter, order::OrderByAdapter,
                     aggregate::AggregateAdapter, group_by::GroupByAdapter, count::CountAdapter,
-                    upsert::UpsertAdapter,
                 },
                 vectors::{
                     brute_force_search::BruteForceSearchVAdapter, insert::InsertVAdapter,
@@ -487,7 +473,7 @@ use helix_db::{
             },
             traversal_value::TraversalValue,
         },
-        types::{GraphError, SecondaryIndex},
+        types::GraphError,
         vector_core::vector::HVector,
     },
     helix_gateway::{
@@ -500,7 +486,6 @@ use helix_db::{
     protocol::{
         response::Response,
         value::{casting::{cast, CastType}, Value},
-        date::Date,
         format::Format,
     },
     utils::{
@@ -565,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_genref_ref_with_lifetime() {
-        let genref = GenRef::RefLT("a", "value".to_string());
+        let genref = GenRef::RefLT("a".to_string(), "value".to_string());
         assert_eq!(format!("{}", genref), "&'a value");
     }
 
