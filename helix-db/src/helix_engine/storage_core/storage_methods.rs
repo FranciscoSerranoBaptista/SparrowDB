@@ -1,6 +1,7 @@
 use crate::helix_engine::types::GraphError;
 use crate::utils::items::{Edge, Node};
 
+// NOTE: DBMethods is implemented for lmdb only; rocks impl is added in Task 8
 pub trait DBMethods {
     fn create_secondary_index(&mut self, name: &str) -> Result<(), GraphError>;
     fn drop_secondary_index(&mut self, name: &str) -> Result<(), GraphError>;

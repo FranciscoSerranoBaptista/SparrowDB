@@ -26,7 +26,7 @@ impl<'db, 'arena, 'txn> Iterator for EFromId<'db, 'arena, 'txn> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|_| {
-            let edge: Edge = match self.storage.get_edge(self.txn, &self.id, self.arena) {
+            let edge: Edge = match self.storage.get_edge(self.txn, self.id, self.arena) {
                 Ok(edge) => edge,
                 Err(e) => return Err(e),
             };

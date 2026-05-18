@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
     helix_engine::{
-        bm25::bm25::{
+        bm25::{
             BM25, BM25_SCHEMA_VERSION, BM25_SCHEMA_VERSION_KEY, BM25Metadata, METADATA_KEY,
         },
         storage_core::version_info::VersionInfo,

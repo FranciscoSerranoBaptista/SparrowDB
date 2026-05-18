@@ -3,11 +3,11 @@ use itertools::Itertools;
 
 use crate::{
     helix_engine::{
-        bm25::lmdb_bm25::HBM25Config,
+        bm25::HBM25Config,
         storage_core::{HelixGraphStorage, storage_methods::StorageMethods},
         traversal_core::{traversal_iter::RwTraversalIterator, traversal_value::TraversalValue},
         types::GraphError,
-        vector_core::{hnsw::HNSW, vector::HVector},
+        vector_core::{HNSW, vector::HVector},
     },
     protocol::value::Value,
     utils::{

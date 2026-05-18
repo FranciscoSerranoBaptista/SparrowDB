@@ -2,7 +2,7 @@ use crate::{
     helix_engine::{
         traversal_core::{traversal_iter::RwTraversalIterator, traversal_value::TraversalValue},
         types::GraphError,
-        vector_core::{hnsw::HNSW, vector::HVector},
+        vector_core::{HNSW, vector::HVector},
     },
     utils::properties::ImmutablePropertiesMap,
 };

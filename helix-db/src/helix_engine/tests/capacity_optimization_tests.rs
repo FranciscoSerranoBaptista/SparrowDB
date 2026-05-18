@@ -11,7 +11,7 @@ use tempfile::TempDir;
 
 use crate::{
     helix_engine::{
-        bm25::bm25::BM25,
+        bm25::BM25,
         storage_core::HelixGraphStorage,
         traversal_core::{
             config::Config,

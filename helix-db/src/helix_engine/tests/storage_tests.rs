@@ -3,7 +3,6 @@ use crate::helix_engine::{
         HelixGraphStorage, StorageConfig, storage_methods::DBMethods, version_info::VersionInfo,
     },
     traversal_core::config::Config,
-    types::SecondaryIndex,
 };
 use tempfile::TempDir;
 
@@ -186,7 +185,7 @@ fn test_unpack_adj_edge_data_invalid_length() {
 fn test_create_secondary_index() {
     let (mut storage, _temp_dir) = setup_test_storage();
 
-    let result = storage.create_secondary_index(SecondaryIndex::Index("test_index".to_string()));
+    let result = storage.create_secondary_index("test_index");
     assert!(result.is_ok());
 
     // Verify index was added to secondary_indices map
@@ -199,7 +198,7 @@ fn test_drop_secondary_index() {
 
     // Create an index first
     storage
-        .create_secondary_index(SecondaryIndex::Index("test_index".to_string()))
+        .create_secondary_index("test_index")
         .unwrap();
     assert!(storage.secondary_indices.contains_key("test_index"));
 
@@ -224,13 +223,13 @@ fn test_multiple_secondary_indices() {
     let (mut storage, _temp_dir) = setup_test_storage();
 
     storage
-        .create_secondary_index(SecondaryIndex::Index("index1".to_string()))
+        .create_secondary_index("index1")
         .unwrap();
     storage
-        .create_secondary_index(SecondaryIndex::Index("index2".to_string()))
+        .create_secondary_index("index2")
         .unwrap();
     storage
-        .create_secondary_index(SecondaryIndex::Index("index3".to_string()))
+        .create_secondary_index("index3")
         .unwrap();
 
     assert_eq!(storage.secondary_indices.len(), 3);
@@ -556,20 +555,20 @@ fn test_drop_node_with_no_edges() {
 
     // Verify node exists
     let txn = storage.graph_env.read_txn().unwrap();
-    let result = storage.get_node(&txn, &node.id, &arena);
+    let result = storage.get_node(&txn, node.id, &arena);
     assert!(result.is_ok());
     drop(txn);
 
     // Drop the node
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_node(&mut txn, &node.id);
+    let result = storage.drop_node(&mut txn, node.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify node is gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    let result = storage.get_node(&txn, &node.id, &arena);
+    let result = storage.get_node(&txn, node.id, &arena);
     assert!(result.is_err());
 }
 
@@ -588,26 +587,26 @@ fn test_drop_node_with_outgoing_edges_only() {
 
     // Verify edge exists
     let txn = storage.graph_env.read_txn().unwrap();
-    let result = storage.get_edge(&txn, &edge.id, &arena);
+    let result = storage.get_edge(&txn, edge.id, &arena);
     assert!(result.is_ok());
     drop(txn);
 
     // Drop node1 (has outgoing edge)
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_node(&mut txn, &node1.id);
+    let result = storage.drop_node(&mut txn, node1.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify node1 is gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_node(&txn, &node1.id, &arena).is_err());
+    assert!(storage.get_node(&txn, node1.id, &arena).is_err());
 
     // Verify node2 still exists
-    assert!(storage.get_node(&txn, &node2.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, node2.id, &arena).is_ok());
 
     // Verify edge is gone (cascading delete)
-    assert!(storage.get_edge(&txn, &edge.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge.id, &arena).is_err());
 }
 
 #[test]
@@ -625,20 +624,20 @@ fn test_drop_node_with_incoming_edges_only() {
 
     // Drop node2 (has incoming edge)
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_node(&mut txn, &node2.id);
+    let result = storage.drop_node(&mut txn, node2.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify node2 is gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_node(&txn, &node2.id, &arena).is_err());
+    assert!(storage.get_node(&txn, node2.id, &arena).is_err());
 
     // Verify node1 still exists
-    assert!(storage.get_node(&txn, &node1.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, node1.id, &arena).is_ok());
 
     // Verify edge is gone (cascading delete)
-    assert!(storage.get_edge(&txn, &edge.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge.id, &arena).is_err());
 }
 
 #[test]
@@ -660,22 +659,22 @@ fn test_drop_node_with_both_incoming_and_outgoing_edges() {
 
     // Drop node2 (has both incoming and outgoing edges)
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_node(&mut txn, &node2.id);
+    let result = storage.drop_node(&mut txn, node2.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify node2 is gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_node(&txn, &node2.id, &arena).is_err());
+    assert!(storage.get_node(&txn, node2.id, &arena).is_err());
 
     // Verify node1 and node3 still exist
-    assert!(storage.get_node(&txn, &node1.id, &arena).is_ok());
-    assert!(storage.get_node(&txn, &node3.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, node1.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, node3.id, &arena).is_ok());
 
     // Verify both edges are gone
-    assert!(storage.get_edge(&txn, &edge1.id, &arena).is_err());
-    assert!(storage.get_edge(&txn, &edge2.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge1.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge2.id, &arena).is_err());
 }
 
 #[test]
@@ -702,24 +701,24 @@ fn test_drop_node_with_multiple_edges_same_label() {
 
     // Drop center node
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_node(&mut txn, &center.id);
+    let result = storage.drop_node(&mut txn, center.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify center is gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_node(&txn, &center.id, &arena).is_err());
+    assert!(storage.get_node(&txn, center.id, &arena).is_err());
 
     // Verify all neighbors still exist
-    assert!(storage.get_node(&txn, &neighbor1.id, &arena).is_ok());
-    assert!(storage.get_node(&txn, &neighbor2.id, &arena).is_ok());
-    assert!(storage.get_node(&txn, &neighbor3.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, neighbor1.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, neighbor2.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, neighbor3.id, &arena).is_ok());
 
     // Verify all edges are gone
-    assert!(storage.get_edge(&txn, &edge1.id, &arena).is_err());
-    assert!(storage.get_edge(&txn, &edge2.id, &arena).is_err());
-    assert!(storage.get_edge(&txn, &edge3.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge1.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge2.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge3.id, &arena).is_err());
 }
 
 #[test]
@@ -742,16 +741,16 @@ fn test_drop_node_with_multiple_edge_labels() {
 
     // Drop node1
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_node(&mut txn, &node1.id);
+    let result = storage.drop_node(&mut txn, node1.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify all edges with different labels are gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_edge(&txn, &edge1.id, &arena).is_err());
-    assert!(storage.get_edge(&txn, &edge2.id, &arena).is_err());
-    assert!(storage.get_edge(&txn, &edge3.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge1.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge2.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge3.id, &arena).is_err());
 }
 
 #[test]
@@ -769,23 +768,23 @@ fn test_drop_edge_exists() {
 
     // Verify edge exists
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_edge(&txn, &edge.id, &arena).is_ok());
+    assert!(storage.get_edge(&txn, edge.id, &arena).is_ok());
     drop(txn);
 
     // Drop the edge
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_edge(&mut txn, &edge.id);
+    let result = storage.drop_edge(&mut txn, edge.id);
     assert!(result.is_ok());
     txn.commit().unwrap();
 
     // Verify edge is gone
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_edge(&txn, &edge.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge.id, &arena).is_err());
 
     // Verify nodes still exist
-    assert!(storage.get_node(&txn, &node1.id, &arena).is_ok());
-    assert!(storage.get_node(&txn, &node2.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, node1.id, &arena).is_ok());
+    assert!(storage.get_node(&txn, node2.id, &arena).is_ok());
 }
 
 #[test]
@@ -793,7 +792,7 @@ fn test_drop_edge_nonexistent() {
     let (storage, _temp_dir) = setup_test_storage();
 
     let mut txn = storage.graph_env.write_txn().unwrap();
-    let result = storage.drop_edge(&mut txn, &99999);
+    let result = storage.drop_edge(&mut txn, 99999);
 
     // Should return EdgeNotFound error
     assert!(result.is_err());
@@ -822,7 +821,7 @@ fn test_drop_edge_verifies_out_edges_db_cleanup() {
 
     // Drop the edge
     let mut txn = storage.graph_env.write_txn().unwrap();
-    storage.drop_edge(&mut txn, &edge.id).unwrap();
+    storage.drop_edge(&mut txn, edge.id).unwrap();
     txn.commit().unwrap();
 
     // Verify out_edges_db entry is gone
@@ -854,7 +853,7 @@ fn test_drop_edge_verifies_in_edges_db_cleanup() {
 
     // Drop the edge
     let mut txn = storage.graph_env.write_txn().unwrap();
-    storage.drop_edge(&mut txn, &edge.id).unwrap();
+    storage.drop_edge(&mut txn, edge.id).unwrap();
     txn.commit().unwrap();
 
     // Verify in_edges_db entry is gone
@@ -883,12 +882,12 @@ fn test_drop_one_edge_preserves_other_edges() {
 
     // Drop only edge1
     let mut txn = storage.graph_env.write_txn().unwrap();
-    storage.drop_edge(&mut txn, &edge1.id).unwrap();
+    storage.drop_edge(&mut txn, edge1.id).unwrap();
     txn.commit().unwrap();
 
     // Verify edge1 is gone but edge2 remains
     let arena = Bump::new();
     let txn = storage.graph_env.read_txn().unwrap();
-    assert!(storage.get_edge(&txn, &edge1.id, &arena).is_err());
-    assert!(storage.get_edge(&txn, &edge2.id, &arena).is_ok());
+    assert!(storage.get_edge(&txn, edge1.id, &arena).is_err());
+    assert!(storage.get_edge(&txn, edge2.id, &arena).is_ok());
 }

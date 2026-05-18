@@ -7,7 +7,7 @@ use tempfile::TempDir;
 use super::test_utils::props_option;
 use crate::{
     helix_engine::{
-        bm25::bm25::BM25,
+        bm25::BM25,
         storage_core::HelixGraphStorage,
         traversal_core::{
             ops::{

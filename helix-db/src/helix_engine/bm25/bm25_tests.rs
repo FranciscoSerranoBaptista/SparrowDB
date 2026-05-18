@@ -2,14 +2,14 @@
 mod tests {
     use crate::{
         helix_engine::{
-            bm25::lmdb_bm25::{
+            bm25::{
                 BM25, BM25_SCHEMA_VERSION, BM25_SCHEMA_VERSION_KEY, BM25Flatten, BM25Metadata,
                 HBM25Config, HybridSearch, METADATA_KEY, PostingListEntry, ReversePostingEntry,
                 build_bm25_payload,
             },
             storage_core::{HelixGraphStorage, version_info::VersionInfo},
             traversal_core::config::Config,
-            vector_core::{hnsw::HNSW, vector::HVector},
+            vector_core::{HNSW, vector::HVector},
         },
         protocol::value::Value,
         utils::properties::ImmutablePropertiesMap,

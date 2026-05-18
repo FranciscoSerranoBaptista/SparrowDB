@@ -1,6 +1,6 @@
 use crate::{
     helix_engine::{
-        bm25::bm25::BM25,
+        bm25::BM25,
         traversal_core::{
             LMDB_STRING_HEADER_LENGTH, traversal_iter::RoTraversalIterator,
             traversal_value::TraversalValue,

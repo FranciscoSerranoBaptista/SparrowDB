@@ -224,14 +224,14 @@ where
         let mut current = end_id;
 
         while current != start_id {
-            nodes.push(self.storage.get_node(self.txn, current, arena)?);
+            nodes.push(self.storage.get_node(self.txn, *current, arena)?);
 
             let (prev_node, edge) = &parent[current];
-            edges.push(self.storage.get_edge(self.txn, edge, arena)?);
+            edges.push(self.storage.get_edge(self.txn, *edge, arena)?);
             current = prev_node;
         }
 
-        nodes.push(self.storage.get_node(self.txn, start_id, arena)?);
+        nodes.push(self.storage.get_node(self.txn, *start_id, arena)?);
 
         nodes.reverse();
         edges.reverse();
