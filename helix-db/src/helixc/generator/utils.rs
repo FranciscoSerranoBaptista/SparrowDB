@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_genref_ref_with_lifetime() {
-        let genref = GenRef::RefLT("a".to_string(), "value".to_string());
+        let genref = GenRef::RefLT("a", "value".to_string());
         assert_eq!(format!("{}", genref), "&'a value");
     }
 
