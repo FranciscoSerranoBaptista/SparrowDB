@@ -1,11 +1,9 @@
-use super::binary_heap::BinaryHeap;
+use super::{binary_heap::BinaryHeap, hnsw::HNSW, utils::{Candidate, HeapOps, VectorFilter}};
 use crate::{
     debug_println,
     helix_engine::{
         types::VectorError,
         vector_core::{
-            hnsw::HNSW,
-            utils::{Candidate, HeapOps, VectorFilter},
             vector::HVector,
             vector_without_data::VectorWithoutData,
         },
