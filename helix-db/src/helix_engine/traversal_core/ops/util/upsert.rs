@@ -1,3 +1,4 @@
+#[cfg(feature = "lmdb")]
 use heed3::PutFlags;
 use itertools::Itertools;
 
@@ -36,6 +37,7 @@ fn merge_create_props(
     merged
 }
 
+#[cfg(feature = "lmdb")]
 fn update_secondary_index(
     bm25: &(
         heed3::Database<heed3::types::Bytes, heed3::types::U128<heed3::byteorder::BE>>,
@@ -60,7 +62,7 @@ fn update_secondary_index(
 
 fn update_bm25_node_doc(
     bm25: &HBM25Config,
-    txn: &mut heed3::RwTxn<'_>,
+    txn: &mut crate::helix_engine::traversal_core::WTxn<'_>,
     node_id: u128,
     properties: &ImmutablePropertiesMap<'_>,
     label: &str,
@@ -70,7 +72,7 @@ fn update_bm25_node_doc(
 
 fn insert_bm25_node_doc(
     bm25: &HBM25Config,
-    txn: &mut heed3::RwTxn<'_>,
+    txn: &mut crate::helix_engine::traversal_core::WTxn<'_>,
     node_id: u128,
     properties: &ImmutablePropertiesMap<'_>,
     label: &str,
@@ -155,6 +157,7 @@ pub trait UpsertAdapter<'db, 'arena, 'txn>: Iterator {
     >;
 }
 
+#[cfg(feature = "lmdb")]
 impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
     UpsertAdapter<'db, 'arena, 'txn> for RwTraversalIterator<'db, 'arena, 'txn, I>
 {
@@ -894,6 +897,113 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
             arena: self.arena,
             txn: self.txn,
             inner: std::iter::once(result),
+        }
+    }
+}
+
+#[cfg(feature = "rocks")]
+impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
+    UpsertAdapter<'db, 'arena, 'txn> for RwTraversalIterator<'db, 'arena, 'txn, I>
+{
+    fn upsert_n(
+        self,
+        _label: &'static str,
+        _props: &[(&'static str, Value)],
+    ) -> RwTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        self.upsert_n_with_defaults(_label, _props, &[])
+    }
+
+    fn upsert_n_with_defaults(
+        self,
+        _label: &'static str,
+        _props: &[(&'static str, Value)],
+        _create_defaults: &[(&'static str, Value)],
+    ) -> RwTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        RwTraversalIterator {
+            storage: self.storage,
+            arena: self.arena,
+            txn: self.txn,
+            inner: std::iter::once(Err(GraphError::New("upsert_n not implemented for rocks".to_string()))),
+        }
+    }
+
+    fn upsert_e(
+        self,
+        label: &'arena str,
+        from_node: u128,
+        to_node: u128,
+        props: &[(&'static str, Value)],
+    ) -> RwTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        self.upsert_e_with_defaults(label, from_node, to_node, props, &[])
+    }
+
+    fn upsert_e_with_defaults(
+        self,
+        _label: &'arena str,
+        _from_node: u128,
+        _to_node: u128,
+        _props: &[(&'static str, Value)],
+        _create_defaults: &[(&'static str, Value)],
+    ) -> RwTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        RwTraversalIterator {
+            storage: self.storage,
+            arena: self.arena,
+            txn: self.txn,
+            inner: std::iter::once(Err(GraphError::New("upsert_e not implemented for rocks".to_string()))),
+        }
+    }
+
+    fn upsert_v(
+        self,
+        query: &'arena [f64],
+        label: &'arena str,
+        props: &[(&'static str, Value)],
+    ) -> RwTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        self.upsert_v_with_defaults(query, label, props, &[])
+    }
+
+    fn upsert_v_with_defaults(
+        self,
+        _query: &'arena [f64],
+        _label: &'arena str,
+        _props: &[(&'static str, Value)],
+        _create_defaults: &[(&'static str, Value)],
+    ) -> RwTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        RwTraversalIterator {
+            storage: self.storage,
+            arena: self.arena,
+            txn: self.txn,
+            inner: std::iter::once(Err(GraphError::New("upsert_v not implemented for rocks".to_string()))),
         }
     }
 }

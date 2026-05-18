@@ -2,10 +2,9 @@ use std::collections::HashSet;
 
 use crate::helix_engine::{
     storage_core::HelixGraphStorage,
-    traversal_core::{traversal_iter::RoTraversalIterator, traversal_value::TraversalValue},
+    traversal_core::{RTxn, traversal_iter::RoTraversalIterator, traversal_value::TraversalValue},
     types::GraphError,
 };
-use heed3::RoTxn;
 
 pub trait IntersectAdapter<'db, 'arena, 'txn>: Iterator {
     /// Computes the intersection of sub-traversal results across all upstream items.
@@ -25,7 +24,7 @@ pub trait IntersectAdapter<'db, 'arena, 'txn>: Iterator {
         F: Fn(
             TraversalValue<'arena>,
             &'db HelixGraphStorage,
-            &'txn RoTxn<'db>,
+            &'txn RTxn<'db>,
             &'arena bumpalo::Bump,
         ) -> Result<Vec<TraversalValue<'arena>>, GraphError>;
 }
@@ -46,7 +45,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
         F: Fn(
             TraversalValue<'arena>,
             &'db HelixGraphStorage,
-            &'txn RoTxn<'db>,
+            &'txn RTxn<'db>,
             &'arena bumpalo::Bump,
         ) -> Result<Vec<TraversalValue<'arena>>, GraphError>,
     {

@@ -8,11 +8,14 @@ use crate::{
     },
     utils::items::Edge,
 };
+
+#[cfg(feature = "lmdb")]
 use heed3::{
     byteorder::BE,
     types::{Bytes, U128},
 };
 
+#[cfg(feature = "lmdb")]
 pub struct EFromType<'arena, 'txn, 's>
 where
     'arena: 'txn,
@@ -22,6 +25,7 @@ where
     pub label: &'s [u8],
 }
 
+#[cfg(feature = "lmdb")]
 impl<'arena, 'txn, 's> Iterator for EFromType<'arena, 'txn, 's> {
     type Item = Result<TraversalValue<'arena>, GraphError>;
 
@@ -66,6 +70,7 @@ impl<'arena, 'txn, 's> Iterator for EFromType<'arena, 'txn, 's> {
         None
     }
 }
+
 pub trait EFromTypeAdapter<'db, 'arena, 'txn, 's>:
     Iterator<Item = Result<TraversalValue<'arena>, GraphError>>
 {
@@ -79,6 +84,8 @@ pub trait EFromTypeAdapter<'db, 'arena, 'txn, 's>:
         impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
     >;
 }
+
+#[cfg(feature = "lmdb")]
 impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
     EFromTypeAdapter<'db, 'arena, 'txn, 's> for RoTraversalIterator<'db, 'arena, 'txn, I>
 {
@@ -107,6 +114,95 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
                 iter,
                 label: label.as_bytes(),
             },
+        }
+    }
+}
+
+#[cfg(feature = "rocks")]
+impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
+    EFromTypeAdapter<'db, 'arena, 'txn, 's> for RoTraversalIterator<'db, 'arena, 'txn, I>
+{
+    #[inline]
+    fn e_from_type(
+        self,
+        label: &'s str,
+    ) -> RoTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        let label_as_bytes = label.as_bytes();
+        let label_len = label.len();
+        let storage = self.storage;
+        let arena = self.arena;
+        let txn = self.txn;
+
+        let mut iter = txn.raw_iterator_cf(&storage.cf_edges());
+        iter.seek_to_first();
+
+        let inner = std::iter::from_fn(move || {
+            while iter.valid() {
+                if let Some((key, value)) = iter.item() {
+                    let id = match key.try_into() {
+                        Ok(bytes) => u128::from_be_bytes(bytes),
+                        Err(_) => {
+                            iter.next();
+                            continue;
+                        }
+                    };
+
+                    if value.len() < LMDB_STRING_HEADER_LENGTH {
+                        panic!(
+                            "value length does not contain header which means the `label` field was missing from the edge on insertion"
+                        );
+                    }
+
+                    let length_of_label_in_db =
+                        u64::from_le_bytes(value[..LMDB_STRING_HEADER_LENGTH].try_into().unwrap())
+                            as usize;
+
+                    if length_of_label_in_db != label_len {
+                        iter.next();
+                        continue;
+                    }
+
+                    let end = LMDB_STRING_HEADER_LENGTH + length_of_label_in_db;
+                    if value.len() < end {
+                        panic!(
+                            "value length is not at least the header length plus the label length meaning there has been a corruption on edge insertion"
+                        );
+                    }
+
+                    let label_in_db = &value[LMDB_STRING_HEADER_LENGTH..end];
+
+                    if label_in_db == label_as_bytes {
+                        match Edge::<'arena>::from_bincode_bytes(id, value, arena) {
+                            Ok(edge) => {
+                                iter.next();
+                                return Some(Ok(TraversalValue::Edge(edge)));
+                            }
+                            Err(e) => {
+                                iter.next();
+                                return Some(Err(GraphError::ConversionError(e.to_string())));
+                            }
+                        }
+                    } else {
+                        iter.next();
+                        continue;
+                    }
+                } else {
+                    iter.next();
+                }
+            }
+            None
+        });
+
+        RoTraversalIterator {
+            storage,
+            arena,
+            txn,
+            inner,
         }
     }
 }

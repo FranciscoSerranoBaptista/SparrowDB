@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use core::fmt;
+#[cfg(feature = "lmdb")]
 use heed3::Error as HeedError;
 use serde::{Deserialize, Serialize};
 use sonic_rs::Error as SonicError;
@@ -84,6 +85,7 @@ impl fmt::Display for GraphError {
     }
 }
 
+#[cfg(feature = "lmdb")]
 impl From<HeedError> for GraphError {
     fn from(error: HeedError) -> Self {
         match error {
@@ -192,6 +194,7 @@ impl fmt::Display for VectorError {
     }
 }
 
+#[cfg(feature = "lmdb")]
 impl From<HeedError> for VectorError {
     fn from(error: HeedError) -> Self {
         VectorError::VectorCoreError(format!("heed error: {error}"))

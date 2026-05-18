@@ -1,12 +1,11 @@
 use crate::{
     helix_engine::{
         storage_core::{HelixGraphStorage, storage_methods::StorageMethods},
-        traversal_core::{traversal_iter::RoTraversalIterator, traversal_value::TraversalValue},
+        traversal_core::{RTxn, traversal_iter::RoTraversalIterator, traversal_value::TraversalValue},
         types::GraphError,
     },
     utils::items::Edge,
 };
-use heed3::RoTxn;
 use std::iter::Once;
 
 pub struct EFromId<'db, 'arena, 'txn>
@@ -16,7 +15,7 @@ where
 {
     pub storage: &'db HelixGraphStorage,
     pub arena: &'arena bumpalo::Bump,
-    pub txn: &'txn RoTxn<'db>,
+    pub txn: &'txn RTxn<'db>,
     pub iter: Once<Result<TraversalValue<'arena>, GraphError>>,
     pub id: u128,
 }

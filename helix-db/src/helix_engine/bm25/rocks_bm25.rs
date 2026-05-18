@@ -103,6 +103,30 @@ impl HBM25Config {
             b: 0.75,
         })
     }
+
+    pub(crate) fn insert_doc_for_node(
+        &self,
+        txn: &mut WTxn<'_>,
+        doc_id: u128,
+        properties: &ImmutablePropertiesMap<'_>,
+        label: &str,
+    ) -> Result<(), GraphError> {
+        let mut data = properties.flatten_bm25();
+        data.push_str(label);
+        self.insert_doc(txn, doc_id, &data)
+    }
+
+    pub(crate) fn update_doc_for_node(
+        &self,
+        txn: &mut WTxn<'_>,
+        doc_id: u128,
+        properties: &ImmutablePropertiesMap<'_>,
+        label: &str,
+    ) -> Result<(), GraphError> {
+        let mut data = properties.flatten_bm25();
+        data.push_str(label);
+        self.update_doc(txn, doc_id, &data)
+    }
 }
 
 impl BM25 for HBM25Config {

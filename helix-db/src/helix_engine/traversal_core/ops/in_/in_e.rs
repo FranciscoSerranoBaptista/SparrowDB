@@ -27,6 +27,7 @@ pub trait InEdgesAdapter<'db, 'arena, 'txn, 's, I>:
     >;
 }
 
+#[cfg(feature = "lmdb")]
 impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
     InEdgesAdapter<'db, 'arena, 'txn, 's, I> for RoTraversalIterator<'db, 'arena, 'txn, I>
 {
@@ -81,7 +82,6 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
                     Ok(None) => None,
                     Err(e) => {
                         println!("Error getting in edges: {e:?}");
-                        // return Err(e);
                         None
                     }
                 }
@@ -92,6 +92,80 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             storage: self.storage,
             arena: self.arena,
             txn: self.txn,
+            inner: iter,
+        }
+    }
+}
+
+#[cfg(feature = "rocks")]
+impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
+    InEdgesAdapter<'db, 'arena, 'txn, 's, I> for RoTraversalIterator<'db, 'arena, 'txn, I>
+{
+    #[inline]
+    fn in_e(
+        self,
+        edge_label: &'s str,
+    ) -> RoTraversalIterator<
+        'db,
+        'arena,
+        'txn,
+        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
+    > {
+        use crate::helix_engine::rocks_utils::RocksUtils;
+
+        let storage = self.storage;
+        let arena = self.arena;
+        let txn = self.txn;
+
+        let iter = self
+            .inner
+            .filter_map(move |item| {
+                let edge_label_hash = hash_label(edge_label, None);
+                let node_id = match item {
+                    Ok(item) => item.id(),
+                    Err(_) => return None,
+                };
+                let prefix = HelixGraphStorage::in_edge_key_prefix(node_id, &edge_label_hash);
+                let cf_in_edges = storage.cf_in_edges();
+
+                let mut raw_iter = txn.raw_prefix_iter(&cf_in_edges, &prefix);
+                let mut results: Vec<Result<TraversalValue<'arena>, GraphError>> = Vec::new();
+
+                while let Some(key) = raw_iter.key() {
+                    if !key.starts_with(&prefix) {
+                        break;
+                    }
+                    // Key: to_node(16) | label(4) | from_node(16) | edge_id(16)
+                    match HelixGraphStorage::unpack_adj_edge_key(key) {
+                        Ok((_, _, _, edge_id)) => {
+                            match storage.get_edge(txn, edge_id, arena) {
+                                Ok(edge) => {
+                                    results.push(Ok(TraversalValue::Edge(edge)));
+                                }
+                                Err(e) => {
+                                    results.push(Err(e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            results.push(Err(e));
+                        }
+                    }
+                    raw_iter.next();
+                }
+
+                if results.is_empty() {
+                    None
+                } else {
+                    Some(results.into_iter())
+                }
+            })
+            .flatten();
+
+        RoTraversalIterator {
+            storage,
+            arena,
+            txn,
             inner: iter,
         }
     }

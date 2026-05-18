@@ -3,7 +3,7 @@ use crate::{
     helix_engine::{
         storage_core::HelixGraphStorage,
         types::GraphError,
-        vector_core::{hnsw::HNSW, vector::HVector},
+        vector_core::{lmdb::hnsw::HNSW, vector::HVector},
     },
     protocol::value::Value,
     utils::properties::ImmutablePropertiesMap,
