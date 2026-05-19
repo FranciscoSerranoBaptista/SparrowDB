@@ -708,7 +708,10 @@ pub mod rocks {
                 secondary_indices
                     .values()
                     .map(|cf_name| {
-                        rocksdb::ColumnFamilyDescriptor::new(cf_name, rocksdb::Options::default())
+                        rocksdb::ColumnFamilyDescriptor::new(
+                            cf_name,
+                            Self::secondary_index_cf_options(),
+                        )
                     })
                     .collect::<Vec<_>>(),
             );
@@ -782,25 +785,31 @@ pub mod rocks {
             opts
         }
 
-        // TODO CHANGE THIS
         pub fn secondary_index_cf_options() -> rocksdb::Options {
-            let opts = rocksdb::Options::default();
-            // opts.set_merge_operator_associative("append", Self::merge_append);
+            let mut opts = rocksdb::Options::default();
+            opts.set_merge_operator_associative("append", Self::merge_append);
             opts
         }
 
-        // // Merge operator for secondary indices (replaces DUP_SORT)
-        // fn merge_append(
-        //     _key: &[u8],
-        //     existing: Option<&[u8]>,
-        //     operands: &rocksdb::MergeOperands,
-        // ) -> Option<Vec<u8>> {
-        //     let mut result = existing.map(|v| v.to_vec()).unwrap_or_default();
-        //     for op in operands {
-        //         result.extend_from_slice(op);
-        //     }
-        //     Some(result)
-        // }
+        /// Merge operator for secondary indices.
+        ///
+        /// Each operand is a 16-byte node ID. This function accumulates node IDs,
+        /// deduplicating entries so that the same node is never stored twice for a
+        /// given index key.
+        fn merge_append(
+            _key: &[u8],
+            existing: Option<&[u8]>,
+            operands: &rocksdb::MergeOperands,
+        ) -> Option<Vec<u8>> {
+            let mut result = existing.map(|v| v.to_vec()).unwrap_or_default();
+            for op in operands {
+                // Each operand is a 16-byte node ID — deduplicate
+                if op.len() == 16 && !result.chunks(16).any(|chunk| chunk == op) {
+                    result.extend_from_slice(op);
+                }
+            }
+            Some(result)
+        }
 
         pub fn get_secondary_index_cf_handle(
             &self,

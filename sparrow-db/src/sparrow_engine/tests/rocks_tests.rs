@@ -12,12 +12,14 @@ use crate::{
                 out::{out::OutAdapter, out_e::OutEdgesAdapter},
                 source::{
                     add_e::AddEAdapter, add_n::AddNAdapter, e_from_type::EFromTypeAdapter,
-                    n_from_id::NFromIdAdapter, n_from_type::NFromTypeAdapter,
+                    n_from_id::NFromIdAdapter, n_from_index::NFromIndexAdapter,
+                    n_from_type::NFromTypeAdapter,
                 },
                 util::{dedup::DedupAdapter, order::OrderByAdapter, range::RangeAdapter},
                 vectors::{insert::InsertVAdapter, search::SearchVAdapter},
             },
         },
+        types::SecondaryIndex,
         vector_core::vector::HVector,
     },
     props,
@@ -545,4 +547,121 @@ fn test_rocks_uncommitted_not_visible() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(things2.len(), 1);
+}
+
+// ============================================================================
+// Secondary index tests
+// ============================================================================
+
+fn setup_indexed_db() -> (TempDir, Arc<SparrowGraphStorage>) {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().to_str().unwrap();
+    let mut config = Config::default();
+    config.graph_config.as_mut().unwrap().secondary_indices =
+        Some(vec![SecondaryIndex::Index("name".to_string())]);
+    let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
+    (temp_dir, Arc::new(storage))
+}
+
+/// Regression test: two nodes sharing the same secondary-indexed property value
+/// must both be returned by `n_from_index`. Before the merge-operator fix the
+/// secondary index CF was opened with plain `rocksdb::Options::default()` instead
+/// of `secondary_index_cf_options()`, which omitted the merge operator registration.
+/// While the composite-key write path did not strictly require the merge operator,
+/// confirming that both nodes are retrievable validates the full read/write round-trip
+/// through the correctly-configured CF.
+#[test]
+fn test_rocks_secondary_index_two_nodes_same_value() {
+    let (_temp_dir, storage) = setup_indexed_db();
+    let arena = Bump::new();
+    let mut txn = storage.write_txn().unwrap();
+
+    let alice1 = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "Alice" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+
+    let alice2 = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "Alice" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+
+    txn.commit().unwrap();
+
+    let txn = storage.read_txn().unwrap();
+    let mut results = G::new(&storage, &txn, &arena)
+        .n_from_index("person", "name", &"Alice".to_string())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert_eq!(
+        results.len(),
+        2,
+        "expected both nodes to be returned from secondary index, got {}",
+        results.len()
+    );
+
+    // Order may vary; sort by id for deterministic comparison
+    results.sort_by_key(|n| n.id());
+    let mut expected = vec![alice1.id(), alice2.id()];
+    expected.sort();
+    assert_eq!(results[0].id(), expected[0]);
+    assert_eq!(results[1].id(), expected[1]);
+}
+
+#[test]
+fn test_rocks_secondary_index_different_values() {
+    let (_temp_dir, storage) = setup_indexed_db();
+    let arena = Bump::new();
+    let mut txn = storage.write_txn().unwrap();
+
+    let alice = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "Alice" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+
+    let bob = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "Bob" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+
+    txn.commit().unwrap();
+
+    let txn = storage.read_txn().unwrap();
+
+    let alice_results = G::new(&storage, &txn, &arena)
+        .n_from_index("person", "name", &"Alice".to_string())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(alice_results.len(), 1);
+    assert_eq!(alice_results[0].id(), alice.id());
+
+    let bob_results = G::new(&storage, &txn, &arena)
+        .n_from_index("person", "name", &"Bob".to_string())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(bob_results.len(), 1);
+    assert_eq!(bob_results[0].id(), bob.id());
+
+    let nobody = G::new(&storage, &txn, &arena)
+        .n_from_index("person", "name", &"Nobody".to_string())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(nobody.is_empty());
 }
