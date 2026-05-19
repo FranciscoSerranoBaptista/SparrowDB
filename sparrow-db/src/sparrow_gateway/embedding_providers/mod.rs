@@ -31,7 +31,6 @@ fn parse_api_error(provider: &str, status: u16, body: &str) -> GraphError {
 /// Trait for embedding models to fetch text embeddings.
 #[allow(async_fn_in_trait)]
 pub trait EmbeddingModel {
-    fn fetch_embedding(&self, text: &str) -> Result<Vec<f64>, GraphError>;
     async fn fetch_embedding_async(&self, text: &str) -> Result<Vec<f64>, GraphError>;
 }
 
@@ -170,12 +169,6 @@ impl EmbeddingModelImpl {
 }
 
 impl EmbeddingModel for EmbeddingModelImpl {
-    /// Must be called with an active tokio context
-    fn fetch_embedding(&self, text: &str) -> Result<Vec<f64>, GraphError> {
-        let handle = tokio::runtime::Handle::current();
-        handle.block_on(self.fetch_embedding_async(text))
-    }
-
     async fn fetch_embedding_async(&self, text: &str) -> Result<Vec<f64>, GraphError> {
         match &self.provider {
             EmbeddingProvider::OpenAI => {
@@ -439,14 +432,14 @@ pub fn get_embedding_model(
 }
 
 #[macro_export]
-/// Fetches an embedding from the embedding model.
+/// Fetches an embedding from the embedding model asynchronously.
 ///
 /// If no model or url is provided, it will use the default model and url.
 ///
-/// This must be called on a sync worker, but with a tokio context, and in a place that returns a Result
+/// This must be called from an async context and in a place that returns a Result.
 ///
 /// ## Example Use
-/// ```rust
+/// ```rust,ignore
 /// use sparrow_db::embed;
 /// let query = embed!("Hello, world!");
 /// let embedding = embed!("Hello, world!", "text-embedding-ada-002");
@@ -457,15 +450,15 @@ macro_rules! embed {
     ($db:expr, $query:expr) => {{
         let embedding_model =
             get_embedding_model(None, $db.storage_config.embedding_model.as_deref(), None);
-        embedding_model.fetch_embedding($query)?
+        embed_async!(INNER_MODEL: embedding_model, $query)?
     }};
     ($db:expr, $query:expr, $provider:expr) => {{
         let embedding_model = get_embedding_model(None, Some($provider), None);
-        embedding_model.fetch_embedding($query)?
+        embed_async!(INNER_MODEL: embedding_model, $query)?
     }};
     ($db:expr, $query:expr, $provider:expr, $url:expr) => {{
         let embedding_model = get_embedding_model(None, Some($provider), Some($url));
-        embedding_model.fetch_embedding($query)?
+        embed_async!(INNER_MODEL: embedding_model, $query)?
     }};
 }
 

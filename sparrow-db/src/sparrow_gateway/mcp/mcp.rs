@@ -949,8 +949,8 @@ pub fn search_vector_text(input: &mut MCPToolInput) -> Result<Response, GraphErr
     })?;
 
     tracing::debug!("[VECTOR_SEARCH] Fetching embedding for query text");
-    let query_embedding = embedding_model
-        .fetch_embedding(&req.data.query)
+    let query_embedding = tokio::runtime::Handle::current()
+        .block_on(embedding_model.fetch_embedding_async(&req.data.query))
         .map_err(|e| {
             tracing::error!("[VECTOR_SEARCH] Failed to fetch embedding: {:?}", e);
             e

@@ -3,59 +3,59 @@ use crate::sparrow_gateway::embedding_providers::{
 };
 
 // Integration tests (require API keys and network)
-#[test]
+#[tokio::test]
 #[ignore] // Requires API key and network
-fn test_openai_embedding_success() {
+async fn test_openai_embedding_success() {
     let model = get_embedding_model(None, Some("text-embedding-ada-002"), None).unwrap();
-    let result = model.fetch_embedding("test text");
+    let result = model.fetch_embedding_async("test text").await;
     assert!(result.is_ok());
     let embedding = result.unwrap();
     println!("embedding: {embedding:?}");
 }
 
-#[test]
+#[tokio::test]
 #[ignore] // Requires API key and network
-fn test_azure_openai_embedding_success() {
+async fn test_azure_openai_embedding_success() {
     // Requires AZURE_OPENAI_API_KEY and AZURE_OPENAI_RESOURCE_NAME env vars
     let model =
         get_embedding_model(None, Some("azure_openai:text-embedding-3-small"), None).unwrap();
-    let result = model.fetch_embedding("test text");
+    let result = model.fetch_embedding_async("test text").await;
     assert!(result.is_ok());
     let embedding = result.unwrap();
     println!("embedding: {embedding:?}");
 }
 
-#[test]
+#[tokio::test]
 #[ignore] // Requires API key and network
-fn test_gemini_embedding_success() {
+async fn test_gemini_embedding_success() {
     let model = get_embedding_model(None, Some("gemini-embedding-001"), None).unwrap();
-    let result = model.fetch_embedding("test text");
+    let result = model.fetch_embedding_async("test text").await;
     assert!(result.is_ok());
     let embedding = result.unwrap();
     println!("embedding: {embedding:?}");
 }
 
-#[test]
+#[tokio::test]
 #[ignore] // Requires API key and network
-fn test_gemini_embedding_with_task_type() {
+async fn test_gemini_embedding_with_task_type() {
     let model = get_embedding_model(
         None,
         Some("gemini:gemini-embedding-001:SEMANTIC_SIMILARITY"),
         None,
     )
     .unwrap();
-    let result = model.fetch_embedding("test text");
+    let result = model.fetch_embedding_async("test text").await;
     assert!(result.is_ok());
     let embedding = result.unwrap();
     println!("embedding: {embedding:?}");
 }
 
-#[test]
+#[tokio::test]
 #[ignore] // Requires local embedding server
-fn test_local_embedding_success() {
+async fn test_local_embedding_success() {
     let model =
         get_embedding_model(None, Some("local"), Some("http://localhost:8699/embed")).unwrap();
-    let result = model.fetch_embedding("test text");
+    let result = model.fetch_embedding_async("test text").await;
     assert!(result.is_ok());
     let embedding = result.unwrap();
     println!("embedding: {:?}", embedding);
