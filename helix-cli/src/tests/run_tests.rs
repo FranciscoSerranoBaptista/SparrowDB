@@ -46,3 +46,14 @@ fn test_resolve_data_dir_uses_override_when_provided() {
     let result = resolve_data_dir(Some(override_dir.clone()), None, None);
     assert_eq!(result, override_dir);
 }
+
+#[test]
+fn test_resolve_data_dir_falls_back_to_helix_dir() {
+    // No override, no project — should fall back to ~/.helix
+    // helix-container will append /user, so database lands at ~/.helix/user
+    let result = resolve_data_dir(None, None, None);
+    assert!(
+        result.ends_with(".helix") || result == "/tmp/helix-data",
+        "fallback should end with .helix (helix-container appends /user), got: {result}"
+    );
+}

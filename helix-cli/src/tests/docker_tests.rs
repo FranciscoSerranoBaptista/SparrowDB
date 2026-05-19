@@ -95,8 +95,12 @@ fn test_dockerfile_lmdb_release_uses_release_flag() {
     let instance_config = context.config.get_instance("dev").unwrap();
     let dockerfile = docker.generate_dockerfile("dev", instance_config).unwrap();
     assert!(
-        dockerfile.contains("cargo build --release\n") || dockerfile.contains("cargo build --release "),
-        "release lmdb build should pass --release flag, got:\n{dockerfile}"
+        dockerfile.contains("cargo build --release --package"),
+        "release lmdb build should pass --release to cargo build, got:\n{dockerfile}"
+    );
+    assert!(
+        dockerfile.contains("cargo chef cook --release"),
+        "release lmdb build should pass --release to cargo chef cook, got:\n{dockerfile}"
     );
     assert!(
         !dockerfile.contains("--features rocks"),
