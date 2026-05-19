@@ -22,9 +22,11 @@ pub struct Request {
     pub body: Bytes,
     pub in_fmt: Format,
     pub out_fmt: Format,
-    /// Pre-computed embedding vector, populated by the async dispatch layer
-    /// before handing the request to a sync worker thread. Avoids block_on
-    /// inside worker threads for embedding API calls.
+    /// Pre-computed embedding vector for `search_vector_text` MCP requests only.
+    /// Populated by `WorkerPool::process` in async context before sync dispatch to
+    /// avoid `block_on` deadlock on worker threads.
+    /// None for all other request types.
+    /// Technical debt: this is MCP-specific state on a shared protocol type.
     pub pre_computed_embedding: Option<Vec<f64>>,
 }
 

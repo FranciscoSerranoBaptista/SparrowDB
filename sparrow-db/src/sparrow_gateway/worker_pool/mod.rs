@@ -90,6 +90,11 @@ impl WorkerPool {
         // For search_vector_text: pre-compute the embedding here in the async context
         // so the sync worker thread never needs to call block_on for an embedding API call,
         // which would deadlock the Tokio runtime.
+        //
+        // Note: this pre-computation covers the MCP `search_vector_text` route.
+        // HQL-compiled queries that use vector similarity (`embed_async!` macro in generated code)
+        // run on the Query dispatch path. Those paths use `spawn_blocking` or a dedicated
+        // runtime handle — verify if they're affected before adding more embed routes here.
         if req.name == "search_vector_text" {
             #[derive(serde::Deserialize)]
             struct QueryBody {
