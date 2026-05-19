@@ -9,18 +9,18 @@ fn setup_test_project() -> (TempDir, ProjectContext) {
     let project_path = temp_dir.path().to_path_buf();
 
     let config = SparrowConfig::default_config("test-project");
-    let config_path = project_path.join("helix.toml");
+    let config_path = project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    fs::create_dir_all(project_path.join(".helix")).expect("Failed to create .helix");
+    fs::create_dir_all(project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     let context = ProjectContext::find_and_load(Some(&project_path)).unwrap();
     (temp_dir, context)
 }
 
-/// Regression test: HELIX_DATA_DIR must always be /data inside container
+/// Regression test: SPARROW_DATA_DIR must always be /data inside container
 /// (Bug from PR #823 where host path was incorrectly passed to container)
 #[test]
 fn test_helix_data_dir_uses_container_path() {
@@ -31,12 +31,12 @@ fn test_helix_data_dir_uses_container_path() {
 
     let data_dir_var = env_vars
         .iter()
-        .find(|v| v.starts_with("HELIX_DATA_DIR="))
-        .expect("HELIX_DATA_DIR should be set");
+        .find(|v| v.starts_with("SPARROW_DATA_DIR="))
+        .expect("SPARROW_DATA_DIR should be set");
 
     assert_eq!(
-        data_dir_var, "HELIX_DATA_DIR=/data",
-        "HELIX_DATA_DIR must use container path /data, not host path"
+        data_dir_var, "SPARROW_DATA_DIR=/data",
+        "SPARROW_DATA_DIR must use container path /data, not host path"
     );
 }
 
@@ -59,18 +59,18 @@ fn test_docker_compose_volume_and_env() {
 
     // Environment should have /data (container path)
     assert!(
-        compose.contains("HELIX_DATA_DIR=/data"),
-        "HELIX_DATA_DIR in environment should be /data"
+        compose.contains("SPARROW_DATA_DIR=/data"),
+        "SPARROW_DATA_DIR in environment should be /data"
     );
 
-    // Should NOT have host path in HELIX_DATA_DIR
+    // Should NOT have host path in SPARROW_DATA_DIR
     assert!(
-        !compose.contains("HELIX_DATA_DIR=../.volumes"),
-        "HELIX_DATA_DIR should NOT contain host path"
+        !compose.contains("SPARROW_DATA_DIR=../.volumes"),
+        "SPARROW_DATA_DIR should NOT contain host path"
     );
 }
 
-/// Verify host-side data_dir() still respects HELIX_DATA_DIR for volume mount
+/// Verify host-side data_dir() still respects SPARROW_DATA_DIR for volume mount
 #[test]
 fn test_host_data_dir_respects_env_var() {
     let (_temp_dir, context) = setup_test_project();

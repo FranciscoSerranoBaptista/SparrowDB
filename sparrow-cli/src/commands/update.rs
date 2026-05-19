@@ -18,9 +18,9 @@ fn run_sync(force: bool) -> Result<()> {
     check_step.start();
 
     let status = self_update::backends::github::Update::configure()
-        .repo_owner("HelixDB")
+        .repo_owner("SparrowDB")
         .repo_name("helix-db")
-        .bin_name("helix")
+        .bin_name("sparrow")
         .show_download_progress(true)
         .show_output(false)
         .no_confirm(true)

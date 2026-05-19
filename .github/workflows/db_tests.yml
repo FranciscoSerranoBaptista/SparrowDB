@@ -17,7 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     env:
-      HELIX_API_KEY: "12345678901234567890123456789012"
+      SPARROW_API_KEY: "12345678901234567890123456789012"
 
     steps:
     - uses: actions/checkout@v4

@@ -71,7 +71,7 @@ pub async fn run(
     let project_name = project_dir
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("helix-project")
+        .unwrap_or("sparrow-project")
         .to_string();
 
     output::success(&format!(
@@ -81,9 +81,9 @@ pub async fn run(
     ));
 
     // Step 2: Check if v2 project already exists
-    let helix_toml_path = project_dir.join("helix.toml");
+    let helix_toml_path = project_dir.join("sparrow.toml");
     if helix_toml_path.exists() {
-        return Err(project_error("helix.toml already exists in this directory")
+        return Err(project_error("sparrow.toml already exists in this directory")
             .with_hint("This appears to be a v2 project already. Migration not needed.")
             .into());
     }
@@ -272,7 +272,7 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
         ctx.queries_dir
     );
     println!(
-        "  {}: .helix/v1-backup/",
+        "  {}: .sparrow/v1-backup/",
         "Create directory".bright_white().bold()
     );
     for hx_file in &ctx.hx_files {
@@ -285,11 +285,11 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
             dest_path.display()
         );
     }
-    println!("  {}: helix.toml", "Create file".bright_white().bold());
+    println!("  {}: sparrow.toml", "Create file".bright_white().bold());
 
     if !ctx.no_backup {
         println!(
-            "  {}: .helix/v1-backup/config.hx.json",
+            "  {}: .sparrow/v1-backup/config.hx.json",
             "Create backup".bright_white().bold()
         );
     } else {
@@ -300,49 +300,49 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
     println!("{}", "🏠 Home Directory Migration:".bold().underline());
     let home_dir =
         dirs::home_dir().ok_or_else(|| CliError::new("Could not find home directory"))?;
-    let v1_helix_dir = home_dir.join(".helix");
+    let v1_helix_dir = home_dir.join(".sparrow");
     if v1_helix_dir.exists() {
         let v2_marker = v1_helix_dir.join(".v2");
         if v2_marker.exists() {
             println!(
-                "  {}: ~/.helix directory already migrated to v2",
+                "  {}: ~/.sparrow directory already migrated to v2",
                 "Already migrated".bright_white().bold()
             );
         } else {
             println!(
-                "  {}: ~/.helix → ~/.helix-v1-backup",
+                "  {}: ~/.sparrow → ~/.sparrow-v1-backup",
                 "Create backup".bright_white().bold()
             );
             if v1_helix_dir.join("dockerdev").exists() {
                 println!(
-                    "  {}: Stop/remove helix-dockerdev containers and images",
+                    "  {}: Stop/remove sparrow-dockerdev containers and images",
                     "Clean up Docker".bright_white().bold()
                 );
             }
             println!(
-                "  {}: Remove all except ~/.helix/credentials and ~/.helix/repo",
+                "  {}: Remove all except ~/.sparrow/credentials and ~/.sparrow/repo",
                 "Clean directory".bright_white().bold()
             );
             if v1_helix_dir.join("credentials").exists() {
                 println!(
-                    "  {}: ~/.helix/credentials",
+                    "  {}: ~/.sparrow/credentials",
                     "Preserve file".bright_white().bold()
                 );
             }
             if v1_helix_dir.join("repo").exists() {
                 println!(
-                    "  {}: ~/.helix/repo",
+                    "  {}: ~/.sparrow/repo",
                     "Preserve directory".bright_white().bold()
                 );
             }
             println!(
-                "  {}: Create ~/.helix/.v2 marker file",
+                "  {}: Create ~/.sparrow/.v2 marker file",
                 "Mark migrated".bright_white().bold()
             );
         }
     } else {
         println!(
-            "  {}: ~/.helix directory not found",
+            "  {}: ~/.sparrow directory not found",
             "No action needed".bright_white().bold()
         );
     }
@@ -392,8 +392,8 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
 fn create_backup(ctx: &MigrationContext) -> Result<()> {
     output::info("Creating backup of v1 files");
 
-    // Create .helix/v1-backup directory
-    let backup_dir = ctx.project_dir.join(".helix/v1-backup");
+    // Create .sparrow/v1-backup directory
+    let backup_dir = ctx.project_dir.join(".sparrow/v1-backup");
     fs::create_dir_all(&backup_dir).map_err(|e| {
         CliError::new("Failed to create backup directory").with_caused_by(e.to_string())
     })?;
@@ -404,7 +404,7 @@ fn create_backup(ctx: &MigrationContext) -> Result<()> {
     fs::copy(&original_path, &backup_path)
         .map_err(|e| CliError::new("Failed to create backup").with_caused_by(e.to_string()))?;
 
-    output::success("Created backup: .helix/v1-backup/config.hx.json");
+    output::success("Created backup: .sparrow/v1-backup/config.hx.json");
     Ok(())
 }
 
@@ -444,7 +444,7 @@ fn migrate_file_structure(ctx: &MigrationContext) -> Result<()> {
 }
 
 fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
-    output::info("Creating helix.toml configuration");
+    output::info("Creating sparrow.toml configuration");
 
     // Create vector config
     let vector_config = VectorConfig {
@@ -490,7 +490,7 @@ fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
         container_runtime: ContainerRuntime::Docker,
     };
 
-    // Create final helix config
+    // Create final sparrow config
     let helix_config = SparrowConfig {
         project: project_config,
         local,
@@ -499,12 +499,12 @@ fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
     };
 
     // Save to file
-    let config_path = ctx.project_dir.join("helix.toml");
+    let config_path = ctx.project_dir.join("sparrow.toml");
     helix_config
         .save_to_file(&config_path)
-        .map_err(|e| CliError::new("Failed to create helix.toml").with_caused_by(e.to_string()))?;
+        .map_err(|e| CliError::new("Failed to create sparrow.toml").with_caused_by(e.to_string()))?;
 
-    output::success("Created helix.toml configuration");
+    output::success("Created sparrow.toml configuration");
     Ok(())
 }
 
@@ -516,11 +516,11 @@ fn provide_post_migration_guidance(ctx: &MigrationContext) -> Result<()> {
         "Next steps:",
         &[
             &format!(
-                "Run 'helix check {}' to validate your configuration",
+                "Run 'sparrow check {}' to validate your configuration",
                 ctx.instance_name
             ),
             &format!(
-                "Run 'helix push {}' to start your instance",
+                "Run 'sparrow push {}' to start your instance",
                 ctx.instance_name
             ),
         ],
@@ -532,10 +532,10 @@ fn provide_post_migration_guidance(ctx: &MigrationContext) -> Result<()> {
         print_instructions(
             "To set up cloud instances:",
             &[
-                "Run 'helix add cloud --name production' to add a production instance",
-                "Run 'helix add cloud --name staging' to add a staging instance",
-                "Run 'helix build production' to build for your cloud instance",
-                "Run 'helix push production' to deploy to Helix Cloud",
+                "Run 'sparrow add cloud --name production' to add a production instance",
+                "Run 'sparrow add cloud --name staging' to add a staging instance",
+                "Run 'sparrow build production' to build for your cloud instance",
+                "Run 'sparrow push production' to deploy to Helix Cloud",
             ],
         );
     } else {
@@ -544,9 +544,9 @@ fn provide_post_migration_guidance(ctx: &MigrationContext) -> Result<()> {
         print_instructions(
             "To get started with Helix Cloud:",
             &[
-                "Run 'helix auth login' to authenticate with Helix Cloud",
-                "Run 'helix add cloud --name production' to add a cloud instance",
-                "Run 'helix push production' to deploy to the cloud",
+                "Run 'sparrow auth login' to authenticate with Helix Cloud",
+                "Run 'sparrow add cloud --name production' to add a cloud instance",
+                "Run 'sparrow push production' to deploy to the cloud",
             ],
         );
     }
@@ -555,27 +555,27 @@ fn provide_post_migration_guidance(ctx: &MigrationContext) -> Result<()> {
 }
 
 fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
-    output::info("Migrating ~/.helix directory");
+    output::info("Migrating ~/.sparrow directory");
 
     let home_dir =
         dirs::home_dir().ok_or_else(|| CliError::new("Could not find home directory"))?;
 
-    let v1_helix_dir = home_dir.join(".helix");
+    let v1_helix_dir = home_dir.join(".sparrow");
 
     if !v1_helix_dir.exists() {
-        output::info("No ~/.helix directory found, skipping home migration");
+        output::info("No ~/.sparrow directory found, skipping home migration");
         return Ok(());
     }
 
     // Check if already migrated
     let v2_marker = v1_helix_dir.join(".v2");
     if v2_marker.exists() {
-        output::info("~/.helix directory already migrated to v2, skipping home migration");
+        output::info("~/.sparrow directory already migrated to v2, skipping home migration");
         return Ok(());
     }
 
-    // Create backup of the entire .helix directory
-    let backup_dir = home_dir.join(".helix-v1-backup");
+    // Create backup of the entire .sparrow directory
+    let backup_dir = home_dir.join(".sparrow-v1-backup");
     if backup_dir.exists() {
         fs::remove_dir_all(&backup_dir).map_err(|e| {
             CliError::new("Failed to remove existing backup directory")
@@ -585,10 +585,10 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
 
     // Use the utility function to copy the directory without exclusions
     crate::utils::copy_dir_recursively(&v1_helix_dir, &backup_dir).map_err(|e| {
-        CliError::new("Failed to backup ~/.helix directory").with_caused_by(e.to_string())
+        CliError::new("Failed to backup ~/.sparrow directory").with_caused_by(e.to_string())
     })?;
 
-    output::success("Created backup: ~/.helix-v1-backup");
+    output::success("Created backup: ~/.sparrow-v1-backup");
 
     // Clean up dockerdev containers/images if present
     let dockerdev_dir = v1_helix_dir.join("dockerdev");
@@ -602,7 +602,7 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
 
     // Temporarily move credentials and repo out of the way
     let temp_credentials = if credentials_path.exists() {
-        let temp_path = home_dir.join(".helix-credentials-temp");
+        let temp_path = home_dir.join(".sparrow-credentials-temp");
         fs::rename(&credentials_path, &temp_path).map_err(|e| {
             CliError::new("Failed to backup credentials").with_caused_by(e.to_string())
         })?;
@@ -612,7 +612,7 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
     };
 
     let temp_repo = if repo_path.exists() {
-        let temp_path = home_dir.join(".helix-repo-temp");
+        let temp_path = home_dir.join(".sparrow-repo-temp");
         fs::rename(&repo_path, &temp_path)
             .map_err(|e| CliError::new("Failed to backup repo").with_caused_by(e.to_string()))?;
         Some(temp_path)
@@ -620,14 +620,14 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
         None
     };
 
-    // Remove the entire .helix directory
+    // Remove the entire .sparrow directory
     fs::remove_dir_all(&v1_helix_dir).map_err(|e| {
-        CliError::new("Failed to remove ~/.helix directory").with_caused_by(e.to_string())
+        CliError::new("Failed to remove ~/.sparrow directory").with_caused_by(e.to_string())
     })?;
 
-    // Recreate .helix directory
+    // Recreate .sparrow directory
     fs::create_dir_all(&v1_helix_dir).map_err(|e| {
-        CliError::new("Failed to recreate ~/.helix directory").with_caused_by(e.to_string())
+        CliError::new("Failed to recreate ~/.sparrow directory").with_caused_by(e.to_string())
     })?;
 
     // Restore credentials and repo
@@ -635,13 +635,13 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
         fs::rename(&temp_creds, &credentials_path).map_err(|e| {
             CliError::new("Failed to restore credentials").with_caused_by(e.to_string())
         })?;
-        output::info("Preserved ~/.helix/credentials");
+        output::info("Preserved ~/.sparrow/credentials");
     }
 
     if let Some(temp_repo) = temp_repo {
         fs::rename(&temp_repo, &repo_path)
             .map_err(|e| CliError::new("Failed to restore repo").with_caused_by(e.to_string()))?;
-        output::info("Preserved ~/.helix/repo");
+        output::info("Preserved ~/.sparrow/repo");
     }
 
     // Create .v2 marker file to indicate migration is complete
@@ -649,7 +649,7 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
         CliError::new("Failed to create v2 marker file").with_caused_by(e.to_string())
     })?;
 
-    output::success("Cleaned up ~/.helix directory, preserving credentials and repo");
+    output::success("Cleaned up ~/.sparrow directory, preserving credentials and repo");
     Ok(())
 }
 
@@ -657,7 +657,7 @@ fn cleanup_dockerdev() -> Result<()> {
     output::info("Cleaning up Docker dev containers and images");
 
     // Stop and remove the container
-    let container_name = "helix-dockerdev";
+    let container_name = "sparrow-dockerdev";
 
     // Try to stop the container (ignore errors if not running)
     let _ = std::process::Command::new("docker")
@@ -669,14 +669,14 @@ fn cleanup_dockerdev() -> Result<()> {
         .args(["rm", container_name])
         .output();
 
-    // Try to remove any helix-related images
+    // Try to remove any sparrow-related images
     let output = std::process::Command::new("docker")
         .args([
             "images",
             "--format",
             "{{.Repository}}:{{.Tag}}",
             "--filter",
-            "reference=helix*",
+            "reference=sparrow*",
         ])
         .output();
 
@@ -689,7 +689,7 @@ fn cleanup_dockerdev() -> Result<()> {
         }
     }
 
-    // Try to remove helix volumes
+    // Try to remove sparrow volumes
     let output = std::process::Command::new("docker")
         .args([
             "volume",
@@ -697,7 +697,7 @@ fn cleanup_dockerdev() -> Result<()> {
             "--format",
             "{{.Name}}",
             "--filter",
-            "name=helix",
+            "name=sparrow",
         ])
         .output();
 
@@ -720,6 +720,6 @@ fn check_cloud_credentials() -> bool {
         None => return false,
     };
 
-    let credentials_path = home.join(".helix").join("credentials");
+    let credentials_path = home.join(".sparrow").join("credentials");
     credentials_path.exists()
 }

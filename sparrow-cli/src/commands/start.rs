@@ -58,7 +58,7 @@ async fn start_local_instance(project: &ProjectContext, instance_name: &str) -> 
             "instance '{instance_name}' has not been built yet"
         ))
         .with_hint(format!(
-            "run 'helix build {instance_name}' first to build the instance"
+            "run 'sparrow build {instance_name}' first to build the instance"
         ));
         return Err(eyre::eyre!("{}", error.render()));
     }

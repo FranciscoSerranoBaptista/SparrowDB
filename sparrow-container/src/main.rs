@@ -39,19 +39,19 @@ fn main() {
 
     let config = queries::config().unwrap_or_default();
 
-    let path = match std::env::var("HELIX_DATA_DIR") {
+    let path = match std::env::var("SPARROW_DATA_DIR") {
         Ok(val) => std::path::PathBuf::from(val).join("user"),
         Err(_) => {
-            println!("HELIX_DATA_DIR not set, using default");
+            println!("SPARROW_DATA_DIR not set, using default");
             let home = dirs::home_dir().expect("Could not retrieve home directory");
-            home.join(".helix/user")
+            home.join(".sparrow/user")
         }
     };
 
-    let port = match std::env::var("HELIX_PORT") {
+    let port = match std::env::var("SPARROW_PORT") {
         Ok(val) => val
             .parse::<u16>()
-            .expect("HELIX_PORT must be a valid port number"),
+            .expect("SPARROW_PORT must be a valid port number"),
         Err(_) => 6969,
     };
 

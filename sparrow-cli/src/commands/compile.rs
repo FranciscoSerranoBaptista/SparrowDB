@@ -14,7 +14,7 @@ use crate::{
 pub async fn run(output_dir: Option<String>, path: Option<String>) -> Result<()> {
     let op = Operation::new("Compiling", "queries");
 
-    // Load project context from the specified path (helix.toml directory) or find it automatically
+    // Load project context from the specified path (sparrow.toml directory) or find it automatically
     let project = match &path {
         Some(helix_toml_dir) => {
             let dir_path = PathBuf::from(helix_toml_dir);

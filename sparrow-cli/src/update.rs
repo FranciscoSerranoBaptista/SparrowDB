@@ -26,17 +26,17 @@ struct UpdateCache {
 
 fn get_update_cache_path() -> Result<PathBuf> {
     let home = home_dir().ok_or_else(|| eyre!("Cannot find home directory"))?;
-    let helix_dir = home.join(".helix");
+    let sparrow_dir = home.join(".sparrow");
 
-    // Ensure .helix directory exists
-    fs::create_dir_all(&helix_dir)?;
+    // Ensure .sparrow directory exists
+    fs::create_dir_all(&sparrow_dir)?;
 
-    Ok(helix_dir.join("update_cache.toml"))
+    Ok(sparrow_dir.join("update_cache.toml"))
 }
 
 async fn fetch_latest_version() -> Result<String> {
     let client = Client::builder()
-        .user_agent(format!("helix-cli/{CURRENT_VERSION}"))
+        .user_agent(format!("sparrow-cli/{CURRENT_VERSION}"))
         .timeout(Duration::from_secs(10))
         .build()?;
 

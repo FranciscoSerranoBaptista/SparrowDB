@@ -9,7 +9,7 @@ use tokio::io::BufWriter;
 use crate::sparrow_engine::types::GraphError;
 use crate::protocol::Response;
 
-/// This enum represents the formats that input or output values of HelixDB can be represented as
+/// This enum represents the formats that input or output values of SparrowDB can be represented as
 /// It also includes tooling to facilitate copy or zero-copy formats
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum Format {

@@ -4,24 +4,24 @@ use tokio::process::Command;
 
 use crate::project::ProjectContext;
 
-/// Find the helix-container binary in a `helix build --bin <dir>` output directory.
-/// Prefers `<dir>/release/helix-container` over `<dir>/debug/helix-container`.
+/// Find the sparrow-container binary in a `helix build --bin <dir>` output directory.
+/// Prefers `<dir>/release/sparrow-container` over `<dir>/debug/sparrow-container`.
 pub fn resolve_binary(bin_dir: &Path) -> Result<PathBuf> {
     for profile in ["release", "debug"] {
-        let candidate = bin_dir.join(profile).join("helix-container");
+        let candidate = bin_dir.join(profile).join("sparrow-container");
         if candidate.exists() {
             return Ok(candidate);
         }
     }
     Err(eyre!(
-        "No binary found in {}\nRun 'helix build --bin {}' first",
+        "No binary found in {}\nRun 'sparrow build --bin {}' first",
         bin_dir.display(),
         bin_dir.display()
     ))
 }
 
-/// Resolve the data directory to pass as HELIX_DATA_DIR.
-/// Priority: explicit `--data-dir` flag > project instance volume path > ~/.helix/user
+/// Resolve the data directory to pass as SPARROW_DATA_DIR.
+/// Priority: explicit `--data-dir` flag > project instance volume path > ~/.sparrow/user
 pub fn resolve_data_dir(
     data_dir_override: Option<String>,
     project: Option<&ProjectContext>,
@@ -34,8 +34,8 @@ pub fn resolve_data_dir(
         return proj.instance_volume(inst).to_string_lossy().into_owned();
     }
     dirs::home_dir()
-        .map(|h| h.join(".helix").to_string_lossy().into_owned())
-        .unwrap_or_else(|| "/tmp/helix-data".to_string())
+        .map(|h| h.join(".sparrow").to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/tmp/sparrow-data".to_string())
 }
 
 pub async fn run(
@@ -65,7 +65,7 @@ pub async fn run(
         })
         .unwrap_or(6969);
 
-    println!("Starting helix-container:");
+    println!("Starting sparrow-container:");
     println!("  binary:   {}", binary_path.display());
     println!("  data dir: {data_dir_val}");
     println!("  port:     {port_val}");
@@ -73,15 +73,15 @@ pub async fn run(
     std::fs::create_dir_all(&data_dir_val)?;
 
     let status = Command::new(&binary_path)
-        .env("HELIX_DATA_DIR", &data_dir_val)
-        .env("HELIX_PORT", port_val.to_string())
+        .env("SPARROW_DATA_DIR", &data_dir_val)
+        .env("SPARROW_PORT", port_val.to_string())
         .status()
         .await
         .map_err(|e| eyre!("Failed to start {}: {e}", binary_path.display()))?;
 
     if !status.success() {
         return Err(eyre!(
-            "helix-container exited with code {:?}",
+            "sparrow-container exited with code {:?}",
             status.code()
         ));
     }

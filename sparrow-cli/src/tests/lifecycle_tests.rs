@@ -22,11 +22,11 @@ async fn test_start_fails_without_helix_project() {
     let result = start::run(Some("dev".to_string())).await;
     assert!(
         result.is_err(),
-        "Start should fail when not in a helix project"
+        "Start should fail when not in a sparrow project"
     );
     let error_msg = format!("{:?}", result.err().unwrap());
     assert!(
-        error_msg.contains("not found") || error_msg.contains("helix.toml"),
+        error_msg.contains("not found") || error_msg.contains("sparrow.toml"),
         "Error should mention missing project configuration"
     );
 }
@@ -108,7 +108,7 @@ async fn test_stop_fails_without_helix_project() {
     let result = stop::run(Some("dev".to_string())).await;
     assert!(
         result.is_err(),
-        "Stop should fail when not in a helix project"
+        "Stop should fail when not in a sparrow project"
     );
 }
 
@@ -158,7 +158,7 @@ async fn test_restart_fails_without_helix_project() {
     let result = restart::run(Some("dev".to_string())).await;
     assert!(
         result.is_err(),
-        "Restart should fail when not in a helix project"
+        "Restart should fail when not in a sparrow project"
     );
 }
 
@@ -280,9 +280,9 @@ async fn test_status_with_multiple_instances() {
     );
 
     config
-        .save_to_file(&ctx.project_path.join("helix.toml"))
+        .save_to_file(&ctx.project_path.join("sparrow.toml"))
         .expect("Failed to save config");
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     let _guard = std::env::set_current_dir(&ctx.project_path);
 
@@ -303,14 +303,14 @@ async fn test_delete_fails_with_nonexistent_instance_dev() {
 
     let ctx = TestContext::new();
 
-    // Create helix.toml but clear all instances - this prevents the test from
-    // walking up directories and finding another test's helix.toml
+    // Create sparrow.toml but clear all instances - this prevents the test from
+    // walking up directories and finding another test's sparrow.toml
     let mut config = SparrowConfig::default_config("test-project");
     config.local.clear(); // Remove the default "dev" instance
     config
-        .save_to_file(&ctx.project_path.join("helix.toml"))
+        .save_to_file(&ctx.project_path.join("sparrow.toml"))
         .expect("Failed to save config");
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     let _guard = std::env::set_current_dir(&ctx.project_path);
 
@@ -371,7 +371,7 @@ async fn test_project_context_finds_helix_toml() {
     let result = ProjectContext::find_and_load(Some(&ctx.project_path));
     assert!(
         result.is_ok(),
-        "ProjectContext should find helix.toml: {:?}",
+        "ProjectContext should find sparrow.toml: {:?}",
         result.err()
     );
 
@@ -384,11 +384,11 @@ async fn test_project_context_fails_without_helix_toml() {
     use crate::project::ProjectContext;
 
     let ctx = TestContext::new();
-    // Don't create helix.toml
+    // Don't create sparrow.toml
 
     let result = ProjectContext::find_and_load(Some(&ctx.project_path));
     assert!(
         result.is_err(),
-        "ProjectContext should fail without helix.toml"
+        "ProjectContext should fail without sparrow.toml"
     );
 }

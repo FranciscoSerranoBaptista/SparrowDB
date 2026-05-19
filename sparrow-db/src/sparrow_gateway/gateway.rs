@@ -53,7 +53,7 @@ impl SparrowGateway {
         opts: Option<SparrowGraphEngineOpts>,
     ) -> SparrowGateway {
         let router = Arc::new(SparrowRouter::new(routes, mcp_routes, write_routes));
-        let cluster_id = std::env::var("HELIX_CLUSTER_ID").ok();
+        let cluster_id = std::env::var("SPARROW_CLUSTER_ID").ok();
         SparrowGateway {
             address: address.to_string(),
             graph_access,
@@ -69,14 +69,14 @@ impl SparrowGateway {
 
         let all_core_ids = core_affinity::get_core_ids().expect("unable to get core IDs");
 
-        let all_core_ids = match std::env::var("HELIX_CORES_OVERRIDE") {
+        let all_core_ids = match std::env::var("SPARROW_CORES_OVERRIDE") {
             Ok(val) => {
                 let override_count: usize = val
                     .parse()
-                    .expect("HELIX_CORES_OVERRIDE must be a valid number");
+                    .expect("SPARROW_CORES_OVERRIDE must be a valid number");
                 if override_count > all_core_ids.len() {
                     warn!(
-                        "HELIX_CORES_OVERRIDE ({}) exceeds available cores ({}), using all cores",
+                        "SPARROW_CORES_OVERRIDE ({}) exceeds available cores ({}), using all cores",
                         override_count,
                         all_core_ids.len()
                     );

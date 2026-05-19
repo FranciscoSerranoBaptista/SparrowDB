@@ -9,8 +9,8 @@ pub struct ProjectContext {
     /// The root directory of the project
     pub root: PathBuf,
     pub config: SparrowConfig,
-    /// The path to the .helix directory (including ".helix")
-    pub helix_dir: PathBuf,
+    /// The path to the .sparrow directory (including ".sparrow")
+    pub sparrow_dir: PathBuf,
 }
 
 impl ProjectContext {
@@ -22,25 +22,25 @@ impl ProjectContext {
         };
 
         let root = find_project_root(&start)?;
-        let config_path = root.join("helix.toml");
+        let config_path = root.join("sparrow.toml");
         let config = SparrowConfig::from_file(&config_path)?;
-        let helix_dir = root.join(".helix");
+        let sparrow_dir = root.join(".sparrow");
 
         Ok(ProjectContext {
             root,
             config,
-            helix_dir,
+            sparrow_dir,
         })
     }
 
     /// Get the workspace directory for a specific instance
     pub fn instance_workspace(&self, instance_name: &str) -> PathBuf {
-        self.helix_dir.join(instance_name)
+        self.sparrow_dir.join(instance_name)
     }
 
     /// Get the volumes directory for persistent data
     pub fn volumes_dir(&self) -> PathBuf {
-        self.helix_dir.join(".volumes")
+        self.sparrow_dir.join(".volumes")
     }
 
     /// Get the volume path for a specific instance
@@ -62,7 +62,7 @@ impl ProjectContext {
     /// Get the compiled container directory for an instance
     pub fn container_dir(&self, instance_name: &str) -> PathBuf {
         self.instance_workspace(instance_name)
-            .join("helix-container")
+            .join("sparrow-container")
     }
 
     /// Ensure all necessary directories exist for an instance
@@ -88,12 +88,12 @@ impl ProjectContext {
     }
 }
 
-/// Find the project root by looking for helix.toml file
+/// Find the project root by looking for sparrow.toml file
 fn find_project_root(start: &Path) -> Result<PathBuf, ProjectError> {
     let mut current = start.to_path_buf();
 
     loop {
-        let config_path = current.join("helix.toml");
+        let config_path = current.join("sparrow.toml");
         if config_path.exists() {
             return Ok(current);
         }
@@ -118,32 +118,32 @@ fn find_project_root(start: &Path) -> Result<PathBuf, ProjectError> {
     })
 }
 
-pub fn get_helix_cache_dir() -> Result<PathBuf> {
-    // Allow override for testing - tests can set HELIX_CACHE_DIR to use isolated directories
-    if let Ok(override_dir) = std::env::var("HELIX_CACHE_DIR") {
-        let helix_dir = PathBuf::from(override_dir);
-        std::fs::create_dir_all(&helix_dir)?;
-        return Ok(helix_dir);
+pub fn get_sparrow_cache_dir() -> Result<PathBuf> {
+    // Allow override for testing - tests can set SPARROW_CACHE_DIR to use isolated directories
+    if let Ok(override_dir) = std::env::var("SPARROW_CACHE_DIR") {
+        let sparrow_dir = PathBuf::from(override_dir);
+        std::fs::create_dir_all(&sparrow_dir)?;
+        return Ok(sparrow_dir);
     }
 
     let home = dirs::home_dir().ok_or_else(|| eyre!("Cannot find home directory"))?;
-    let helix_dir = home.join(".helix");
+    let sparrow_dir = home.join(".sparrow");
 
-    // Check if this is a fresh installation (no .helix directory exists)
-    let is_fresh_install = !helix_dir.exists();
+    // Check if this is a fresh installation (no .sparrow directory exists)
+    let is_fresh_install = !sparrow_dir.exists();
 
-    std::fs::create_dir_all(&helix_dir)?;
+    std::fs::create_dir_all(&sparrow_dir)?;
 
-    // For fresh installations, create .v2 marker to indicate this is a v2 helix directory
+    // For fresh installations, create .v2 marker to indicate this is a v2 sparrow directory
     if is_fresh_install {
-        let v2_marker = helix_dir.join(".v2");
+        let v2_marker = sparrow_dir.join(".v2");
         std::fs::write(&v2_marker, "")?;
     }
 
-    Ok(helix_dir)
+    Ok(sparrow_dir)
 }
 
-pub fn get_helix_repo_cache() -> Result<PathBuf> {
-    let helix_dir = get_helix_cache_dir()?;
-    Ok(helix_dir.join("repo"))
+pub fn get_sparrow_repo_cache() -> Result<PathBuf> {
+    let sparrow_dir = get_sparrow_cache_dir()?;
+    Ok(sparrow_dir.join("repo"))
 }

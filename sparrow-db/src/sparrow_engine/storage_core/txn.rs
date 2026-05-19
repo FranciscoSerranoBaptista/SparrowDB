@@ -1,4 +1,4 @@
-// helix-db/src/sparrow_engine/storage_core/txn.rs
+// sparrow-db/src/sparrow_engine/storage_core/txn.rs
 use crate::sparrow_engine::{traversal_core::{RTxn, WTxn}, types::GraphError};
 
 pub trait ReadTransaction {

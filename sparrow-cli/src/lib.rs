@@ -1,4 +1,4 @@
-// Library interface for helix-cli to enable testing
+// Library interface for sparrow-cli to enable testing
 use clap::{Subcommand, ValueEnum};
 
 pub mod cleanup;
@@ -45,7 +45,7 @@ pub enum MetricsAction {
 pub enum DashboardAction {
     /// Start the dashboard
     Start {
-        /// Instance to connect to (from helix.toml)
+        /// Instance to connect to (from sparrow.toml)
         instance: Option<String>,
 
         /// Port to run dashboard on
@@ -183,7 +183,7 @@ pub enum ConfigAction {
         #[command(subcommand)]
         action: WorkspaceConfigAction,
     },
-    /// Manage the project linked in helix.toml
+    /// Manage the project linked in sparrow.toml
     Project {
         #[command(subcommand)]
         action: ProjectConfigAction,
@@ -239,13 +239,13 @@ pub enum ProjectConfigAction {
         #[arg(long, value_enum, default_value_t = ConfigOutputFormat::Human)]
         format: ConfigOutputFormat,
     },
-    /// Show the project linked in helix.toml
+    /// Show the project linked in sparrow.toml
     Show {
         /// Output format
         #[arg(long, value_enum, default_value_t = ConfigOutputFormat::Human)]
         format: ConfigOutputFormat,
     },
-    /// Switch the project linked in helix.toml
+    /// Switch the project linked in sparrow.toml
     Switch {
         /// Project name by default, or project ID with --id
         project: Option<String>,

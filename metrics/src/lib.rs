@@ -19,7 +19,7 @@ pub static METRICS_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Cl
 
 static CONFIG: LazyLock<String> = LazyLock::new(|| {
     let home_dir = std::env::var("HOME").unwrap_or("~/".to_string());
-    let config_path = &format!("{home_dir}/.helix/credentials");
+    let config_path = &format!("{home_dir}/.sparrow/credentials");
     let config_path = Path::new(config_path);
     fs::read_to_string(config_path).unwrap_or_default()
 });
@@ -28,7 +28,7 @@ pub static SPARROW_USER_ID: LazyLock<&'static str> = LazyLock::new(|| {
     // read from credentials file
     for line in CONFIG.lines() {
         if let Some((key, value)) = line.split_once("=")
-            && key.to_lowercase() == "helix_user_id"
+            && key.to_lowercase() == "sparrow_user_id"
         {
             return value;
         }
@@ -73,7 +73,7 @@ static METRICS_STATE: LazyLock<MetricsState> = LazyLock::new(|| {
     let (shutdown_tx, shutdown_rx) = flume::unbounded();
 
     // Read threshold from environment or use default
-    let threshold_batches = std::env::var("HELIX_METRICS_THRESHOLD_BATCHES")
+    let threshold_batches = std::env::var("SPARROW_METRICS_THRESHOLD_BATCHES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(num_cpus::get());
@@ -241,64 +241,14 @@ async fn sender_task(
     }
 }
 
-/// Process a batch of events from the channel
+/// Process a batch of events from the channel.
+/// Upstream telemetry is disabled — events are drained and discarded.
 async fn process_batch(
     rx: &flume::Receiver<Vec<events::RawEvent<events::EventData>>>,
 ) -> Option<JoinHandle<()>> {
-    // Drain all Vec batches and flatten into single Vec
-    let events: Vec<_> = rx.drain().flatten().collect();
-
-    if events.is_empty() {
-        return None;
-    }
-
-    // Spawn new task for serialization + HTTP
-    // This allows the sender task to continue processing batches
-    Some(tokio::spawn(async move {
-        // Serialize as NDJSON (newline-delimited JSON)
-        // Each event is a separate JSON object on its own line
-        let mut ndjson = String::with_capacity(events.len() * 256);
-        for event in &events {
-            match sonic_rs::to_string(event) {
-                Ok(json) => {
-                    ndjson.push_str(&json);
-                    ndjson.push('\n');
-                }
-                Err(e) => {
-                    eprintln!("Failed to serialize event: {}", e);
-                    continue;
-                }
-            }
-        }
-
-        if ndjson.is_empty() {
-            return;
-        }
-
-        // Send batch over HTTP as NDJSON
-        match METRICS_CLIENT
-            .post(METRICS_URL)
-            .header("Content-Type", "application/x-ndjson")
-            .body(ndjson)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if !response.status().is_success() {
-                    eprintln!(
-                        "Metrics HTTP error: {} from {} (body: {:?})",
-                        response.status(),
-                        METRICS_URL,
-                        response.text().await.unwrap_or_default()
-                    );
-                }
-                // Success - no need to log (metrics are silent on success)
-            }
-            Err(e) => {
-                eprintln!("Failed to send metrics to {}: {}", METRICS_URL, e);
-            }
-        }
-    }))
+    // Drain and discard all pending events; no data is sent upstream.
+    let _events: Vec<_> = rx.drain().flatten().collect();
+    None
 }
 
 /// Flush all pending events immediately

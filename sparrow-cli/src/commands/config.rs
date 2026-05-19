@@ -173,7 +173,7 @@ fn print_json<T: Serialize>(value: &T) -> Result<()> {
 
 fn load_project_context() -> Result<ProjectContext> {
     ProjectContext::find_and_load(None)
-        .map_err(|_| eyre!("No helix.toml found. Run 'helix init' to create a project first."))
+        .map_err(|_| eyre!("No sparrow.toml found. Run 'sparrow init' to create a project first."))
 }
 
 fn load_project_context_optional() -> Option<ProjectContext> {
@@ -250,7 +250,7 @@ async fn resolve_projects_for_workspace(
 }
 
 fn save_project_selection(project_root: &Path, config: &SparrowConfig) -> Result<()> {
-    config.save_to_file(&project_root.join("helix.toml"))?;
+    config.save_to_file(&project_root.join("sparrow.toml"))?;
     Ok(())
 }
 
@@ -813,10 +813,10 @@ async fn project_show(format: ConfigOutputFormat) -> Result<()> {
         return match format {
             ConfigOutputFormat::Json => print_json(&ProjectShowOutput {
                 project: None,
-                message: Some("No project selected in helix.toml".to_string()),
+                message: Some("No project selected in sparrow.toml".to_string()),
             }),
             ConfigOutputFormat::Human => {
-                println!("No project selected in helix.toml.");
+                println!("No project selected in sparrow.toml.");
                 Ok(())
             }
         };
@@ -964,7 +964,7 @@ async fn project_switch(project: Option<String>, use_id: bool) -> Result<()> {
                 "Config",
                 project_context
                     .root
-                    .join("helix.toml")
+                    .join("sparrow.toml")
                     .display()
                     .to_string(),
             ),
@@ -1154,7 +1154,7 @@ mod tests {
                 db_config: Default::default(),
             },
         );
-        let config_path = temp_dir.path().join("helix.toml");
+        let config_path = temp_dir.path().join("sparrow.toml");
         config.save_to_file(&config_path).unwrap();
 
         let project = ProjectContext::find_and_load(Some(temp_dir.path())).unwrap();
@@ -1169,7 +1169,7 @@ mod tests {
     fn save_project_selection_updates_project_id_and_name() {
         let temp_dir = TempDir::new().unwrap();
         let config = SparrowConfig::default_config("demo");
-        let config_path = temp_dir.path().join("helix.toml");
+        let config_path = temp_dir.path().join("sparrow.toml");
         config.save_to_file(&config_path).unwrap();
 
         let project = ProjectContext::find_and_load(Some(temp_dir.path())).unwrap();

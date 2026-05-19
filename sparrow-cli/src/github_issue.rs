@@ -576,7 +576,7 @@ error: aborting due to 1 previous error
    |     ^^^^^^^^^^^^^ not found in this scope
 
 For more information about this error, try `rustc --explain E0425`.
-error: could not compile `helix-container` due to 1 previous error
+error: could not compile `sparrow-container` due to 1 previous error
 "#;
 
         let errors_only = filter_errors_only(cargo_output);
@@ -589,15 +589,15 @@ error: could not compile `helix-container` due to 1 previous error
     #[test]
     fn test_extract_first_error() {
         let cargo_output = r#"error[E0308]: mismatched types
-   --> helix-container/src/queries.rs:192:43
+   --> sparrow-container/src/queries.rs:192:43
     |
 192 | .insert_v::<fn(&HVector, &RoTxn) -> bool>(&data.vec, "File8Vec", Some(...
     |  ---------------------------------------- ^^^^^^^^^ expected `&[f64]`, found `&Vec<f32>`
 
 error[E0308]: mismatched types
-   --> helix-container/src/queries.rs:194:43
+   --> sparrow-container/src/queries.rs:194:43
 
-error: could not compile `helix-container` due to 2 previous errors
+error: could not compile `sparrow-container` due to 2 previous errors
 "#;
 
         let first_error = extract_first_error(cargo_output);
@@ -609,7 +609,7 @@ error: could not compile `helix-container` due to 2 previous errors
 
     #[test]
     fn test_extract_first_error_none() {
-        let cargo_output = "error: could not compile `helix-container`";
+        let cargo_output = "error: could not compile `sparrow-container`";
         let first_error = extract_first_error(cargo_output);
         assert_eq!(first_error, None);
     }

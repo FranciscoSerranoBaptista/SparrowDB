@@ -70,7 +70,7 @@ impl<'a> DockerManager<'a> {
         format!(
             // has to be `-` instead of `_` because fly doesnt allow underscores in instance names
             // abd image name must match the instance name
-            "helix-{}-{}",
+            "sparrow-{}-{}",
             self.project.config.project.name, instance_name
         )
     }
@@ -96,7 +96,7 @@ impl<'a> DockerManager<'a> {
 
     #[inline]
     pub(crate) fn data_dir(&self, instance_name: &str) -> String {
-        std::env::var("HELIX_DATA_DIR").unwrap_or_else(|_| format!("../.volumes/{instance_name}"))
+        std::env::var("SPARROW_DATA_DIR").unwrap_or_else(|_| format!("../.volumes/{instance_name}"))
     }
 
     /// Get environment variables for an instance
@@ -125,17 +125,17 @@ impl<'a> DockerManager<'a> {
                     .unwrap()
                     .port()
                     .unwrap_or(6969);
-                format!("HELIX_PORT={port}")
+                format!("SPARROW_PORT={port}")
             },
-            format!("HELIX_DATA_DIR=/data"),
-            format!("HELIX_INSTANCE={instance_name}"),
+            format!("SPARROW_DATA_DIR=/data"),
+            format!("SPARROW_INSTANCE={instance_name}"),
             {
                 let project_name = &self.project.config.project.name;
-                format!("HELIX_PROJECT={project_name}")
+                format!("SPARROW_PROJECT={project_name}")
             },
         ];
-        if let Ok(core_override) = std::env::var("HELIX_CORES_OVERRIDE") {
-            env_vars.push(format!("HELIX_CORES_OVERRIDE={core_override}"));
+        if let Ok(core_override) = std::env::var("SPARROW_CORES_OVERRIDE") {
+            env_vars.push(format!("SPARROW_CORES_OVERRIDE={core_override}"));
         }
 
         // Add API keys from environment (which includes .env after dotenv() call)
@@ -508,26 +508,26 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the cached repo workspace first (contains all dependencies and Cargo.toml files)
-COPY helix-repo-copy/ ./
+COPY sparrow-repo-copy/ ./
 
 # Then overlay instance-specific files
-COPY helix-container/ ./helix-container/
+COPY sparrow-container/ ./sparrow-container/
 
 FROM chef AS planner
 # Generate the recipe file for dependency caching
-RUN cargo chef prepare --recipe-path recipe.json --bin helix-container
+RUN cargo chef prepare --recipe-path recipe.json --bin sparrow-container
 
 FROM chef AS builder
 # Copy the recipe file
 COPY --from=planner /build/recipe.json recipe.json
 
 # Build dependencies - this is the caching Docker layer!
-RUN cargo chef cook {build_flag} --recipe-path recipe.json --bin helix-container
+RUN cargo chef cook {build_flag} --recipe-path recipe.json --bin sparrow-container
 
 # Copy source code and build the application
-COPY helix-repo-copy/ ./
-COPY helix-container/ ./helix-container/
-RUN cargo build {build_flag} --package helix-container
+COPY sparrow-repo-copy/ ./
+COPY sparrow-container/ ./sparrow-container/
+RUN cargo build {build_flag} --package sparrow-container
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -540,7 +540,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the built binary
-COPY --from=builder /build/target/{build_mode}/helix-container /usr/local/bin/helix-container
+COPY --from=builder /build/target/{build_mode}/sparrow-container /usr/local/bin/sparrow-container
 
 # Create data directory
 RUN mkdir -p /data
@@ -549,7 +549,7 @@ RUN mkdir -p /data
 EXPOSE 6969
 
 # Run the application
-CMD ["helix-container"]
+CMD ["sparrow-container"]
 "#
         );
 
@@ -721,7 +721,7 @@ networks:
     /// Get status of all Docker/Podman containers for this project
     pub fn get_project_status(&self) -> Result<Vec<ContainerStatus>> {
         let project_name = &self.project.config.project.name;
-        let filter = format!("name=helix-{project_name}-");
+        let filter = format!("name=sparrow-{project_name}-");
 
         let output = self.run_docker_command(&[
             "ps",
@@ -753,8 +753,8 @@ networks:
                 let status = parts[1].trim();
                 let ports = parts[2].trim();
 
-                // Extract instance name from new container naming scheme: helix-{project}-{instance}-app
-                let expected_prefix = format!("helix-{project_name}-");
+                // Extract instance name from new container naming scheme: sparrow-{project}-{instance}-app
+                let expected_prefix = format!("sparrow-{project_name}-");
 
                 let instance_name = if let Some(suffix) = name.strip_prefix(&expected_prefix) {
                     // Remove the trailing "-app" if it exists
@@ -880,7 +880,7 @@ networks:
                 "--format",
                 "{{.Repository}}:{{.Tag}}",
                 "--filter",
-                "reference=helix-*",
+                "reference=sparrow-*",
             ])
             .output()
             .map_err(|e| eyre!("Failed to list {} images: {e}", runtime.binary()))?;

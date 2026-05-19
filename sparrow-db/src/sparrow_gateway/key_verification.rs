@@ -3,9 +3,9 @@ use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 use subtle::ConstantTimeEq;
 
-/// API KEY HASH (pre-computed SHA-256 hash read from HELIX_API_KEY env var on startup)
+/// API KEY HASH (pre-computed SHA-256 hash read from SPARROW_API_KEY env var on startup)
 static API_KEY_HASH: LazyLock<[u8; 32]> = LazyLock::new(|| {
-    let key = std::env::var("HELIX_API_KEY").unwrap_or_default();
+    let key = std::env::var("SPARROW_API_KEY").unwrap_or_default();
     if key.is_empty() {
         return [0u8; 32];
     }

@@ -51,11 +51,11 @@ pub async fn run(message: Option<String>) -> Result<()> {
         // Interactive mode
         if !prompts::is_interactive() {
             return Err(eyre!(
-                "No feedback message provided. Run 'helix feedback \"your message\"' or run in an interactive terminal."
+                "No feedback message provided. Run 'sparrow feedback \"your message\"' or run in an interactive terminal."
             ));
         }
 
-        prompts::intro("helix feedback", Some("Submit feedback for Helix"))?;
+        prompts::intro("sparrow feedback", Some("Submit feedback for SparrowDB"))?;
         let feedback_type = prompts::select_feedback_type()?;
         let feedback_message = prompts::input_feedback_message()?;
 

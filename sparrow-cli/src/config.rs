@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use crate::commands::integrations::ecr::EcrConfig;
 use crate::commands::integrations::fly::FlyInstanceConfig;
 
-/// Global workspace configuration stored in ~/.helix/config
+/// Global workspace configuration stored in ~/.sparrow/config
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorkspaceConfig {
     pub workspace_id: Option<String>,
@@ -24,10 +24,10 @@ impl WorkspaceConfig {
     /// Get the path to the global config file
     pub fn config_path() -> Result<PathBuf, ConfigError> {
         let home = dirs::home_dir().ok_or(ConfigError::HomeDirNotFound)?;
-        Ok(home.join(".helix").join("config"))
+        Ok(home.join(".sparrow").join("config"))
     }
 
-    /// Load the workspace config from ~/.helix/config
+    /// Load the workspace config from ~/.sparrow/config
     pub fn load() -> Result<Self, ConfigError> {
         let path = Self::config_path()?;
         if !path.exists() {
@@ -44,7 +44,7 @@ impl WorkspaceConfig {
             .map_err(|source| ConfigError::ParseWorkspaceConfig { path, source })
     }
 
-    /// Save the workspace config to ~/.helix/config
+    /// Save the workspace config to ~/.sparrow/config
     pub fn save(&self) -> Result<(), ConfigError> {
         let path = Self::config_path()?;
 

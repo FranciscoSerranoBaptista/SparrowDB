@@ -25,7 +25,7 @@ async fn test_add_fails_without_helix_project() {
     let result = add::run(None).await;
     assert!(
         result.is_err(),
-        "Add should fail when not in a helix project"
+        "Add should fail when not in a sparrow project"
     );
 }
 
@@ -53,7 +53,7 @@ async fn test_add_local_instance_succeeds() {
 
     // Verify the instance was added to config
     let config_content =
-        fs::read_to_string(ctx.project_path.join("helix.toml")).expect("Should read config");
+        fs::read_to_string(ctx.project_path.join("sparrow.toml")).expect("Should read config");
     assert!(
         config_content.contains("[local.staging]"),
         "Config should contain the new staging instance"
@@ -132,7 +132,7 @@ async fn test_prune_fails_for_specific_instance_outside_project() {
     let error_msg = format!("{:?}", result.err().unwrap());
     assert!(
         error_msg.contains("not in") || error_msg.contains("Helix project"),
-        "Error should mention not in helix project: {error_msg}"
+        "Error should mention not in sparrow project: {error_msg}"
     );
 }
 
@@ -206,8 +206,8 @@ async fn test_metrics_basic_enables_collection() {
     );
 
     // Verify config was updated by reading directly from the expected path
-    // (avoids race conditions with HELIX_HOME env var in parallel tests)
-    let config_path = ctx.helix_home.join("metrics.toml");
+    // (avoids race conditions with SPARROW_HOME env var in parallel tests)
+    let config_path = ctx.sparrow_home.join("metrics.toml");
     assert!(
         config_path.exists(),
         "Metrics config file should exist at {:?}",
@@ -294,12 +294,12 @@ async fn test_migrate_fails_if_v2_exists() {
     )
     .expect("Failed to write queries");
 
-    // Also create helix.toml (v2 marker)
+    // Also create sparrow.toml (v2 marker)
     fs::write(
-        ctx.project_path.join("helix.toml"),
+        ctx.project_path.join("sparrow.toml"),
         "[project]\nname = \"test\"",
     )
-    .expect("Failed to write helix.toml");
+    .expect("Failed to write sparrow.toml");
 
     let result = migrate::run(
         Some(ctx.project_path.to_str().unwrap().to_string()),
@@ -311,10 +311,10 @@ async fn test_migrate_fails_if_v2_exists() {
     )
     .await;
 
-    assert!(result.is_err(), "Migrate should fail if helix.toml exists");
+    assert!(result.is_err(), "Migrate should fail if sparrow.toml exists");
     let error_msg = format!("{:?}", result.err().unwrap());
     assert!(
-        error_msg.contains("helix.toml") || error_msg.contains("v2"),
+        error_msg.contains("sparrow.toml") || error_msg.contains("v2"),
         "Error should mention v2 project exists: {error_msg}"
     );
 }
@@ -380,8 +380,8 @@ async fn test_migrate_dry_run_shows_plan() {
         "schema.hx should still exist after dry run"
     );
     assert!(
-        !ctx.project_path.join("helix.toml").exists(),
-        "helix.toml should NOT be created during dry run"
+        !ctx.project_path.join("sparrow.toml").exists(),
+        "sparrow.toml should NOT be created during dry run"
     );
 }
 

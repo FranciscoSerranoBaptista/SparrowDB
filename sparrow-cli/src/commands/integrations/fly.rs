@@ -147,7 +147,7 @@ impl<'a> FlyManager<'a> {
     pub async fn new(project: &'a ProjectContext, auth_type: FlyAuthType) -> Result<Self> {
         let auth = match auth_type {
             FlyAuthType::ApiKey => {
-                let env_path = project.helix_dir.join("helix.env");
+                let env_path = project.sparrow_dir.join("sparrow.env");
                 let env_content = std::fs::read_to_string(&env_path).map_err(|_| {
                     eyre!(
                         "File {} not found. Create it with your FLY_API_KEY.",

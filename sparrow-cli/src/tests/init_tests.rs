@@ -9,28 +9,28 @@ fn setup_test_dir() -> TempDir {
     TempDir::new().expect("Failed to create temp dir")
 }
 
-/// Helper function to check if helix.toml exists and is valid
+/// Helper function to check if sparrow.toml exists and is valid
 fn assert_helix_config_exists(project_dir: &PathBuf) {
-    let config_path = project_dir.join("helix.toml");
+    let config_path = project_dir.join("sparrow.toml");
     assert!(
         config_path.exists(),
-        "helix.toml should exist at {:?}",
+        "sparrow.toml should exist at {:?}",
         config_path
     );
 
-    let content = fs::read_to_string(&config_path).expect("Failed to read helix.toml");
+    let content = fs::read_to_string(&config_path).expect("Failed to read sparrow.toml");
     assert!(
         content.contains("[project]"),
-        "helix.toml should contain [project] section"
+        "sparrow.toml should contain [project] section"
     );
 }
 
 /// Helper function to check project structure
 fn assert_project_structure(project_dir: &PathBuf, queries_path: &str) {
-    // Check .helix directory
-    let helix_dir = project_dir.join(".helix");
-    assert!(helix_dir.exists(), ".helix directory should exist");
-    assert!(helix_dir.is_dir(), ".helix should be a directory");
+    // Check .sparrow directory
+    let sparrow_dir = project_dir.join(".sparrow");
+    assert!(sparrow_dir.exists(), ".sparrow directory should exist");
+    assert!(sparrow_dir.is_dir(), ".sparrow should be a directory");
 
     // Check queries directory
     let queries_dir = project_dir.join(queries_path);
@@ -68,8 +68,8 @@ fn assert_project_structure(project_dir: &PathBuf, queries_path: &str) {
     assert!(gitignore.exists(), ".gitignore should exist");
     let gitignore_content = fs::read_to_string(&gitignore).expect("Failed to read .gitignore");
     assert!(
-        gitignore_content.contains(".helix/"),
-        ".gitignore should contain .helix/"
+        gitignore_content.contains(".sparrow/"),
+        ".gitignore should contain .sparrow/"
     );
 }
 
@@ -130,7 +130,7 @@ async fn test_init_with_custom_queries_path() {
 
     // Verify config contains custom path
     let config_content =
-        fs::read_to_string(project_path.join("helix.toml")).expect("Failed to read config");
+        fs::read_to_string(project_path.join("sparrow.toml")).expect("Failed to read config");
     assert!(
         config_content.contains(custom_path),
         "Config should contain custom queries path"
@@ -142,8 +142,8 @@ async fn test_init_fails_if_helix_toml_exists() {
     let temp_dir = setup_test_dir();
     let project_path = temp_dir.path().to_path_buf();
 
-    // Create helix.toml first
-    fs::write(project_path.join("helix.toml"), "[project]").expect("Failed to create helix.toml");
+    // Create sparrow.toml first
+    fs::write(project_path.join("sparrow.toml"), "[project]").expect("Failed to create sparrow.toml");
 
     let result = run(
         Some(project_path.to_str().unwrap().to_string()),
@@ -153,7 +153,7 @@ async fn test_init_fails_if_helix_toml_exists() {
     )
     .await;
 
-    assert!(result.is_err(), "Init should fail if helix.toml exists");
+    assert!(result.is_err(), "Init should fail if sparrow.toml exists");
     let error_msg = result.err().unwrap().to_string();
     assert!(
         error_msg.contains("already exists"),
@@ -201,7 +201,7 @@ async fn test_init_project_name_from_directory() {
     assert!(result.is_ok(), "Init should succeed");
 
     let config_content =
-        fs::read_to_string(project_path.join("helix.toml")).expect("Failed to read config");
+        fs::read_to_string(project_path.join("sparrow.toml")).expect("Failed to read config");
     assert!(
         config_content.contains("my-awesome-project"),
         "Project name should be derived from directory name"
@@ -227,8 +227,8 @@ async fn test_init_gitignore_content() {
     let gitignore_content = fs::read_to_string(&gitignore_path).expect("Failed to read .gitignore");
 
     assert!(
-        gitignore_content.contains(".helix/"),
-        ".gitignore should ignore .helix/"
+        gitignore_content.contains(".sparrow/"),
+        ".gitignore should ignore .sparrow/"
     );
     assert!(
         gitignore_content.contains("target/"),
@@ -259,11 +259,11 @@ async fn test_init_appends_gitignore_with_guard_newline() {
 
     let gitignore_content = fs::read_to_string(&gitignore_path).expect("Failed to read .gitignore");
     assert!(
-        gitignore_content.contains("node_modules\n.helix/"),
+        gitignore_content.contains("node_modules\n.sparrow/"),
         "Expected a newline before appended entries"
     );
     assert!(
-        !gitignore_content.contains("node_modules.helix/"),
+        !gitignore_content.contains("node_modules.sparrow/"),
         "Last existing line should not be corrupted"
     );
 }
@@ -273,7 +273,7 @@ async fn test_init_gitignore_does_not_duplicate_existing_entries() {
     let temp_dir = setup_test_dir();
     let project_path = temp_dir.path().to_path_buf();
     let gitignore_path = project_path.join(".gitignore");
-    fs::write(&gitignore_path, ".helix/\ntarget/\n*.log\n").expect("Failed to seed .gitignore");
+    fs::write(&gitignore_path, ".sparrow/\ntarget/\n*.log\n").expect("Failed to seed .gitignore");
 
     let result = run(
         Some(project_path.to_str().unwrap().to_string()),
@@ -293,7 +293,7 @@ async fn test_init_gitignore_does_not_duplicate_existing_entries() {
             .count()
     };
 
-    assert_eq!(count_entry(".helix/"), 1);
+    assert_eq!(count_entry(".sparrow/"), 1);
     assert_eq!(count_entry("target/"), 1);
     assert_eq!(count_entry("*.log"), 1);
 }
@@ -448,9 +448,9 @@ async fn test_init_helix_dir_is_created() {
 
     assert!(result.is_ok(), "Init should succeed");
 
-    let helix_dir = project_path.join(".helix");
-    assert!(helix_dir.exists(), ".helix directory should exist");
-    assert!(helix_dir.is_dir(), ".helix should be a directory");
+    let sparrow_dir = project_path.join(".sparrow");
+    assert!(sparrow_dir.exists(), ".sparrow directory should exist");
+    assert!(sparrow_dir.is_dir(), ".sparrow should be a directory");
 }
 
 #[tokio::test]
@@ -468,8 +468,8 @@ async fn test_init_config_has_valid_structure() {
 
     assert!(result.is_ok(), "Init should succeed");
 
-    let config_path = project_path.join("helix.toml");
-    let config_content = fs::read_to_string(&config_path).expect("Failed to read helix.toml");
+    let config_path = project_path.join("sparrow.toml");
+    let config_content = fs::read_to_string(&config_path).expect("Failed to read sparrow.toml");
 
     // Check TOML structure
     assert!(
@@ -517,8 +517,8 @@ async fn test_init_multiple_times_in_different_dirs() {
     assert!(result2.is_ok(), "Second init should succeed");
 
     // Both should have independent configs
-    assert!(project1.join("helix.toml").exists());
-    assert!(project2.join("helix.toml").exists());
+    assert!(project1.join("sparrow.toml").exists());
+    assert!(project2.join("sparrow.toml").exists());
 }
 
 #[tokio::test]
@@ -539,7 +539,7 @@ async fn test_init_local_name_is_honored() {
     assert!(result.is_ok(), "Init should succeed");
 
     let config_content =
-        fs::read_to_string(project_path.join("helix.toml")).expect("Failed to read config");
+        fs::read_to_string(project_path.join("sparrow.toml")).expect("Failed to read config");
 
     assert!(
         config_content.contains("[local.localdev]"),

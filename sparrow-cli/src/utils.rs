@@ -7,7 +7,7 @@ use std::{borrow::Cow, fs, path::Path};
 use tokio::sync::oneshot;
 use tokio::time::Duration;
 
-const IGNORES: [&str; 3] = ["target", ".git", ".helix"];
+const IGNORES: [&str; 3] = ["target", ".git", ".sparrow"];
 
 /// Resolve the source text to use when rendering diagnostics.
 pub fn diagnostic_source<'a>(
@@ -319,7 +319,7 @@ pub mod helixc_utils {
         let queries_path = root.join(queries_dir);
 
         fn collect_from_dir(dir: &Path, files: &mut Vec<std::fs::DirEntry>) -> Result<()> {
-            if dir.file_name().unwrap_or_default() == ".helix" {
+            if dir.file_name().unwrap_or_default() == ".sparrow" {
                 return Ok(());
             }
             for entry in fs::read_dir(dir)? {
@@ -392,7 +392,7 @@ pub mod helixc_utils {
             analyze(&source).map_err(|e| eyre::eyre!("Analysis error: {}", e))?;
 
         if !diagnostics.is_empty() {
-            // Format diagnostics properly using the helix-db pretty printer
+            // Format diagnostics properly using the SparrowDB pretty printer
             let formatted_diagnostics =
                 format_diagnostics(&diagnostics, &generated_source.src, files);
             return Err(eyre::eyre!(
@@ -405,7 +405,7 @@ pub mod helixc_utils {
         Ok(generated_source)
     }
 
-    /// Format diagnostics using the helix-db diagnostic renderer
+    /// Format diagnostics using the SparrowDB diagnostic renderer
     fn format_diagnostics(
         diagnostics: &[sparrow_db::sparrowc::analyzer::diagnostic::Diagnostic],
         src: &str,
@@ -567,10 +567,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let env_path = dir.path().join(".env");
 
-        add_env_var_to_file(&env_path, "HELIX_API_KEY", "test-key-123").unwrap();
+        add_env_var_to_file(&env_path, "SPARROW_API_KEY", "test-key-123").unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
-        assert_eq!(content, "HELIX_API_KEY=test-key-123\n");
+        assert_eq!(content, "SPARROW_API_KEY=test-key-123\n");
     }
 
     #[test]
@@ -581,10 +581,10 @@ mod tests {
         // Create existing .env file
         fs::write(&env_path, "EXISTING_VAR=value\n").unwrap();
 
-        add_env_var_to_file(&env_path, "HELIX_API_KEY", "test-key-123").unwrap();
+        add_env_var_to_file(&env_path, "SPARROW_API_KEY", "test-key-123").unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
-        assert_eq!(content, "EXISTING_VAR=value\nHELIX_API_KEY=test-key-123\n");
+        assert_eq!(content, "EXISTING_VAR=value\nSPARROW_API_KEY=test-key-123\n");
     }
 
     #[test]
@@ -595,10 +595,10 @@ mod tests {
         // Create existing .env file without trailing newline
         fs::write(&env_path, "EXISTING_VAR=value").unwrap();
 
-        add_env_var_to_file(&env_path, "HELIX_API_KEY", "test-key-123").unwrap();
+        add_env_var_to_file(&env_path, "SPARROW_API_KEY", "test-key-123").unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
-        assert_eq!(content, "EXISTING_VAR=value\nHELIX_API_KEY=test-key-123\n");
+        assert_eq!(content, "EXISTING_VAR=value\nSPARROW_API_KEY=test-key-123\n");
     }
 
     #[test]
@@ -609,16 +609,16 @@ mod tests {
         // Create existing .env file with the key already present
         fs::write(
             &env_path,
-            "OTHER_VAR=foo\nHELIX_API_KEY=old-key\nANOTHER_VAR=bar\n",
+            "OTHER_VAR=foo\nSPARROW_API_KEY=old-key\nANOTHER_VAR=bar\n",
         )
         .unwrap();
 
-        add_env_var_to_file(&env_path, "HELIX_API_KEY", "new-key-456").unwrap();
+        add_env_var_to_file(&env_path, "SPARROW_API_KEY", "new-key-456").unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
         assert_eq!(
             content,
-            "OTHER_VAR=foo\nHELIX_API_KEY=new-key-456\nANOTHER_VAR=bar\n"
+            "OTHER_VAR=foo\nSPARROW_API_KEY=new-key-456\nANOTHER_VAR=bar\n"
         );
     }
 
@@ -630,10 +630,10 @@ mod tests {
         // Create empty .env file
         fs::write(&env_path, "").unwrap();
 
-        add_env_var_to_file(&env_path, "HELIX_API_KEY", "test-key-123").unwrap();
+        add_env_var_to_file(&env_path, "SPARROW_API_KEY", "test-key-123").unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
-        assert_eq!(content, "HELIX_API_KEY=test-key-123\n");
+        assert_eq!(content, "SPARROW_API_KEY=test-key-123\n");
     }
 
     #[test]
@@ -644,13 +644,13 @@ mod tests {
         // Create .env with multiple variables
         fs::write(&env_path, "VAR1=value1\nVAR2=value2\nVAR3=value3\n").unwrap();
 
-        add_env_var_to_file(&env_path, "HELIX_API_KEY", "my-key").unwrap();
+        add_env_var_to_file(&env_path, "SPARROW_API_KEY", "my-key").unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
         assert!(content.contains("VAR1=value1"));
         assert!(content.contains("VAR2=value2"));
         assert!(content.contains("VAR3=value3"));
-        assert!(content.contains("HELIX_API_KEY=my-key"));
+        assert!(content.contains("SPARROW_API_KEY=my-key"));
     }
 
     #[test]
@@ -660,16 +660,16 @@ mod tests {
 
         add_env_var_with_comment(
             &env_path,
-            "HELIX_CLOUD_URL",
+            "SPARROW_CLOUD_URL",
             "https://example.com",
-            Some("# HelixDB Cloud URL for instance: test"),
+            Some("# SparrowDB Cloud URL for instance: test"),
         )
         .unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
         assert_eq!(
             content,
-            "# HelixDB Cloud URL for instance: test\nHELIX_CLOUD_URL=https://example.com\n"
+            "# SparrowDB Cloud URL for instance: test\nSPARROW_CLOUD_URL=https://example.com\n"
         );
     }
 
@@ -683,16 +683,16 @@ mod tests {
 
         add_env_var_with_comment(
             &env_path,
-            "HELIX_CLOUD_URL",
+            "SPARROW_CLOUD_URL",
             "https://example.com",
-            Some("# HelixDB Cloud URL for instance: test"),
+            Some("# SparrowDB Cloud URL for instance: test"),
         )
         .unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
         assert_eq!(
             content,
-            "EXISTING_VAR=value\n# HelixDB Cloud URL for instance: test\nHELIX_CLOUD_URL=https://example.com\n"
+            "EXISTING_VAR=value\n# SparrowDB Cloud URL for instance: test\nSPARROW_CLOUD_URL=https://example.com\n"
         );
     }
 
@@ -704,15 +704,15 @@ mod tests {
         // Create existing .env file with key and comment
         fs::write(
             &env_path,
-            "# HelixDB Cloud URL for instance: old\nHELIX_CLOUD_URL=https://old.com\n",
+            "# SparrowDB Cloud URL for instance: old\nSPARROW_CLOUD_URL=https://old.com\n",
         )
         .unwrap();
 
         add_env_var_with_comment(
             &env_path,
-            "HELIX_CLOUD_URL",
+            "SPARROW_CLOUD_URL",
             "https://new.com",
-            Some("# HelixDB Cloud URL for instance: new"),
+            Some("# SparrowDB Cloud URL for instance: new"),
         )
         .unwrap();
 
@@ -720,7 +720,7 @@ mod tests {
         // Should update value but preserve existing comment (not add duplicate)
         assert_eq!(
             content,
-            "# HelixDB Cloud URL for instance: old\nHELIX_CLOUD_URL=https://new.com\n"
+            "# SparrowDB Cloud URL for instance: old\nSPARROW_CLOUD_URL=https://new.com\n"
         );
     }
 
@@ -729,9 +729,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let env_path = dir.path().join(".env");
 
-        add_env_var_with_comment(&env_path, "HELIX_API_KEY", "test-key", None).unwrap();
+        add_env_var_with_comment(&env_path, "SPARROW_API_KEY", "test-key", None).unwrap();
 
         let content = fs::read_to_string(&env_path).unwrap();
-        assert_eq!(content, "HELIX_API_KEY=test-key\n");
+        assert_eq!(content, "SPARROW_API_KEY=test-key\n");
     }
 }

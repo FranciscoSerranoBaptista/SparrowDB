@@ -23,7 +23,7 @@ pub async fn run(instance: Option<String>, all: bool) -> Result<()> {
             // Outside a Helix project - offer system-wide clean
             if instance.is_some() || all {
                 return Err(project_error("not in a Helix project directory")
-                    .with_hint("use 'helix prune' without arguments for system-wide cleanup")
+                    .with_hint("use 'sparrow prune' without arguments for system-wide cleanup")
                     .into());
             }
             prune_system_wide().await
@@ -151,8 +151,8 @@ async fn prune_unused_resources(project: &ProjectContext) -> Result<()> {
         "  • Dangling images not associated with any container",
         "Note: Volumes and named images are preserved",
         "",
-        "Hint: To clean all instances while preserving volumes, use 'helix prune --all'",
-        "      To clean a specific instance, use 'helix prune <instance_name>'",
+        "Hint: To clean all instances while preserving volumes, use 'sparrow prune --all'",
+        "      To clean a specific instance, use 'sparrow prune <instance_name>'",
     ]);
     print_newline();
 

@@ -20,7 +20,7 @@ impl GitHubConfig {
     fn from_env() -> Result<Self> {
         let token =
             env::var("GITHUB_TOKEN").context("GITHUB_TOKEN environment variable not set")?;
-        let owner = env::var("GITHUB_OWNER").unwrap_or_else(|_| "HelixDB".to_string());
+        let owner = env::var("GITHUB_OWNER").unwrap_or_else(|_| "SparrowDB".to_string());
         let repo = env::var("GITHUB_REPO").unwrap_or_else(|_| "helix-db".to_string());
 
         Ok(GitHubConfig { token, owner, repo })
@@ -196,7 +196,7 @@ async fn handle_error_with_github(
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = ClapCommand::new("queries-test")
-        .about("Process helix test directories")
+        .about("Process sparrow test directories")
         .arg(
             Arg::new("test_name")
                 .help("Specific test directory name to process")
@@ -272,7 +272,7 @@ async fn main() -> Result<()> {
     println!("DEBUG: Helix CLI dir exists: {}", helix_cli_dir.exists());
 
     // Check if helix is already available
-    let helix_check = Command::new("helix").arg("--version").output();
+    let helix_check = Command::new("sparrow").arg("--version").output();
 
     match helix_check {
         Ok(output) => {
@@ -309,7 +309,7 @@ async fn main() -> Result<()> {
 
     if !output.status.success() {
         bail!(
-            "[FAILED] BUILD FAILED: helix-cli build.sh failed\nStderr: {}\nStdout: {}",
+            "[FAILED] BUILD FAILED: sparrow-cli build.sh failed\nStderr: {}\nStdout: {}",
             String::from_utf8_lossy(&output.stderr),
             String::from_utf8_lossy(&output.stdout)
         );
@@ -317,7 +317,7 @@ async fn main() -> Result<()> {
         println!("DEBUG: build.sh dev succeeded");
 
         // Check if helix is available after build
-        let helix_check_after = Command::new("helix").arg("--version").output();
+        let helix_check_after = Command::new("sparrow").arg("--version").output();
 
         match helix_check_after {
             Ok(output) => {
@@ -575,17 +575,17 @@ async fn process_test_directory(
         .await
         .context("Failed to create temp directory")?;
 
-    // Copy the test files (queries.hx, schema.hx, helix.toml, etc.) to temp directory
+    // Copy the test files (queries.hx, schema.hx, sparrow.toml, etc.) to temp directory
     copy_dir_recursive(&folder_path, &temp_dir).await?;
 
     // Copy the entire helix-db project structure for cargo check
-    // But skip .helix directory to avoid conflicts
+    // But skip .sparrow directory to avoid conflicts
     let helix_db_dir = temp_dir.join("helix-db");
     fs::create_dir_all(&helix_db_dir).await?;
 
     // Copy all project crates and dependencies (excluding hql-tests to avoid conflicts)
     let crates_to_copy = vec![
-        "helix-container",
+        "sparrow-container",
         "helix-db",
         "helix-macros",
         "helix-cli",
@@ -617,19 +617,19 @@ async fn process_test_directory(
     }
 
     // Run helix compile command
-    let compile_output_path = temp_dir.join("helix-db/helix-container/src");
+    let compile_output_path = temp_dir.join("helix-db/sparrow-container/src");
     fs::create_dir_all(&compile_output_path)
         .await
         .context("Failed to create compile output directory")?;
 
-    let output = Command::new("helix")
+    let output = Command::new("sparrow")
         .arg("compile")
         .arg("--path")
         .arg(&temp_dir)
         .arg("--output")
         .arg(&compile_output_path)
         .output()
-        .context("Failed to execute helix compile command")?;
+        .context("Failed to execute sparrow compile command")?;
 
     println!(
         "DEBUG: Helix compile output: {}",
@@ -684,7 +684,7 @@ async fn process_test_directory(
     }
 
     // Run cargo check on the helix container path
-    let helix_container_path = temp_dir.join("helix-db/helix-container");
+    let helix_container_path = temp_dir.join("helix-db/sparrow-container");
     if helix_container_path.exists() {
         let output = Command::new("cargo")
             .arg("check")
@@ -774,4 +774,4 @@ async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-const IGNORE_DIRS: [&str; 3] = ["target", ".git", ".helix"];
+const IGNORE_DIRS: [&str; 3] = ["target", ".git", ".sparrow"];

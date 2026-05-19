@@ -100,12 +100,12 @@ async fn test_compile_fails_without_helix_toml() {
     let result = run(None, Some(ctx.project_path.to_str().unwrap().to_string())).await;
     assert!(
         result.is_err(),
-        "Compile should fail without helix.toml in project"
+        "Compile should fail without sparrow.toml in project"
     );
     let error_msg = result.err().unwrap().to_string();
     assert!(
-        error_msg.contains("not found") || error_msg.contains("helix.toml"),
-        "Error should mention missing helix.toml"
+        error_msg.contains("not found") || error_msg.contains("sparrow.toml"),
+        "Error should mention missing sparrow.toml"
     );
 }
 
@@ -133,15 +133,15 @@ async fn test_compile_with_schema_only() {
 async fn test_compile_with_multiple_hx_files() {
     let ctx = TestContext::new();
 
-    // Create helix.toml
+    // Create sparrow.toml
     let config = SparrowConfig::default_config("test-project");
-    let config_path = ctx.project_path.join("helix.toml");
+    let config_path = ctx.project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     // Create queries directory
     let queries_dir = ctx.project_path.join("db");
@@ -194,16 +194,16 @@ QUERY GetUser(id: ID) =>
 async fn test_compile_with_custom_queries_path() {
     let ctx = TestContext::new();
 
-    // Create helix.toml with custom queries path
+    // Create sparrow.toml with custom queries path
     let mut config = SparrowConfig::default_config("test-project");
     config.project.queries = PathBuf::from("custom/helix/queries");
-    let config_path = ctx.project_path.join("helix.toml");
+    let config_path = ctx.project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     // Create custom queries directory
     let queries_dir = ctx.project_path.join("custom/helix/queries");

@@ -3,7 +3,7 @@ use crate::docker::{DockerBuildError, DockerManager};
 use crate::github_issue::{GitHubIssueBuilder, filter_errors_only};
 use crate::metrics_sender::MetricsSender;
 use crate::output::{Operation, Step};
-use crate::project::{ProjectContext, get_helix_repo_cache};
+use crate::project::{ProjectContext, get_sparrow_repo_cache};
 use crate::prompts;
 use crate::utils::{
     copy_dir_recursive_excluding, diagnostic_source,
@@ -36,7 +36,7 @@ use std::{fmt::Write, fs};
 
 // Development flag - set to true when working on V2 locally
 const DEV_MODE: bool = cfg!(debug_assertions);
-const HELIX_REPO_URL: &str = "https://github.com/helixdb/helix-db.git";
+const SPARROW_REPO_URL: &str = "https://github.com/helixdb/helix-db.git";
 
 // Get the cargo workspace root at compile time
 const CARGO_MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -61,9 +61,9 @@ pub async fn run(
         None if prompts::is_interactive() => {
             let instances = project.config.list_instances_with_types();
             prompts::intro(
-                "helix build",
+                "sparrow build",
                 Some(
-                    "This will build your selected instance based on the configuration in helix.toml.",
+                    "This will build your selected instance based on the configuration in sparrow.toml.",
                 ),
             )?;
             prompts::select_instance(&instances)?
@@ -118,7 +118,7 @@ pub async fn run_build_steps(
     // Step 1: Repository sync
     let mut repo_step = Step::with_messages("Syncing repository", "Repository synced");
     repo_step.start();
-    ensure_helix_repo_cached().await?;
+    ensure_sparrow_repo_cached().await?;
     repo_step.done();
 
     // Step 2: Prepare workspace (verbose only shows details)
@@ -211,16 +211,16 @@ pub async fn run_build_steps(
     Ok(metrics_data.clone())
 }
 
-pub(crate) async fn ensure_helix_repo_cached() -> Result<()> {
+pub(crate) async fn ensure_sparrow_repo_cached() -> Result<()> {
     let _lock = repo_cache_lock().lock().await;
-    let repo_cache = get_helix_repo_cache()?;
+    let repo_cache = get_sparrow_repo_cache()?;
 
     if needs_cache_recreation(&repo_cache)? {
-        recreate_helix_cache(&repo_cache).await?;
+        recreate_sparrow_cache(&repo_cache).await?;
     } else if repo_cache.exists() {
-        update_helix_cache(&repo_cache).await?;
+        update_sparrow_cache(&repo_cache).await?;
     } else {
-        create_helix_cache(&repo_cache).await?;
+        create_sparrow_cache(&repo_cache).await?;
     }
 
     Ok(())
@@ -248,12 +248,12 @@ fn needs_cache_recreation(repo_cache: &std::path::Path) -> Result<bool> {
     }
 }
 
-async fn recreate_helix_cache(repo_cache: &std::path::Path) -> Result<()> {
+async fn recreate_sparrow_cache(repo_cache: &std::path::Path) -> Result<()> {
     std::fs::remove_dir_all(repo_cache)?;
-    create_helix_cache(repo_cache).await
+    create_sparrow_cache(repo_cache).await
 }
 
-async fn create_helix_cache(repo_cache: &std::path::Path) -> Result<()> {
+async fn create_sparrow_cache(repo_cache: &std::path::Path) -> Result<()> {
     Step::verbose_substep("Caching Helix repository (first time setup)...");
 
     if DEV_MODE {
@@ -265,7 +265,7 @@ async fn create_helix_cache(repo_cache: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-async fn update_helix_cache(repo_cache: &std::path::Path) -> Result<()> {
+async fn update_sparrow_cache(repo_cache: &std::path::Path) -> Result<()> {
     Step::verbose_substep("Updating Helix repository cache...");
 
     if DEV_MODE {
@@ -288,7 +288,7 @@ fn create_dev_cache(repo_cache: &std::path::Path) -> Result<()> {
 
 fn create_git_cache(repo_cache: &std::path::Path) -> Result<()> {
     let output = std::process::Command::new("git")
-        .args(["clone", HELIX_REPO_URL, &repo_cache.to_string_lossy()])
+        .args(["clone", SPARROW_REPO_URL, &repo_cache.to_string_lossy()])
         .output()?;
 
     if !output.status.success() {
@@ -342,9 +342,9 @@ pub(crate) async fn prepare_instance_workspace(
 
     // Copy cached repo to instance workspace for Docker build context
     let _lock = repo_cache_lock().lock().await;
-    let repo_cache = get_helix_repo_cache()?;
+    let repo_cache = get_sparrow_repo_cache()?;
     let instance_workspace = project.instance_workspace(instance_name);
-    let repo_copy_path = instance_workspace.join("helix-repo-copy");
+    let repo_copy_path = instance_workspace.join("sparrow-repo-copy");
 
     // Remove existing copy if it exists
     if repo_copy_path.exists() {
@@ -366,15 +366,15 @@ pub(crate) async fn compile_project(
     project: &ProjectContext,
     instance_name: &str,
 ) -> Result<MetricsData> {
-    // Create helix-container directory in instance workspace for generated files
+    // Create sparrow-container directory in instance workspace for generated files
     let instance_workspace = project.instance_workspace(instance_name);
-    let helix_container_dir = instance_workspace.join("helix-container");
+    let helix_container_dir = instance_workspace.join("sparrow-container");
     let src_dir = helix_container_dir.join("src");
 
     // Create the directories
     fs::create_dir_all(&src_dir)?;
 
-    // Generate config.hx.json from helix.toml
+    // Generate config.hx.json from sparrow.toml
     let instance = project.config.get_instance(instance_name)?;
     let legacy_config_json = instance.to_legacy_json();
     let legacy_config_str = serde_json::to_string_pretty(&legacy_config_json)?;
@@ -487,7 +487,7 @@ pub(crate) fn generate_content(files: &[std::fs::DirEntry]) -> Result<Content> {
     })
 }
 
-/// Uses the helix parser to parse the content into a Source object
+/// Uses the sparrow parser to parse the content into a Source object
 fn parse_content(content: &Content) -> Result<Source> {
     let source = SparrowParser::parse_source(content).map_err(|e| eyre::eyre!("Parse error: {e}"))?;
     Ok(source)
@@ -584,12 +584,12 @@ fn build_binary_using_cargo(
     let binary_output_path = std::path::Path::new(binary_output);
     std::fs::create_dir_all(binary_output_path)?;
 
-    // <path-to-.helix>/<instance_name>/helix-repo-copy/helix-container/
+    // <path-to-.sparrow>/<instance_name>/sparrow-repo-copy/sparrow-container/
     let current_dir = project
-        .helix_dir
+        .sparrow_dir
         .join(instance_name)
-        .join("helix-repo-copy")
-        .join("helix-container");
+        .join("sparrow-repo-copy")
+        .join("sparrow-container");
 
     let mut cmd = Command::new("cargo");
     cmd.arg("build")

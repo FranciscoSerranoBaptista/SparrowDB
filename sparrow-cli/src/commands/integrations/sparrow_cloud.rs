@@ -152,7 +152,7 @@ impl<'a> SparrowManager<'a> {
         //         return Err(eyre!("Cluster name '{}' already exists", instance_name));
         //     }
         //     reqwest::StatusCode::UNAUTHORIZED => {
-        //         return Err(eyre!("Authentication failed. Run 'helix auth login'"));
+        //         return Err(eyre!("Authentication failed. Run 'sparrow auth login'"));
         //     }
         //     _ => {
         //         let error_text = response.text().await.unwrap_or_default();
@@ -163,7 +163,7 @@ impl<'a> SparrowManager<'a> {
         output::success(&format!(
             "Cloud instance '{instance_name}' configuration created"
         ));
-        output::info("Run 'helix build <instance>' to compile your project for this instance");
+        output::info("Run 'sparrow build <instance>' to compile your project for this instance");
 
         Ok(())
     }
@@ -191,13 +191,13 @@ impl<'a> SparrowManager<'a> {
             }
         };
 
-        // Optionally load config from helix.toml or legacy config.hx.json
-        let helix_toml_path = path.join("helix.toml");
+        // Optionally load config from sparrow.toml or legacy config.hx.json
+        let helix_toml_path = path.join("sparrow.toml");
         let config_hx_path = path.join("config.hx.json");
         let schema_path = path.join("schema.hx");
 
         let _config: Option<Config> = if helix_toml_path.exists() {
-            // v2 format: helix.toml (config is already loaded in self.project)
+            // v2 format: sparrow.toml (config is already loaded in self.project)
             None
         } else if config_hx_path.exists() {
             // v1 backward compatibility: config.hx.json
@@ -210,7 +210,7 @@ impl<'a> SparrowManager<'a> {
             None
         };
 
-        // get cluster information from helix.toml
+        // get cluster information from sparrow.toml
         let cluster_info = match self.project.config.get_instance(&cluster_name)? {
             InstanceInfo::SparrowCloud(config) => config,
             _ => {
@@ -267,7 +267,7 @@ impl<'a> SparrowManager<'a> {
             match toml::to_string_pretty(&pruned) {
                 Ok(s) => Some(s),
                 Err(e) => {
-                    output::warning(&format!("Failed to serialize pruned helix.toml: {}", e));
+                    output::warning(&format!("Failed to serialize pruned sparrow.toml: {}", e));
                     None
                 }
             }
@@ -397,12 +397,12 @@ impl<'a> SparrowManager<'a> {
                                     "1" | "" => {
                                         let env_path = self.project.root.join(".env");
                                         let comment = format!(
-                                            "# HelixDB Cloud URL for instance: {}",
+                                            "# SparrowDB Cloud URL for instance: {}",
                                             cluster_name
                                         );
                                         if let Err(e) = crate::utils::add_env_var_with_comment(
                                             &env_path,
-                                            "HELIX_CLOUD_URL",
+                                            "SPARROW_CLOUD_URL",
                                             &url,
                                             Some(&comment),
                                         ) {
@@ -410,11 +410,11 @@ impl<'a> SparrowManager<'a> {
                                         }
                                         match crate::utils::add_env_var_to_file(
                                             &env_path,
-                                            "HELIX_API_KEY",
+                                            "SPARROW_API_KEY",
                                             &auth_key,
                                         ) {
                                             Ok(_) => output::success(&format!(
-                                                "Added HELIX_CLOUD_URL and HELIX_API_KEY to {}",
+                                                "Added SPARROW_CLOUD_URL and SPARROW_API_KEY to {}",
                                                 env_path.display()
                                             )),
                                             Err(e) => {
@@ -432,12 +432,12 @@ impl<'a> SparrowManager<'a> {
                                         if io::stdin().read_line(&mut path_input).is_ok() {
                                             let custom_path = PathBuf::from(path_input.trim());
                                             let comment = format!(
-                                                "# HelixDB Cloud URL for instance: {}",
+                                                "# SparrowDB Cloud URL for instance: {}",
                                                 cluster_name
                                             );
                                             if let Err(e) = crate::utils::add_env_var_with_comment(
                                                 &custom_path,
-                                                "HELIX_CLOUD_URL",
+                                                "SPARROW_CLOUD_URL",
                                                 &url,
                                                 Some(&comment),
                                             ) {
@@ -448,11 +448,11 @@ impl<'a> SparrowManager<'a> {
                                             }
                                             match crate::utils::add_env_var_to_file(
                                                 &custom_path,
-                                                "HELIX_API_KEY",
+                                                "SPARROW_API_KEY",
                                                 &auth_key,
                                             ) {
                                                 Ok(_) => output::success(&format!(
-                                                    "Added HELIX_CLOUD_URL and HELIX_API_KEY to {}",
+                                                    "Added SPARROW_CLOUD_URL and SPARROW_API_KEY to {}",
                                                     custom_path.display()
                                                 )),
                                                 Err(e) => print_error(&format!(
@@ -546,7 +546,7 @@ impl<'a> SparrowManager<'a> {
         }
 
         Err(eyre!(
-            "Cluster '{}' is not configured in helix.toml. Run 'helix sync' to refresh cluster metadata, then retry syncing cluster '{}'.",
+            "Cluster '{}' is not configured in sparrow.toml. Run 'sparrow sync' to refresh cluster metadata, then retry syncing cluster '{}'.",
             cluster_id,
             cluster_name_hint
         ))
@@ -571,7 +571,7 @@ impl<'a> SparrowManager<'a> {
         }
 
         Err(eyre!(
-            "Enterprise cluster '{}' is not configured in helix.toml. Run 'helix sync' to refresh cluster metadata, then retry syncing cluster '{}'.",
+            "Enterprise cluster '{}' is not configured in sparrow.toml. Run 'sparrow sync' to refresh cluster metadata, then retry syncing cluster '{}'.",
             cluster_id,
             cluster_name_hint
         ))
@@ -655,7 +655,7 @@ impl<'a> SparrowManager<'a> {
 
         let query_json_b64 = BASE64_STANDARD.encode(&query_json_bytes);
 
-        // Build pruned helix.toml
+        // Build pruned sparrow.toml
         let helix_toml_content = {
             use crate::config::SparrowConfig;
             let pruned = SparrowConfig {

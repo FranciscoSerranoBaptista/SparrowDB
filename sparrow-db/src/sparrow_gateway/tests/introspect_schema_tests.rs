@@ -189,7 +189,7 @@ async fn test_introspect_schema_invalid_api_key() {
 #[tokio::test]
 async fn test_introspect_schema_with_valid_schema_and_headers() {
     // Note: This test verifies the handler works with headers.
-    // In a real test environment with HELIX_API_KEY set, we'd need to provide
+    // In a real test environment with SPARROW_API_KEY set, we'd need to provide
     // the correct key. Without the env var set, verify_key returns InvalidApiKey.
     let schema_json = r#"{"version":"1.0","tables":[]}"#.to_string();
     let state = create_test_app_state(Some(schema_json));
@@ -197,7 +197,7 @@ async fn test_introspect_schema_with_valid_schema_and_headers() {
     let headers = create_headers_with_api_key(Some("test-key"));
     let response = introspect_schema_handler(State(state), headers).await;
 
-    // Without HELIX_API_KEY env var set, any key will fail verification
+    // Without SPARROW_API_KEY env var set, any key will fail verification
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 

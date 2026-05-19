@@ -10,8 +10,8 @@ fn test_resolve_binary_prefers_release_over_debug() {
     fs::create_dir_all(&release_dir).unwrap();
     fs::create_dir_all(&debug_dir).unwrap();
 
-    let release_bin = release_dir.join("helix-container");
-    let debug_bin = debug_dir.join("helix-container");
+    let release_bin = release_dir.join("sparrow-container");
+    let debug_bin = debug_dir.join("sparrow-container");
     fs::write(&release_bin, b"").unwrap();
     fs::write(&debug_bin, b"").unwrap();
 
@@ -24,7 +24,7 @@ fn test_resolve_binary_falls_back_to_debug() {
     let tmp = TempDir::new().unwrap();
     let debug_dir = tmp.path().join("debug");
     fs::create_dir_all(&debug_dir).unwrap();
-    let debug_bin = debug_dir.join("helix-container");
+    let debug_bin = debug_dir.join("sparrow-container");
     fs::write(&debug_bin, b"").unwrap();
 
     let found = resolve_binary(tmp.path()).unwrap();
@@ -49,11 +49,11 @@ fn test_resolve_data_dir_uses_override_when_provided() {
 
 #[test]
 fn test_resolve_data_dir_falls_back_to_helix_dir() {
-    // No override, no project — should fall back to ~/.helix
-    // helix-container will append /user, so database lands at ~/.helix/user
+    // No override, no project — should fall back to ~/.sparrow
+    // sparrow-container will append /user, so database lands at ~/.sparrow/user
     let result = resolve_data_dir(None, None, None);
     assert!(
-        result.ends_with(".helix") || result == "/tmp/helix-data",
-        "fallback should end with .helix (helix-container appends /user), got: {result}"
+        result.ends_with(".sparrow") || result == "/tmp/sparrow-data",
+        "fallback should end with .sparrow (sparrow-container appends /user), got: {result}"
     );
 }

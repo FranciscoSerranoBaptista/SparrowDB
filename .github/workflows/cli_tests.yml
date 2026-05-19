@@ -46,7 +46,7 @@
 #         run: cargo test --release --package helix-cli
 #         env:
 #           # Use a unique temp directory for test isolation
-#           HELIX_CACHE_DIR: ${{ runner.temp }}/helix-test-cache-${{ github.run_id }}
+#           SPARROW_CACHE_DIR: ${{ runner.temp }}/helix-test-cache-${{ github.run_id }}
 
 #       - name: Run helix-macros tests
 #         run: cargo test --release --package helix-macros
@@ -55,4 +55,4 @@
 #       - name: Run helix-cli integration tests (ignored tests)
 #         run: cargo test --release --package helix-cli -- --ignored --test-threads=1
 #         env:
-#           HELIX_CACHE_DIR: ${{ runner.temp }}/helix-test-cache-ignored-${{ github.run_id }}
+#           SPARROW_CACHE_DIR: ${{ runner.temp }}/helix-test-cache-ignored-${{ github.run_id }}

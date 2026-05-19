@@ -54,7 +54,7 @@ async fn check_instance(
     // Step 2: Ensure helix repo is cached (reuse from build.rs)
     let mut repo_step = Step::with_messages("Syncing repository", "Repository synced");
     repo_step.start();
-    build::ensure_helix_repo_cached().await?;
+    build::ensure_sparrow_repo_cached().await?;
     repo_step.done();
 
     // Step 3: Prepare instance workspace (reuse from build.rs)
@@ -66,10 +66,10 @@ async fn check_instance(
     let metrics_data = build::compile_project(project, instance_name).await?;
     compile_step.done_with_info(&format!("{} queries", metrics_data.num_of_queries));
 
-    // Step 5: Copy generated files to helix-repo-copy for cargo check
+    // Step 5: Copy generated files to sparrow-repo-copy for cargo check
     let instance_workspace = project.instance_workspace(instance_name);
-    let generated_src = instance_workspace.join("helix-container/src");
-    let cargo_check_src = instance_workspace.join("helix-repo-copy/helix-container/src");
+    let generated_src = instance_workspace.join("sparrow-container/src");
+    let cargo_check_src = instance_workspace.join("sparrow-repo-copy/sparrow-container/src");
 
     // Copy queries.rs and config.hx.json
     fs::copy(
@@ -85,7 +85,7 @@ async fn check_instance(
     let mut cargo_step = Step::with_messages("Running cargo check", "Cargo check passed");
     cargo_step.start();
     Step::verbose_substep("Running cargo check on generated code...");
-    let helix_container_dir = instance_workspace.join("helix-repo-copy/helix-container");
+    let helix_container_dir = instance_workspace.join("sparrow-repo-copy/sparrow-container");
     let cargo_output = run_cargo_check(&helix_container_dir)?;
 
     let compile_time = start_time.elapsed().as_secs() as u32;
@@ -132,7 +132,7 @@ async fn check_all_instances(
 
     if instances.is_empty() {
         return Err(eyre::eyre!(
-            "No instances found in helix.toml. Add at least one instance to check."
+            "No instances found in sparrow.toml. Add at least one instance to check."
         ));
     }
 

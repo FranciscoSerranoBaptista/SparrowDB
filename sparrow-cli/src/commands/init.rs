@@ -67,14 +67,14 @@ async fn run_init_inner(
         .and_then(|name| name.to_str())
         .unwrap_or("helix-project");
 
-    let config_path = project_dir.join("helix.toml");
+    let config_path = project_dir.join("sparrow.toml");
 
     if config_path.exists() {
         return Err(project_error(format!(
-            "helix.toml already exists in {}",
+            "sparrow.toml already exists in {}",
             project_dir.display()
         ))
-        .with_hint("use 'helix add <instance_name>' to add a new instance to the existing project")
+        .with_hint("use 'sparrow add <instance_name>' to add a new instance to the existing project")
         .into());
     }
 
@@ -89,7 +89,7 @@ async fn run_init_inner(
 
     let interactive = prompts::is_interactive();
 
-    // Create default helix.toml with custom queries path
+    // Create default sparrow.toml with custom queries path
     let mut config = SparrowConfig::default_config(project_name);
     config.project.queries = std::path::PathBuf::from(&queries_path);
 
@@ -108,7 +108,7 @@ async fn run_init_inner(
     // If no deployment type provided and we're in an interactive terminal, prompt the user
     let deployment_type = if deployment_type.is_none() && interactive {
         prompts::intro(
-            "helix init",
+            "sparrow init",
             Some(
                 "This will create a new Helix project in the current directory.\nYou can configure the project type, name and other settings below.",
             ),
@@ -173,7 +173,7 @@ async fn run_init_inner(
                     }
 
                     config.save_to_file(&config_path)?;
-                    Step::verbose_substep("Helix Cloud configuration saved to helix.toml");
+                    Step::verbose_substep("Helix Cloud configuration saved to sparrow.toml");
                 }
                 CloudDeploymentTypeCommand::Ecr { name } => {
                     is_remote_init = true;
@@ -203,7 +203,7 @@ async fn run_init_inner(
                     // Save configuration to ecr.toml
                     ecr_manager.save_config(&instance_name, &ecr_config).await?;
 
-                    // Update helix.toml with cloud config
+                    // Update sparrow.toml with cloud config
                     config
                         .cloud
                         .insert(instance_name, CloudConfig::Ecr(ecr_config.clone()));
@@ -294,7 +294,7 @@ async fn run_init_inner(
         format!("Edit {queries_path_clean}/schema.hx to define your data model"),
         format!("Add queries to {queries_path_clean}/queries.hx"),
         format!(
-            "Run 'helix push {target_instance}' to {}",
+            "Run 'sparrow push {target_instance}' to {}",
             if is_remote_init {
                 "deploy your configured instance"
             } else {
@@ -305,7 +305,7 @@ async fn run_init_inner(
 
     if is_remote_init {
         next_steps.push(format!(
-            "Use 'helix logs {target_instance}' to verify deployment output"
+            "Use 'sparrow logs {target_instance}' to verify deployment output"
         ));
     }
 
@@ -322,11 +322,11 @@ fn create_project_structure(
     cleanup_tracker: &mut CleanupTracker,
 ) -> Result<()> {
     // Create directories
-    let helix_dir = project_dir.join(".helix");
-    let helix_dir_existed = helix_dir.exists();
-    fs::create_dir_all(&helix_dir)?;
-    if !helix_dir_existed {
-        cleanup_tracker.track_dir(helix_dir);
+    let sparrow_dir = project_dir.join(".sparrow");
+    let sparrow_dir_existed = sparrow_dir.exists();
+    fs::create_dir_all(&sparrow_dir)?;
+    if !sparrow_dir_existed {
+        cleanup_tracker.track_dir(sparrow_dir);
     }
 
     let queries_dir = project_dir.join(queries_path);
@@ -389,7 +389,7 @@ fn create_project_structure(
 //
 // For more information on how to write queries,
 // see the documentation at https://docs.helix-db.com
-// or checkout our GitHub at https://github.com/HelixDB/helix-db
+// or checkout our GitHub at https://github.com/SparrowDB/helix-db
 "#;
     let queries_path_file = project_dir.join(queries_path).join("queries.hx");
     write_starter_file(
@@ -400,7 +400,7 @@ fn create_project_structure(
     )?;
 
     // add this to .gitignore
-    let gitignore = [".helix/", "target/", "*.log"];
+    let gitignore = [".sparrow/", "target/", "*.log"];
     let gitignore_path = project_dir.join(".gitignore");
     let file_existed = gitignore_path.exists();
     let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();

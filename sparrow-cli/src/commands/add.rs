@@ -30,9 +30,9 @@ pub async fn run(deployment_type: Option<CloudDeploymentTypeCommand>) -> Result<
         Some(dt) => dt,
         None if prompts::is_interactive() => {
             prompts::intro(
-                "helix add",
+                "sparrow add",
                 Some(
-                    "This will add a new instance to the Helix project.\nYou can configure the instance type, name and other settings below.\n",
+                    "This will add a new instance to the SparrowDB project.\nYou can configure the instance type, name and other settings below.\n",
                 ),
             )?;
             match prompts::build_deployment_command(project_name).await? {
@@ -45,11 +45,11 @@ pub async fn run(deployment_type: Option<CloudDeploymentTypeCommand>) -> Result<
         }
         None => {
             return Err(eyre::eyre!(
-                "No deployment type specified. Run 'helix add' in an interactive terminal or specify a deployment type:\n  \
-                helix add local\n  \
-                helix add cloud\n  \
-                helix add ecr\n  \
-                helix add fly"
+                "No deployment type specified. Run 'sparrow add' in an interactive terminal or specify a deployment type:\n  \
+                sparrow add local\n  \
+                sparrow add cloud\n  \
+                sparrow add ecr\n  \
+                sparrow add fly"
             ));
         }
     };
@@ -87,7 +87,7 @@ async fn run_add_inner(
             .contains_key(&instance_name)
     {
         return Err(project_error(format!(
-            "Instance '{instance_name}' already exists in helix.toml"
+            "Instance '{instance_name}' already exists in sparrow.toml"
         ))
         .with_hint("use a different instance name or remove the existing instance")
         .into());
@@ -96,7 +96,7 @@ async fn run_add_inner(
     let op = Operation::new("Adding", &instance_name);
 
     // Backup the original config before any modifications
-    let config_path = project_context.root.join("helix.toml");
+    let config_path = project_context.root.join("sparrow.toml");
     cleanup_tracker.backup_config(&project_context.config, config_path.clone());
 
     // Determine instance type
@@ -116,7 +116,7 @@ async fn run_add_inner(
 
             if flow_result.resolved_project_name != project_context.config.project.name {
                 crate::output::info(&format!(
-                    "Updating project name in helix.toml to '{}' to match cloud project.",
+                    "Updating project name in sparrow.toml to '{}' to match cloud project.",
                     flow_result.resolved_project_name
                 ));
                 project_context.config.project.name = flow_result.resolved_project_name;
@@ -183,7 +183,7 @@ async fn run_add_inner(
             // Save configuration to ecr.toml
             ecr_manager.save_config(&instance_name, &ecr_config).await?;
 
-            // Update helix.toml with cloud config
+            // Update sparrow.toml with cloud config
             project_context
                 .config
                 .cloud
@@ -245,7 +245,7 @@ async fn run_add_inner(
     }
 
     // Save the updated configuration
-    let config_path = project_context.root.join("helix.toml");
+    let config_path = project_context.root.join("sparrow.toml");
     project_context.config.save_to_file(&config_path)?;
 
     op.success();
@@ -253,8 +253,8 @@ async fn run_add_inner(
     print_instructions(
         "Next steps:",
         &[
-            &format!("Run 'helix build {instance_name}' to compile your project for this instance"),
-            &format!("Run 'helix push {instance_name}' to start the '{instance_name}' instance"),
+            &format!("Run 'sparrow build {instance_name}' to compile your project for this instance"),
+            &format!("Run 'sparrow push {instance_name}' to start the '{instance_name}' instance"),
         ],
     );
 

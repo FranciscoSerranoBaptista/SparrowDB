@@ -48,7 +48,7 @@ fn test_resolve_db_dir_returns_error_for_empty_dir() {
 
     let err = resolve_db_dir(dir.path().to_str().unwrap(), None).unwrap_err();
     assert!(
-        err.to_string().contains("No HelixDB database found"),
+        err.to_string().contains("No SparrowDB database found"),
         "unexpected error: {err}"
     );
 }

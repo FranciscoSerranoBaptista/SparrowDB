@@ -1,4 +1,4 @@
-//! Data management commands for HelixDB (snapshot, clone, restore)
+//! Data management commands for SparrowDB (snapshot, clone, restore)
 
 use crate::DataAction;
 use crate::output::{Operation, Step};
@@ -8,7 +8,7 @@ use heed3::{CompactionOption, EnvFlags, EnvOpenOptions};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Check whether a directory looks like a HelixDB database directory.
+/// Check whether a directory looks like a SparrowDB database directory.
 fn has_db_marker(dir: &Path) -> bool {
     dir.join("data.mdb").exists() || dir.join("CURRENT").exists()
 }
@@ -46,7 +46,7 @@ pub fn resolve_db_dir(source: &str, project: Option<&ProjectContext>) -> Result<
     }
 
     Err(eyre!(
-        "No HelixDB database found at {}. Expected data.mdb (LMDB) or CURRENT (RocksDB).",
+        "No SparrowDB database found at {}. Expected data.mdb (LMDB) or CURRENT (RocksDB).",
         path.display()
     ))
 }
@@ -74,7 +74,7 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<u64> {
     Ok(total_bytes)
 }
 
-/// Create a snapshot of a HelixDB database directory.
+/// Create a snapshot of a SparrowDB database directory.
 ///
 /// - For LMDB (`data.mdb`): uses heed3's built-in hot-copy via `env.copy_to_path`.
 /// - For RocksDB (`CURRENT`): falls back to a filesystem copy (requires instance to be stopped).
@@ -98,7 +98,7 @@ pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
         copy_dir_all(db_dir, output)?;
     } else {
         return Err(eyre!(
-            "No HelixDB database found at {}.",
+            "No SparrowDB database found at {}.",
             db_dir.display()
         ));
     }
@@ -106,7 +106,7 @@ pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Restore a HelixDB backup to a destination directory.
+/// Restore a SparrowDB backup to a destination directory.
 ///
 /// - If `dest` is non-empty and `force` is false, returns an error.
 /// - If `force` is true, removes all existing contents of `dest` before copying.
@@ -148,7 +148,7 @@ pub fn restore_impl(backup: &Path, dest: &Path, force: bool) -> Result<()> {
     Ok(())
 }
 
-/// Copy an entire HelixDB database directory to a new location.
+/// Copy an entire SparrowDB database directory to a new location.
 ///
 /// Refuses to overwrite a non-empty destination.
 pub fn clone_impl(db_dir: &Path, dest: &Path) -> Result<()> {
@@ -157,7 +157,7 @@ pub fn clone_impl(db_dir: &Path, dest: &Path) -> Result<()> {
         let is_empty = fs::read_dir(dest)?.next().is_none();
         if !is_empty {
             return Err(eyre!(
-                "Destination {} is not empty. Use 'helix data restore --force' to overwrite.",
+                "Destination {} is not empty. Use 'sparrow data restore --force' to overwrite.",
                 dest.display()
             ));
         }

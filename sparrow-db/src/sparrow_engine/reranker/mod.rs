@@ -1,7 +1,7 @@
-// Copyright 2025 HelixDB Inc.
+// Copyright 2025 SparrowDB Inc.
 // SPDX-License-Identifier: AGPL-3.0
 
-//! Reranking module for HelixDB.
+//! Reranking module for SparrowDB.
 //!
 //! This module provides reranking capabilities for search results, including:
 //! - RRF (Reciprocal Rank Fusion): Combine multiple ranked lists

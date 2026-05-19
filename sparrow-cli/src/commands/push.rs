@@ -29,9 +29,9 @@ pub async fn run(
         None if prompts::is_interactive() => {
             let instances = project.config.list_instances_with_types();
             prompts::intro(
-                "helix push",
+                "sparrow push",
                 Some(
-                    "This will build and redeploy your selected instance based on the configuration in helix.toml.",
+                    "This will build and redeploy your selected instance based on the configuration in sparrow.toml.",
                 ),
             )?;
             prompts::select_instance(&instances)?
@@ -219,7 +219,7 @@ async fn push_cloud_instance(
     if cluster_id == "YOUR_CLUSTER_ID" {
         op.failure();
         return Err(eyre::eyre!(
-            "Cluster for instance '{instance_name}' has not been created yet.\nRun 'helix push' to set up a cluster."
+            "Cluster for instance '{instance_name}' has not been created yet.\nRun 'sparrow push' to set up a cluster."
         ));
     }
 
@@ -261,7 +261,7 @@ async fn push_cloud_instance(
             let helix = SparrowManager::new(project);
             let build_mode_override = if dev {
                 crate::output::warning(
-                    "Using one-time dev build override for this deploy; helix.toml build_mode is unchanged.",
+                    "Using one-time dev build override for this deploy; sparrow.toml build_mode is unchanged.",
                 );
                 Some(BuildMode::Dev)
             } else {

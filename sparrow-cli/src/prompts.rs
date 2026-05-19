@@ -181,7 +181,7 @@ pub fn input_instance_name(default: &str) -> Result<String> {
 
 /// Build a CloudDeploymentTypeCommand from interactive selections
 ///
-/// This is the main entry point for interactive mode for `helix add`.
+/// This is the main entry point for interactive mode for `sparrow add`.
 /// It prompts the user through all necessary options including instance name,
 /// and returns a fully configured command.
 pub async fn build_deployment_command(
@@ -289,7 +289,7 @@ pub fn is_interactive() -> bool {
 pub fn select_instance(instances: &[(&String, &str)]) -> Result<String> {
     if instances.is_empty() {
         return Err(eyre::eyre!(
-            "No instances found in helix.toml. Run 'helix init' to create a project first."
+            "No instances found in sparrow.toml. Run 'sparrow init' to create a project first."
         ));
     }
 

@@ -16,7 +16,7 @@ use std::process::Command;
 const DASHBOARD_IMAGE: &str = "public.ecr.aws/p8l2s5f1/helix-dashboard";
 const DASHBOARD_TAG: &str = "latest";
 const DASHBOARD_CONTAINER_NAME: &str = "helix-dashboard";
-const DEFAULT_HELIX_PORT: u16 = 6969;
+const DEFAULT_SPARROW_PORT: u16 = 6969;
 
 struct DisplayInfo {
     host: String,
@@ -64,13 +64,13 @@ async fn start(
             if let Ok(existing_port) = get_dashboard_port(runtime) {
                 output::info(&format!("Access it at: http://localhost:{existing_port}"));
             }
-            output::info("Use 'helix dashboard stop' to stop it, or '--restart' to restart");
+            output::info("Use 'sparrow dashboard stop' to stop it, or '--restart' to restart");
             return Ok(());
         }
     }
 
     // Warn if --helix-port is specified without --host
-    if host.is_none() && helix_port != DEFAULT_HELIX_PORT {
+    if host.is_none() && helix_port != DEFAULT_SPARROW_PORT {
         output::warning("--helix-port is ignored without --host; using project config or defaults");
     }
 
@@ -106,7 +106,7 @@ async fn start(
             details.iter().map(|(k, v)| (*k, v.as_str())).collect();
         Operation::print_details(&details_refs);
         println!();
-        output::info("Run 'helix dashboard stop' to stop the dashboard");
+        output::info("Run 'sparrow dashboard stop' to stop the dashboard");
 
         // Open the dashboard in the default browser
         if let Err(e) = open::that(&url) {
@@ -134,8 +134,8 @@ fn prepare_direct_env_vars(
     };
 
     let env_vars = vec![
-        format!("HELIX_HOST={docker_host}"),
-        format!("HELIX_PORT={helix_port}"),
+        format!("SPARROW_HOST={docker_host}"),
+        format!("SPARROW_PORT={helix_port}"),
     ];
 
     let display_info = DisplayInfo {
@@ -170,7 +170,7 @@ async fn prepare_env_vars_from_context(
                 prepare_environment_vars(&project, &instance_name, &instance_config).await?;
 
             let (host, helix_port, mode) = if instance_config.is_local() {
-                let port = instance_config.port().unwrap_or(DEFAULT_HELIX_PORT);
+                let port = instance_config.port().unwrap_or(DEFAULT_SPARROW_PORT);
                 ("localhost".to_string(), port, "Local".to_string())
             } else {
                 ("cloud".to_string(), 443, "Cloud".to_string())
@@ -188,9 +188,9 @@ async fn prepare_env_vars_from_context(
         Err(_) => {
             // No project found - use defaults
             output::info(&format!(
-                "No helix.toml found, using default connection (localhost:{DEFAULT_HELIX_PORT})"
+                "No sparrow.toml found, using default connection (localhost:{DEFAULT_SPARROW_PORT})"
             ));
-            prepare_direct_env_vars("localhost", DEFAULT_HELIX_PORT, runtime)
+            prepare_direct_env_vars("localhost", DEFAULT_SPARROW_PORT, runtime)
         }
     }
 }
@@ -209,7 +209,7 @@ fn resolve_instance<'a>(
             let instances = project.config.list_instances_with_types();
 
             if instances.is_empty() {
-                return Err(eyre!("No instances configured in helix.toml"));
+                return Err(eyre!("No instances configured in sparrow.toml"));
             }
 
             // If interactive terminal, prompt user to select instance
@@ -261,7 +261,7 @@ async fn check_dev_mode_requirement(
     if !prompts::is_interactive() {
         return Err(eyre!(
             "Instance '{}' must be in dev mode for the dashboard. \
-            Redeploy with 'helix push {} --dev' or update build_mode to 'dev' in helix.toml.",
+            Redeploy with 'sparrow push {} --dev' or update build_mode to 'dev' in sparrow.toml.",
             instance_name,
             instance_name
         ));
@@ -282,7 +282,7 @@ async fn check_dev_mode_requirement(
 
     if !should_redeploy {
         return Err(eyre!(
-            "Dashboard requires dev mode. Update build_mode to 'dev' in helix.toml or use --host flag to connect directly."
+            "Dashboard requires dev mode. Update build_mode to 'dev' in sparrow.toml or use --host flag to connect directly."
         ));
     }
 
@@ -299,14 +299,14 @@ async fn check_dev_mode_requirement(
         if let Some(local_config) = config.local.get_mut(instance_name) {
             local_config.build_mode = BuildMode::Dev;
         }
-        let config_path = project.root.join("helix.toml");
+        let config_path = project.root.join("sparrow.toml");
         config.save_to_file(&config_path)?;
 
         // Reload the project context and push
         crate::commands::push::run(Some(instance_name.to_string()), false, &metrics_sender).await?;
     } else {
         // For cloud instances, use a one-time --dev deploy override.
-        output::info("Using a one-time dev override for this redeploy; helix.toml is unchanged.");
+        output::info("Using a one-time dev override for this redeploy; sparrow.toml is unchanged.");
         crate::commands::push::run(Some(instance_name.to_string()), true, &metrics_sender).await?;
     }
 
@@ -346,7 +346,7 @@ async fn check_instance_running(project: &ProjectContext, instance_name: &str) -
     // If not interactive, just fail with instructions
     if !prompts::is_interactive() {
         return Err(eyre!(
-            "Instance '{}' is not running. Start it with 'helix push {}'",
+            "Instance '{}' is not running. Start it with 'sparrow push {}'",
             instance_name,
             instance_name
         ));
@@ -359,7 +359,7 @@ async fn check_instance_running(project: &ProjectContext, instance_name: &str) -
 
     if !should_push {
         return Err(eyre!(
-            "Dashboard requires a running instance. Build and start it with 'helix push {}'",
+            "Dashboard requires a running instance. Build and start it with 'sparrow push {}'",
             instance_name
         ));
     }
@@ -385,7 +385,7 @@ async fn prepare_environment_vars(
 
     if instance_config.is_local() {
         // Local instance - connect via Docker host networking
-        let port = instance_config.port().unwrap_or(DEFAULT_HELIX_PORT);
+        let port = instance_config.port().unwrap_or(DEFAULT_SPARROW_PORT);
 
         // Use host.docker.internal for Docker, host.containers.internal for Podman
         let host = match project.config.project.container_runtime {
@@ -393,9 +393,9 @@ async fn prepare_environment_vars(
             ContainerRuntime::Podman => "host.containers.internal",
         };
 
-        env_vars.push(format!("HELIX_HOST={host}"));
-        env_vars.push(format!("HELIX_PORT={port}"));
-        env_vars.push(format!("HELIX_INSTANCE={instance_name}"));
+        env_vars.push(format!("SPARROW_HOST={host}"));
+        env_vars.push(format!("SPARROW_PORT={port}"));
+        env_vars.push(format!("SPARROW_INSTANCE={instance_name}"));
     } else {
         // Cloud instance - use cloud URL and API key
         let credentials = require_auth().await?;
@@ -403,14 +403,14 @@ async fn prepare_environment_vars(
         // Get cloud URL based on instance type
         let cloud_url = get_cloud_url(instance_config)?;
 
-        env_vars.push(format!("HELIX_CLOUD_URL={cloud_url}"));
-        env_vars.push(format!("HELIX_API_KEY={}", credentials.helix_admin_key));
-        env_vars.push(format!("HELIX_USER_ID={}", credentials.user_id));
-        env_vars.push(format!("HELIX_INSTANCE={instance_name}"));
+        env_vars.push(format!("SPARROW_CLOUD_URL={cloud_url}"));
+        env_vars.push(format!("SPARROW_API_KEY={}", credentials.helix_admin_key));
+        env_vars.push(format!("SPARROW_USER_ID={}", credentials.user_id));
+        env_vars.push(format!("SPARROW_INSTANCE={instance_name}"));
 
         // Add cluster ID for Helix Cloud instances
         if let Some(cluster_id) = instance_config.cluster_id() {
-            env_vars.push(format!("HELIX_CLUSTER_ID={cluster_id}"));
+            env_vars.push(format!("SPARROW_CLUSTER_ID={cluster_id}"));
         }
     }
 
@@ -641,16 +641,16 @@ fn status() -> Result<()> {
 
         // Extract connection info from environment
         for line in env_output.lines() {
-            if let Some(instance) = line.strip_prefix("HELIX_INSTANCE=") {
+            if let Some(instance) = line.strip_prefix("SPARROW_INSTANCE=") {
                 println!("  {}: {instance}", "Instance".bright_white().bold());
             }
-            if let Some(host) = line.strip_prefix("HELIX_HOST=") {
+            if let Some(host) = line.strip_prefix("SPARROW_HOST=") {
                 println!("  {}: {host}", "Helix Host".bright_white().bold());
             }
-            if let Some(port) = line.strip_prefix("HELIX_PORT=") {
+            if let Some(port) = line.strip_prefix("SPARROW_PORT=") {
                 println!("  {}: {port}", "Helix Port".bright_white().bold());
             }
-            if line.starts_with("HELIX_CLOUD_URL=") {
+            if line.starts_with("SPARROW_CLOUD_URL=") {
                 println!("  {}: Cloud", "Mode".bright_white().bold());
             }
         }

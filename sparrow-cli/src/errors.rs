@@ -183,24 +183,24 @@ pub enum ConfigError {
         #[source]
         source: std::io::Error,
     },
-    #[error("failed to read helix.toml at {path}: {source}")]
+    #[error("failed to read sparrow.toml at {path}: {source}")]
     ReadSparrowConfig {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("failed to parse helix.toml at {path}: {source}")]
+    #[error("failed to parse sparrow.toml at {path}: {source}")]
     ParseSparrowConfig {
         path: PathBuf,
         #[source]
         source: toml::de::Error,
     },
-    #[error("failed to serialize helix.toml: {source}")]
+    #[error("failed to serialize sparrow.toml: {source}")]
     SerializeSparrowConfig {
         #[source]
         source: toml::ser::Error,
     },
-    #[error("failed to write helix.toml at {path}: {source}")]
+    #[error("failed to write sparrow.toml at {path}: {source}")]
     WriteSparrowConfig {
         path: PathBuf,
         #[source]
@@ -218,7 +218,7 @@ pub enum ConfigError {
         "`build_mode = \"debug\"` is removed in favour of dev mode. Please update to `build_mode = \"dev\"` in {path}"
     )]
     DeprecatedBuildMode { path: PathBuf },
-    #[error("instance '{name}' not found in helix.toml")]
+    #[error("instance '{name}' not found in sparrow.toml")]
     InstanceNotFound { name: String },
 }
 
@@ -230,7 +230,7 @@ pub enum ProjectError {
         source: std::io::Error,
     },
     #[error(
-        "found v1 project configuration at {path}; run 'helix migrate --path \"{root}\"' to migrate"
+        "found v1 project configuration at {path}; run 'sparrow migrate --path \"{root}\"' to migrate"
     )]
     LegacyConfig { path: PathBuf, root: PathBuf },
     #[error("project configuration not found (searched from {start} up to filesystem root)")]
@@ -286,18 +286,18 @@ impl ConfigError {
             ))
             .with_caused_by(source.to_string()),
             ConfigError::ReadSparrowConfig { path, source } => {
-                CliError::new(format!("failed to read helix.toml at {}", path.display()))
+                CliError::new(format!("failed to read sparrow.toml at {}", path.display()))
                     .with_caused_by(source.to_string())
             }
             ConfigError::ParseSparrowConfig { path, source } => {
-                CliError::new(format!("failed to parse helix.toml at {}", path.display()))
+                CliError::new(format!("failed to parse sparrow.toml at {}", path.display()))
                     .with_caused_by(source.to_string())
             }
             ConfigError::SerializeSparrowConfig { source } => {
-                CliError::new("failed to serialize helix.toml").with_caused_by(source.to_string())
+                CliError::new("failed to serialize sparrow.toml").with_caused_by(source.to_string())
             }
             ConfigError::WriteSparrowConfig { path, source } => {
-                CliError::new(format!("failed to write helix.toml at {}", path.display()))
+                CliError::new(format!("failed to write sparrow.toml at {}", path.display()))
                     .with_caused_by(source.to_string())
             }
             ConfigError::EmptyProjectName { path } => CliError::new(format!(
@@ -322,7 +322,7 @@ impl ConfigError {
                 path.display()
             )),
             ConfigError::InstanceNotFound { name } => {
-                CliError::new(format!("instance '{}' not found in helix.toml", name))
+                CliError::new(format!("instance '{}' not found in sparrow.toml", name))
             }
         }
     }
@@ -340,7 +340,7 @@ impl ProjectError {
                     .with_file_path(path.display().to_string())
                     .with_context("This project uses the old v1 configuration format")
                     .with_hint(format!(
-                        "Run 'helix migrate --path \"{}\"' to migrate this project to v2 format",
+                        "Run 'sparrow migrate --path \"{}\"' to migrate this project to v2 format",
                         root.display()
                     ))
             }
@@ -388,7 +388,7 @@ impl From<toml::de::Error> for CliError {
     fn from(err: toml::de::Error) -> Self {
         CliError::new("failed to parse TOML configuration")
             .with_caused_by(err.to_string())
-            .with_hint("check the helix.toml file for syntax errors")
+            .with_hint("check the sparrow.toml file for syntax errors")
     }
 }
 
@@ -404,7 +404,7 @@ pub type CliResult<T> = Result<T, CliError>;
 // Convenience functions for common error patterns with error codes
 #[allow(unused)]
 pub fn config_error<S: Into<String>>(message: S) -> CliError {
-    CliError::new(message).with_hint("run `helix init` if you need to create a new project")
+    CliError::new(message).with_hint("run `sparrow init` if you need to create a new project")
 }
 
 #[allow(unused)]
@@ -424,10 +424,10 @@ pub fn network_error<S: Into<String>>(message: S) -> CliError {
 
 #[allow(unused)]
 pub fn project_error<S: Into<String>>(message: S) -> CliError {
-    CliError::new(message).with_hint("ensure you're in a valid helix project directory")
+    CliError::new(message).with_hint("ensure you're in a valid sparrow project directory")
 }
 
 #[allow(unused)]
 pub fn cloud_error<S: Into<String>>(message: S) -> CliError {
-    CliError::new(message).with_hint("run `helix auth login` to authenticate with Helix Cloud")
+    CliError::new(message).with_hint("run `sparrow auth login` to authenticate with Helix Cloud")
 }

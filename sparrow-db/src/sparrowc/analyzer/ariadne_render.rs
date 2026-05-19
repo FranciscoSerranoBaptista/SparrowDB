@@ -1,4 +1,4 @@
-// Copyright 2025 HelixDB Inc.
+// Copyright 2025 SparrowDB Inc.
 // SPDX-License-Identifier: AGPL-3.0
 
 //! Ariadne-based diagnostic rendering for rustc-style output.

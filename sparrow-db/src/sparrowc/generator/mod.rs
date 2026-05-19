@@ -1,4 +1,4 @@
-// Copyright 2025 HelixDB Inc.
+// Copyright 2025 SparrowDB Inc.
 // SPDX-License-Identifier: AGPL-3.0
 
 //! This is the generator for HelixQL. It transforms the AST into Rust code.

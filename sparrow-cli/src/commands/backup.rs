@@ -20,7 +20,7 @@ pub async fn run(output: Option<PathBuf>, instance_name: String) -> Result<()> {
     // Get the instance volume
     let volumes_dir = project
         .root
-        .join(".helix")
+        .join(".sparrow")
         .join(".volumes")
         .join(&instance_name)
         .join("user");

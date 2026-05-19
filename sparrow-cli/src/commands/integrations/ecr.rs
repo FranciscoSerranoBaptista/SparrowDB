@@ -242,7 +242,7 @@ impl<'a> EcrManager<'a> {
 
         if !config_path.exists() {
             return Err(eyre!(
-                "ECR configuration not found at {}. Run 'helix init ecr' first.",
+                "ECR configuration not found at {}. Run 'sparrow init ecr' first.",
                 config_path.display()
             ));
         }

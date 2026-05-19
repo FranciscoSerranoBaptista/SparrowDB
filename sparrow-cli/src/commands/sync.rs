@@ -399,7 +399,7 @@ async fn fetch_enterprise_sync_response_with_remote_empty_fallback(
             Ok(EnterpriseSyncResponse::default())
         }
         reqwest::StatusCode::UNAUTHORIZED => Err(eyre!(
-            "Authentication failed. Run 'helix auth login' to re-authenticate."
+            "Authentication failed. Run 'sparrow auth login' to re-authenticate."
         )),
         reqwest::StatusCode::FORBIDDEN => Err(eyre!(
             "Access denied to enterprise cluster '{}'. Make sure you have permission to access this cluster.",
@@ -581,7 +581,7 @@ fn parse_and_sanitize_remote_config(
         Ok(config) => config,
         Err(e) => {
             print_warning(&format!(
-                "Ignoring remote helix.toml from {}: failed to parse ({})",
+                "Ignoring remote sparrow.toml from {}: failed to parse ({})",
                 source, e
             ));
             return None;
@@ -658,7 +658,7 @@ async fn fetch_sync_response_with_remote_empty_fallback(
             Ok(SyncResponse::default())
         }
         reqwest::StatusCode::UNAUTHORIZED => Err(eyre!(
-            "Authentication failed. Run 'helix auth login' to re-authenticate."
+            "Authentication failed. Run 'sparrow auth login' to re-authenticate."
         )),
         reqwest::StatusCode::FORBIDDEN => Err(eyre!(
             "Access denied to cluster '{}'. Make sure you have permission to access this cluster.",
@@ -865,9 +865,9 @@ async fn push_local_snapshot_to_cluster(
 ) -> Result<()> {
     let refreshed_project = ProjectContext::find_and_load(Some(&project.root))
         .map_err(|e| eyre!("Failed to reload project context: {}", e))?;
-    let helix = SparrowManager::new(&refreshed_project);
+    let manager = SparrowManager::new(&refreshed_project);
 
-    helix
+    manager
         .deploy_by_cluster_id(None, cluster_id, cluster_name, None)
         .await
 }
@@ -964,9 +964,9 @@ async fn push_local_enterprise_snapshot_to_cluster(
 ) -> Result<()> {
     let refreshed_project = ProjectContext::find_and_load(Some(&project.root))
         .map_err(|e| eyre!("Failed to reload project context: {}", e))?;
-    let helix = SparrowManager::new(&refreshed_project);
+    let manager = SparrowManager::new(&refreshed_project);
 
-    helix
+    manager
         .deploy_enterprise_by_cluster_id(None, cluster_id, cluster_name)
         .await
 }
@@ -1644,14 +1644,14 @@ fn update_project_queries_path_in_helix_toml(
     project_root: &Path,
     queries_path: &Path,
 ) -> Result<()> {
-    let helix_toml_path = project_root.join("helix.toml");
+    let helix_toml_path = project_root.join("sparrow.toml");
     let mut config = SparrowConfig::from_file(&helix_toml_path)
-        .map_err(|e| eyre!("Failed to load helix.toml for queries path update: {}", e))?;
+        .map_err(|e| eyre!("Failed to load sparrow.toml for queries path update: {}", e))?;
 
     config.project.queries = sanitize_relative_path(queries_path)?;
     config
         .save_to_file(&helix_toml_path)
-        .map_err(|e| eyre!("Failed to update queries path in helix.toml: {}", e))?;
+        .map_err(|e| eyre!("Failed to update queries path in sparrow.toml: {}", e))?;
 
     Ok(())
 }
@@ -1693,10 +1693,10 @@ async fn reconcile_project_config_from_cloud(
     project_clusters: &CliProjectClusters,
     initial_queries_path: Option<&Path>,
 ) -> Result<()> {
-    let helix_toml_path = project_root.join("helix.toml");
+    let helix_toml_path = project_root.join("sparrow.toml");
     let mut config = if helix_toml_path.exists() {
         SparrowConfig::from_file(&helix_toml_path)
-            .map_err(|e| eyre!("Failed to load helix.toml: {}", e))?
+            .map_err(|e| eyre!("Failed to load sparrow.toml: {}", e))?
     } else {
         SparrowConfig {
             project: crate::config::ProjectConfig {
@@ -1771,7 +1771,7 @@ async fn reconcile_project_config_from_cloud(
         ) && gateway_count != hyperscale_count
         {
             print_warning(&format!(
-                "Enterprise cluster '{}' uses different gateway ({}) and DB ({}) counts; helix.toml stores these as min_instances/max_instances for compatibility.",
+                "Enterprise cluster '{}' uses different gateway ({}) and DB ({}) counts; sparrow.toml stores these as min_instances/max_instances for compatibility.",
                 cluster.cluster_name, gateway_count, hyperscale_count
             ));
         }
@@ -1799,7 +1799,7 @@ async fn reconcile_project_config_from_cloud(
 
     config
         .save_to_file(&helix_toml_path)
-        .map_err(|e| eyre!("Failed to write helix.toml: {}", e))?;
+        .map_err(|e| eyre!("Failed to write sparrow.toml: {}", e))?;
 
     Ok(())
 }
@@ -1854,9 +1854,9 @@ async fn resolve_workspace_for_project_sync(
 
 async fn run_project_sync_flow(project: &ProjectContext, assume_yes: bool) -> Result<()> {
     prompts::intro(
-        "helix sync",
+        "sparrow sync",
         Some(&format!(
-            "Using project '{}' from helix.toml. Select a cluster to sync from.",
+            "Using project '{}' from sparrow.toml. Select a cluster to sync from.",
             project.config.project.name
         )),
     )?;
@@ -2012,7 +2012,7 @@ async fn run_project_sync_flow(project: &ProjectContext, assume_yes: bool) -> Re
     )
     .await?;
     crate::output::info(
-        "Updated helix.toml with canonical project and cluster metadata from Helix Cloud.",
+        "Updated sparrow.toml with canonical project and cluster metadata from Helix Cloud.",
     );
 
     Ok(())
@@ -2024,7 +2024,7 @@ pub async fn run(instance_name: Option<String>, assume_yes: bool) -> Result<()> 
 
     if let Some(instance_name) = instance_name {
         let project = project.ok_or_else(|| {
-            eyre!("No helix.toml found. Run 'helix init' to create a project first.")
+            eyre!("No sparrow.toml found. Run 'sparrow init' to create a project first.")
         })?;
 
         let instance_config = project.config.get_instance(&instance_name)?;
@@ -2038,7 +2038,7 @@ pub async fn run(instance_name: Option<String>, assume_yes: bool) -> Result<()> 
 
     if !prompts::is_interactive() {
         return Err(eyre!(
-            "No instance specified. Run 'helix sync <instance>' or run interactively in a project directory."
+            "No instance specified. Run 'sparrow sync <instance>' or run interactively in a project directory."
         ));
     }
 
@@ -2052,8 +2052,8 @@ pub async fn run(instance_name: Option<String>, assume_yes: bool) -> Result<()> 
 /// Interactive flow when no project/instance is available: prompt workspace → cluster selection.
 async fn run_workspace_sync_flow() -> Result<()> {
     prompts::intro(
-        "helix sync",
-        Some("No helix.toml found. Select a workspace and cluster to sync from."),
+        "sparrow sync",
+        Some("No sparrow.toml found. Select a workspace and cluster to sync from."),
     )?;
 
     let credentials = require_auth().await?;
@@ -2082,7 +2082,7 @@ async fn run_workspace_sync_flow() -> Result<()> {
 
     if workspace_clusters.standard.is_empty() && workspace_clusters.enterprise.is_empty() {
         return Err(eyre!(
-            "No clusters found in this workspace. Deploy a cluster first with 'helix push'."
+            "No clusters found in this workspace. Deploy a cluster first with 'sparrow push'."
         ));
     }
 
@@ -2186,7 +2186,7 @@ async fn sync_from_cluster_id(api_key: &str, cluster_id: &str) -> Result<()> {
     )
     .await?;
     files_written += 1;
-    Step::verbose_substep("  Wrote helix.toml (canonical cloud metadata)");
+    Step::verbose_substep("  Wrote sparrow.toml (canonical cloud metadata)");
 
     write_step.done_with_info(&format!("{} files", files_written));
     op.success();
@@ -2287,7 +2287,7 @@ async fn sync_enterprise_from_cluster_id(api_key: &str, cluster_id: &str) -> Res
     )
     .await?;
     files_written += 1;
-    Step::verbose_substep("  Wrote helix.toml (canonical cloud metadata)");
+    Step::verbose_substep("  Wrote sparrow.toml (canonical cloud metadata)");
 
     if queries_dir.join("Cargo.toml").exists() {
         let generated = regenerate_enterprise_queries_json(&queries_dir)?;
@@ -2312,12 +2312,12 @@ async fn pull_from_local_instance(project: &ProjectContext, instance_name: &str)
     // or from the compiled workspace
 
     let workspace = project.instance_workspace(instance_name);
-    let container_dir = workspace.join("helix-container");
+    let container_dir = workspace.join("sparrow-container");
 
     if !container_dir.exists() {
         op.failure();
         return Err(eyre!(
-            "Instance '{instance_name}' has not been built yet. Run 'helix build {instance_name}' first."
+            "Instance '{instance_name}' has not been built yet. Run 'sparrow build {instance_name}' first."
         ));
     }
 
@@ -2399,7 +2399,7 @@ async fn pull_from_cloud_instance(
                 None,
             )
             .await?;
-            Step::verbose_substep("  Wrote helix.toml (canonical cloud metadata)");
+            Step::verbose_substep("  Wrote sparrow.toml (canonical cloud metadata)");
 
             Ok(())
         }
@@ -2463,7 +2463,7 @@ async fn pull_from_cloud_instance(
                 None,
             )
             .await?;
-            Step::verbose_substep("  Wrote helix.toml (canonical cloud metadata)");
+            Step::verbose_substep("  Wrote sparrow.toml (canonical cloud metadata)");
 
             Ok(())
         }

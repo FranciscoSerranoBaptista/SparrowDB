@@ -42,7 +42,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new Helix project with helix.toml
+    /// Initialize a new Helix project with sparrow.toml
     Init {
         /// Project directory (defaults to current directory)
         #[arg(short, long)]
@@ -73,7 +73,7 @@ enum Commands {
 
     /// Compile project queries into the workspace
     Compile {
-        /// Directory containing helix.toml (defaults to current directory or project root)
+        /// Directory containing sparrow.toml (defaults to current directory or project root)
         #[arg(short, long)]
         path: Option<String>,
 
@@ -87,7 +87,7 @@ enum Commands {
         /// Instance name to build (interactive selection if not provided)
         #[arg(short, long)]
         instance: Option<String>,
-        /// Should build HelixDB into a binary at the specified directory location
+        /// Should build SparrowDB into a binary at the specified directory location
         #[arg(long)]
         bin: Option<String>,
     },
@@ -119,16 +119,16 @@ enum Commands {
 
     /// Run a pre-built binary directly without Docker
     Run {
-        /// Directory containing the built binary (output of `helix build --bin <dir>`)
+        /// Directory containing the built binary (output of `sparrow build --bin <dir>`)
         #[arg(long)]
         bin: String,
         /// Instance name for config lookup (port, data-dir defaults)
         #[arg(short, long)]
         instance: Option<String>,
-        /// Override the data directory (sets HELIX_DATA_DIR)
+        /// Override the data directory (sets SPARROW_DATA_DIR)
         #[arg(long)]
         data_dir: Option<String>,
-        /// Override the port (sets HELIX_PORT)
+        /// Override the port (sets SPARROW_PORT)
         #[arg(long)]
         port: Option<u16>,
     },
@@ -273,7 +273,7 @@ fn display_welcome(update_available: Option<String>) {
 
     // Generate ASCII art banner using tui-banner
 
-    if let Ok(banner) = Banner::new("> HELIX DB") {
+    if let Ok(banner) = Banner::new("> SPARROW DB") {
         let banner = banner
             .color_mode(ColorMode::TrueColor)
             .gradient(Gradient::vertical(Palette::from_hex(&[
@@ -297,11 +297,11 @@ fn display_welcome(update_available: Option<String>) {
     if use_color {
         println!(
             "  {} {}\n",
-            "Helix DB CLI".bold(),
+            "SparrowDB CLI".bold(),
             format!("v{}", version).dimmed()
         );
     } else {
-        println!("  Helix DB CLI v{}\n", version);
+        println!("  SparrowDB CLI v{}\n", version);
     }
 
     // Update notification (after banner and version)
@@ -314,11 +314,11 @@ fn display_welcome(update_available: Option<String>) {
             );
             println!(
                 "  │ Run '{}' to upgrade\n",
-                "helix update".truecolor(255, 165, 54).bold()
+                "sparrow update".truecolor(255, 165, 54).bold()
             );
         } else {
             println!("  | Update available: v{} ➜ v{}", version, latest_version);
-            println!("  | Run 'helix update' to upgrade\n");
+            println!("  | Run 'sparrow update' to upgrade\n");
         }
     }
 
@@ -332,14 +332,14 @@ fn display_welcome(update_available: Option<String>) {
         }
     );
     println!();
-    print_command("helix init", "Create a new Helix project", use_color);
+    print_command("sparrow init", "Create a new SparrowDB project", use_color);
     print_command(
-        "helix init cloud",
+        "sparrow init cloud",
         "Create a cloud-deployed project",
         use_color,
     );
-    print_command("helix build", "Build your project", use_color);
-    print_command("helix push", "Deploy/start an instance", use_color);
+    print_command("sparrow build", "Build your project", use_color);
+    print_command("sparrow push", "Deploy/start an instance", use_color);
 
     println!();
     println!(
@@ -351,14 +351,14 @@ fn display_welcome(update_available: Option<String>) {
         }
     );
     println!();
-    print_command("helix status", "Show status of all instances", use_color);
-    print_command("helix logs", "View logs for an instance", use_color);
+    print_command("sparrow status", "Show status of all instances", use_color);
+    print_command("sparrow logs", "View logs for an instance", use_color);
     print_command(
-        "helix dashboard start",
-        "Launch the Helix Dashboard",
+        "sparrow dashboard start",
+        "Launch the SparrowDB Dashboard",
         use_color,
     );
-    print_command("helix auth login", "Login to Helix Cloud", use_color);
+    print_command("sparrow auth login", "Login to Helix Cloud", use_color);
 
     println!();
     println!(
@@ -370,9 +370,9 @@ fn display_welcome(update_available: Option<String>) {
         }
     );
     println!();
-    print_command("helix --help", "Show all available commands", use_color);
+    print_command("sparrow --help", "Show all available commands", use_color);
     print_command(
-        "helix <command> --help",
+        "sparrow <command> --help",
         "Show help for a specific command",
         use_color,
     );

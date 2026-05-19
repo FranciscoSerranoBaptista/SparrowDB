@@ -1,5 +1,5 @@
 use crate::config::SparrowConfig;
-use crate::project::{ProjectContext, get_helix_cache_dir};
+use crate::project::{ProjectContext, get_sparrow_cache_dir};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -9,15 +9,15 @@ fn setup_test_project() -> (TempDir, PathBuf) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let project_path = temp_dir.path().to_path_buf();
 
-    // Create helix.toml
+    // Create sparrow.toml
     let config = SparrowConfig::default_config("test-project");
-    let config_path = project_path.join("helix.toml");
+    let config_path = project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     (temp_dir, project_path)
 }
@@ -66,7 +66,7 @@ fn test_find_project_root_fails_without_config() {
     let project_path = temp_dir.path().to_path_buf();
 
     let result = ProjectContext::find_and_load(Some(&project_path));
-    assert!(result.is_err(), "Should fail when no helix.toml exists");
+    assert!(result.is_err(), "Should fail when no sparrow.toml exists");
     let error_msg = result.err().unwrap().to_string();
     assert!(
         error_msg.contains("not found"),
@@ -105,7 +105,7 @@ fn test_project_context_find_and_load() {
 
     let context = result.unwrap();
     assert_eq!(context.root, project_path);
-    assert_eq!(context.helix_dir, project_path.join(".helix"));
+    assert_eq!(context.sparrow_dir, project_path.join(".sparrow"));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn test_project_context_instance_workspace() {
     let context = ProjectContext::find_and_load(Some(&project_path)).unwrap();
 
     let workspace = context.instance_workspace("dev");
-    assert_eq!(workspace, project_path.join(".helix/dev"));
+    assert_eq!(workspace, project_path.join(".sparrow/dev"));
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn test_project_context_volumes_dir() {
     let context = ProjectContext::find_and_load(Some(&project_path)).unwrap();
 
     let volumes_dir = context.volumes_dir();
-    assert_eq!(volumes_dir, project_path.join(".helix/.volumes"));
+    assert_eq!(volumes_dir, project_path.join(".sparrow/.volumes"));
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn test_project_context_instance_volume() {
     let context = ProjectContext::find_and_load(Some(&project_path)).unwrap();
 
     let volume = context.instance_volume("production");
-    assert_eq!(volume, project_path.join(".helix/.volumes/production"));
+    assert_eq!(volume, project_path.join(".sparrow/.volumes/production"));
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn test_project_context_docker_compose_path() {
     let compose_path = context.docker_compose_path("staging");
     assert_eq!(
         compose_path,
-        project_path.join(".helix/staging/docker-compose.yml")
+        project_path.join(".sparrow/staging/docker-compose.yml")
     );
 }
 
@@ -153,7 +153,7 @@ fn test_project_context_dockerfile_path() {
     let context = ProjectContext::find_and_load(Some(&project_path)).unwrap();
 
     let dockerfile_path = context.dockerfile_path("dev");
-    assert_eq!(dockerfile_path, project_path.join(".helix/dev/Dockerfile"));
+    assert_eq!(dockerfile_path, project_path.join(".sparrow/dev/Dockerfile"));
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn test_project_context_container_dir() {
     let container_dir = context.container_dir("dev");
     assert_eq!(
         container_dir,
-        project_path.join(".helix/dev/helix-container")
+        project_path.join(".sparrow/dev/sparrow-container")
     );
 }
 
@@ -212,26 +212,26 @@ fn test_project_context_ensure_instance_dirs_idempotent() {
 }
 
 #[test]
-fn test_get_helix_cache_dir_creates_directory() {
+fn test_get_sparrow_cache_dir_creates_directory() {
     use crate::tests::test_utils::TestContext;
 
     // Use TestContext to isolate the test from other tests
     let ctx = TestContext::new();
 
-    // When HELIX_CACHE_DIR is set (by TestContext), get_helix_cache_dir should use it
-    let result = get_helix_cache_dir();
-    assert!(result.is_ok(), "Should get helix cache directory");
+    // When SPARROW_CACHE_DIR is set (by TestContext), get_sparrow_cache_dir should use it
+    let result = get_sparrow_cache_dir();
+    assert!(result.is_ok(), "Should get sparrow cache directory");
 
     let cache_dir = result.unwrap();
     assert!(
         cache_dir.exists(),
-        "Cache directory should exist after calling get_helix_cache_dir"
+        "Cache directory should exist after calling get_sparrow_cache_dir"
     );
 
-    // With HELIX_CACHE_DIR override, the path should be the cache_dir from TestContext
+    // With SPARROW_CACHE_DIR override, the path should be the cache_dir from TestContext
     assert_eq!(
         cache_dir, ctx.cache_dir,
-        "Cache directory should use HELIX_CACHE_DIR when set"
+        "Cache directory should use SPARROW_CACHE_DIR when set"
     );
 }
 
@@ -243,12 +243,12 @@ fn test_project_context_with_custom_queries_path() {
     // Create config with custom queries path
     let mut config = SparrowConfig::default_config("test-project");
     config.project.queries = PathBuf::from("custom/queries");
-    let config_path = project_path.join("helix.toml");
+    let config_path = project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    fs::create_dir_all(project_path.join(".helix")).expect("Failed to create .helix");
+    fs::create_dir_all(project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     let result = ProjectContext::find_and_load(Some(&project_path));
     assert!(
@@ -303,7 +303,7 @@ fn test_project_context_multiple_instances() {
 #[test]
 fn test_find_project_root_stops_at_filesystem_root() {
     // This test verifies we don't search infinitely
-    // Start from a directory that definitely won't have helix.toml
+    // Start from a directory that definitely won't have sparrow.toml
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let deep_path = temp_dir.path().join("a/b/c/d/e/f/g/h/i/j");
     fs::create_dir_all(&deep_path).expect("Failed to create deep path");
@@ -319,7 +319,7 @@ fn test_find_project_root_stops_at_filesystem_root() {
 fn test_legacy_helix_toml_without_project_id_still_loads() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let project_path = temp_dir.path().to_path_buf();
-    let config_path = project_path.join("helix.toml");
+    let config_path = project_path.join("sparrow.toml");
 
     let legacy_config = r#"
 [project]
@@ -341,7 +341,7 @@ port = 6969
 fn test_project_id_persists_round_trip() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let project_path = temp_dir.path().to_path_buf();
-    let config_path = project_path.join("helix.toml");
+    let config_path = project_path.join("sparrow.toml");
 
     let mut config = SparrowConfig::default_config("persisted-project");
     config.project.id = Some("proj_12345".to_string());

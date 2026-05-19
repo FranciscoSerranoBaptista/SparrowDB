@@ -10,8 +10,8 @@ fn create_test_metrics_sender() -> MetricsSender {
     MetricsSender::new().expect("Failed to create metrics sender")
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_all_instances_success() {
@@ -29,8 +29,8 @@ async fn test_check_all_instances_success() {
     );
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_specific_instance_success() {
@@ -98,7 +98,7 @@ async fn test_check_fails_with_invalid_syntax() {
 }
 
 #[tokio::test]
-async fn test_check_fails_without_helix_toml() {
+async fn test_check_fails_without_sparrow_toml() {
     let ctx = TestContext::new();
     // Don't set up any project - leave directory empty
 
@@ -108,23 +108,23 @@ async fn test_check_fails_without_helix_toml() {
     let result = run(None, &metrics_sender).await;
     assert!(
         result.is_err(),
-        "Check should fail without helix.toml in project"
+        "Check should fail without sparrow.toml in project"
     );
     let error_msg = result.err().unwrap().to_string();
     assert!(
-        error_msg.contains("not found") || error_msg.contains("helix.toml"),
-        "Error should mention missing helix.toml"
+        error_msg.contains("not found") || error_msg.contains("sparrow.toml"),
+        "Error should mention missing sparrow.toml"
     );
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_with_multiple_instances() {
     let ctx = TestContext::new();
 
-    // Create helix.toml with multiple instances
+    // Create sparrow.toml with multiple instances
     let mut config = SparrowConfig::default_config("test-project");
     config.local.insert(
         "staging".to_string(),
@@ -144,13 +144,13 @@ async fn test_check_with_multiple_instances() {
             db_config: DbConfig::default(),
         },
     );
-    let config_path = ctx.project_path.join("helix.toml");
+    let config_path = ctx.project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     // Create valid queries and schema
     let queries_dir = ctx.project_path.join("db");
@@ -179,8 +179,8 @@ E::Follows {
     );
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_validates_each_instance_individually() {
@@ -199,15 +199,15 @@ async fn test_check_validates_each_instance_individually() {
 async fn test_check_with_empty_queries_directory() {
     let ctx = TestContext::new();
 
-    // Create helix.toml
+    // Create sparrow.toml
     let config = SparrowConfig::default_config("test-project");
-    let config_path = ctx.project_path.join("helix.toml");
+    let config_path = ctx.project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     // Create queries directory but leave it empty
     let queries_dir = ctx.project_path.join("db");
@@ -223,8 +223,8 @@ async fn test_check_with_empty_queries_directory() {
     );
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_with_schema_only() {
@@ -242,22 +242,22 @@ async fn test_check_with_schema_only() {
     );
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_with_multiple_hx_files() {
     let ctx = TestContext::new();
 
-    // Create helix.toml
+    // Create sparrow.toml
     let config = SparrowConfig::default_config("test-project");
-    let config_path = ctx.project_path.join("helix.toml");
+    let config_path = ctx.project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     // Create queries directory
     let queries_dir = ctx.project_path.join("db");
@@ -304,23 +304,23 @@ QUERY GetUser(id: ID) =>
     );
 }
 
-/// This test requires cloning the helix repo which is slow and requires network.
-/// Run with: cargo test --package helix-cli -- --ignored --test-threads=1
+/// This test requires cloning the sparrow repo which is slow and requires network.
+/// Run with: cargo test --package sparrow-cli -- --ignored --test-threads=1
 #[tokio::test]
 #[ignore]
 async fn test_check_with_custom_queries_path() {
     let ctx = TestContext::new();
 
-    // Create helix.toml with custom queries path
+    // Create sparrow.toml with custom queries path
     let mut config = SparrowConfig::default_config("test-project");
     config.project.queries = PathBuf::from("custom/helix/queries");
-    let config_path = ctx.project_path.join("helix.toml");
+    let config_path = ctx.project_path.join("sparrow.toml");
     config
         .save_to_file(&config_path)
         .expect("Failed to save config");
 
-    // Create .helix directory
-    fs::create_dir_all(ctx.project_path.join(".helix")).expect("Failed to create .helix");
+    // Create .sparrow directory
+    fs::create_dir_all(ctx.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
     // Create custom queries directory
     let queries_dir = ctx.project_path.join("custom/helix/queries");

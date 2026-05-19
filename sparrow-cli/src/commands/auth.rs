@@ -25,7 +25,7 @@ async fn login() -> Result<()> {
     output::info("Logging into Helix Cloud");
 
     let home = dirs::home_dir().ok_or_eyre("Cannot find home directory")?;
-    let config_path = home.join(".helix");
+    let config_path = home.join(".sparrow");
     let cred_path = config_path.join("credentials");
 
     if !config_path.exists() {
@@ -57,7 +57,7 @@ async fn login() -> Result<()> {
     save_metrics_config(&metrics)?;
 
     output::success("Logged in successfully");
-    output::info("Your credentials are stored in ~/.helix/credentials");
+    output::info("Your credentials are stored in ~/.sparrow/credentials");
 
     Ok(())
 }
@@ -67,7 +67,7 @@ async fn logout() -> Result<()> {
 
     // Remove credentials file
     let home = dirs::home_dir().ok_or_eyre("Cannot find home directory")?;
-    let credentials_path = home.join(".helix").join("credentials");
+    let credentials_path = home.join(".sparrow").join("credentials");
 
     if credentials_path.exists() {
         fs::remove_file(&credentials_path)?;
@@ -117,7 +117,7 @@ async fn create_key(cluster: &str) -> Result<()> {
 
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(eyre!(
-                "Authentication failed. Run 'helix auth login' to re-authenticate."
+                "Authentication failed. Run 'sparrow auth login' to re-authenticate."
             ));
         }
 
@@ -136,7 +136,7 @@ async fn create_key(cluster: &str) -> Result<()> {
     println!("Cluster: {}", cluster.bold());
     println!("New API key (shown once): {}", body.key.bold());
 
-    output::info("Update HELIX_API_KEY in your environment before running queries.");
+    output::info("Update SPARROW_API_KEY in your environment before running queries.");
 
     Ok(())
 }
@@ -216,7 +216,7 @@ impl Credentials {
 /// Returns credentials if authenticated (or after successful login).
 pub async fn require_auth() -> Result<Credentials> {
     let home = dirs::home_dir().ok_or_eyre("Cannot find home directory")?;
-    let credentials_path = home.join(".helix").join("credentials");
+    let credentials_path = home.join(".sparrow").join("credentials");
 
     // Check if we have valid credentials
     if let Some(credentials) = Credentials::try_read_from_file(&credentials_path)
@@ -229,14 +229,14 @@ pub async fn require_auth() -> Result<Credentials> {
     output::warning("Not authenticated with Helix Cloud");
 
     if !crate::prompts::is_interactive() {
-        return Err(eyre!("Run 'helix auth login' first."));
+        return Err(eyre!("Run 'sparrow auth login' first."));
     }
 
     let should_login = crate::prompts::confirm("Would you like to login now?")?;
 
     if !should_login {
         return Err(eyre!(
-            "Authentication required. Run 'helix auth login' to authenticate."
+            "Authentication required. Run 'sparrow auth login' to authenticate."
         ));
     }
 

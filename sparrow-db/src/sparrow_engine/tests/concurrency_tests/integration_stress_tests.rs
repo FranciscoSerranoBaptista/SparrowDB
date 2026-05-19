@@ -1,10 +1,10 @@
 use bumpalo::Bump;
 use serial_test::serial;
 use std::sync::atomic::{AtomicUsize, Ordering};
-/// Integration Stress Tests for HelixDB
+/// Integration Stress Tests for SparrowDB
 ///
 /// This test suite performs comprehensive stress testing across all major components
-/// of the HelixDB system under high concurrent load. These tests validate that:
+/// of the SparrowDB system under high concurrent load. These tests validate that:
 ///
 /// 1. **Cross-Component Integration**: Multiple subsystems work correctly together
 /// 2. **High Load Handling**: System remains stable under sustained heavy load

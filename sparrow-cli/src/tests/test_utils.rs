@@ -1,4 +1,4 @@
-//! Test utilities for helix-cli tests
+//! Test utilities for sparrow-cli tests
 //!
 //! This module provides test infrastructure for running tests in isolation
 //! without interfering with the user's environment or other parallel tests.
@@ -10,10 +10,10 @@ use tempfile::TempDir;
 ///
 /// TestContext creates:
 /// - A temporary project directory
-/// - A temporary cache directory (set via HELIX_CACHE_DIR env var)
-/// - A temporary helix home directory (set via HELIX_HOME env var)
+/// - A temporary cache directory (set via SPARROW_CACHE_DIR env var)
+/// - A temporary sparrow home directory (set via SPARROW_HOME env var)
 ///
-/// The HELIX_CACHE_DIR and HELIX_HOME environment variables are automatically
+/// The SPARROW_CACHE_DIR and SPARROW_HOME environment variables are automatically
 /// set when the context is created and restored when it is dropped.
 pub struct TestContext {
     /// The temporary directory containing everything
@@ -22,11 +22,11 @@ pub struct TestContext {
     pub project_path: PathBuf,
     /// The cache directory within the temp directory
     pub cache_dir: PathBuf,
-    /// The helix home directory within the temp directory
-    pub helix_home: PathBuf,
-    /// Guard to restore the HELIX_CACHE_DIR env var on drop
+    /// The sparrow home directory within the temp directory
+    pub sparrow_home: PathBuf,
+    /// Guard to restore the SPARROW_CACHE_DIR env var on drop
     _cache_env_guard: EnvGuard,
-    /// Guard to restore the HELIX_HOME env var on drop
+    /// Guard to restore the SPARROW_HOME env var on drop
     _home_env_guard: EnvGuard,
 }
 
@@ -40,7 +40,7 @@ impl Drop for EnvGuard {
     fn drop(&mut self) {
         // SAFETY: We're restoring the environment variable to its previous state.
         // Tests using TestContext should not run in parallel with tests that
-        // depend on HELIX_CACHE_DIR, but in practice each test gets its own
+        // depend on SPARROW_CACHE_DIR, but in practice each test gets its own
         // isolated directory so this is safe.
         unsafe {
             match &self.old_value {
@@ -56,66 +56,66 @@ impl TestContext {
     ///
     /// This will:
     /// 1. Create a temporary directory
-    /// 2. Create project, cache, and helix home subdirectories
-    /// 3. Set the HELIX_CACHE_DIR environment variable to the cache directory
-    /// 4. Set the HELIX_HOME environment variable to the helix home directory
+    /// 2. Create project, cache, and sparrow home subdirectories
+    /// 3. Set the SPARROW_CACHE_DIR environment variable to the cache directory
+    /// 4. Set the SPARROW_HOME environment variable to the sparrow home directory
     pub fn new() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let project_path = temp_dir.path().join("project");
         let cache_dir = temp_dir.path().join("cache");
-        let helix_home = temp_dir.path().join(".helix");
+        let sparrow_home = temp_dir.path().join(".sparrow");
 
         std::fs::create_dir_all(&project_path).expect("Failed to create project dir");
         std::fs::create_dir_all(&cache_dir).expect("Failed to create cache dir");
-        std::fs::create_dir_all(&helix_home).expect("Failed to create helix home dir");
+        std::fs::create_dir_all(&sparrow_home).expect("Failed to create sparrow home dir");
 
         // Save old values and set new ones
-        let old_cache_value = std::env::var("HELIX_CACHE_DIR").ok();
-        let old_home_value = std::env::var("HELIX_HOME").ok();
+        let old_cache_value = std::env::var("SPARROW_CACHE_DIR").ok();
+        let old_home_value = std::env::var("SPARROW_HOME").ok();
         // SAFETY: We're setting environment variables for test isolation.
         // Each test creates its own unique temp directory, so there are no
         // data races on the actual directory contents.
         unsafe {
-            std::env::set_var("HELIX_CACHE_DIR", &cache_dir);
-            std::env::set_var("HELIX_HOME", &helix_home);
+            std::env::set_var("SPARROW_CACHE_DIR", &cache_dir);
+            std::env::set_var("SPARROW_HOME", &sparrow_home);
         }
 
         Self {
             _temp_dir: temp_dir,
             project_path,
             cache_dir,
-            helix_home,
+            sparrow_home,
             _cache_env_guard: EnvGuard {
-                key: "HELIX_CACHE_DIR",
+                key: "SPARROW_CACHE_DIR",
                 old_value: old_cache_value,
             },
             _home_env_guard: EnvGuard {
-                key: "HELIX_HOME",
+                key: "SPARROW_HOME",
                 old_value: old_home_value,
             },
         }
     }
 
-    /// Create a basic helix project structure with valid schema and queries.
+    /// Create a basic sparrow project structure with valid schema and queries.
     ///
     /// This creates:
-    /// - helix.toml configuration file
-    /// - .helix directory
+    /// - sparrow.toml configuration file
+    /// - .sparrow directory
     /// - db/schema.hx with sample node and edge definitions
     /// - db/queries.hx with sample queries
     pub fn setup_valid_project(&self) {
         use crate::config::SparrowConfig;
         use std::fs;
 
-        // Create helix.toml
+        // Create sparrow.toml
         let config = SparrowConfig::default_config("test-project");
-        let config_path = self.project_path.join("helix.toml");
+        let config_path = self.project_path.join("sparrow.toml");
         config
             .save_to_file(&config_path)
             .expect("Failed to save config");
 
-        // Create .helix directory
-        fs::create_dir_all(self.project_path.join(".helix")).expect("Failed to create .helix");
+        // Create .sparrow directory
+        fs::create_dir_all(self.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
         // Create queries directory
         let queries_dir = self.project_path.join("db");
@@ -162,20 +162,20 @@ QUERY GetUserPosts(user_id: ID) =>
             .expect("Failed to write queries.hx");
     }
 
-    /// Create a helix project with only schema (no queries).
+    /// Create a sparrow project with only schema (no queries).
     pub fn setup_schema_only_project(&self) {
         use crate::config::SparrowConfig;
         use std::fs;
 
-        // Create helix.toml
+        // Create sparrow.toml
         let config = SparrowConfig::default_config("test-project");
-        let config_path = self.project_path.join("helix.toml");
+        let config_path = self.project_path.join("sparrow.toml");
         config
             .save_to_file(&config_path)
             .expect("Failed to save config");
 
-        // Create .helix directory
-        fs::create_dir_all(self.project_path.join(".helix")).expect("Failed to create .helix");
+        // Create .sparrow directory
+        fs::create_dir_all(self.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
         // Create queries directory with only schema
         let queries_dir = self.project_path.join("db");
@@ -196,20 +196,20 @@ E::Follows {
             .expect("Failed to write schema.hx");
     }
 
-    /// Create a helix project without schema definitions (queries only, should fail validation).
+    /// Create a sparrow project without schema definitions (queries only, should fail validation).
     pub fn setup_project_without_schema(&self) {
         use crate::config::SparrowConfig;
         use std::fs;
 
-        // Create helix.toml
+        // Create sparrow.toml
         let config = SparrowConfig::default_config("test-project");
-        let config_path = self.project_path.join("helix.toml");
+        let config_path = self.project_path.join("sparrow.toml");
         config
             .save_to_file(&config_path)
             .expect("Failed to save config");
 
-        // Create .helix directory
-        fs::create_dir_all(self.project_path.join(".helix")).expect("Failed to create .helix");
+        // Create .sparrow directory
+        fs::create_dir_all(self.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
         // Create queries directory with only queries (no schema)
         let queries_dir = self.project_path.join("db");
@@ -224,20 +224,20 @@ QUERY GetUser(user_id: ID) =>
             .expect("Failed to write queries.hx");
     }
 
-    /// Create a helix project with invalid syntax in queries.
+    /// Create a sparrow project with invalid syntax in queries.
     pub fn setup_project_with_invalid_syntax(&self) {
         use crate::config::SparrowConfig;
         use std::fs;
 
-        // Create helix.toml
+        // Create sparrow.toml
         let config = SparrowConfig::default_config("test-project");
-        let config_path = self.project_path.join("helix.toml");
+        let config_path = self.project_path.join("sparrow.toml");
         config
             .save_to_file(&config_path)
             .expect("Failed to save config");
 
-        // Create .helix directory
-        fs::create_dir_all(self.project_path.join(".helix")).expect("Failed to create .helix");
+        // Create .sparrow directory
+        fs::create_dir_all(self.project_path.join(".sparrow")).expect("Failed to create .sparrow");
 
         // Create queries directory
         let queries_dir = self.project_path.join("db");
@@ -285,13 +285,13 @@ mod tests {
     fn test_context_sets_env_var() {
         let ctx = TestContext::new();
 
-        let env_value = std::env::var("HELIX_CACHE_DIR").expect("HELIX_CACHE_DIR should be set");
+        let env_value = std::env::var("SPARROW_CACHE_DIR").expect("SPARROW_CACHE_DIR should be set");
         assert_eq!(PathBuf::from(env_value), ctx.cache_dir);
     }
 
     // NOTE: test_context_restores_env_var_on_drop is removed because it
     // cannot run reliably in parallel with other tests that also set
-    // HELIX_CACHE_DIR. The EnvGuard functionality is tested implicitly
+    // SPARROW_CACHE_DIR. The EnvGuard functionality is tested implicitly
     // through the other tests.
 
     #[test]
@@ -299,8 +299,8 @@ mod tests {
         let ctx = TestContext::new();
         ctx.setup_valid_project();
 
-        assert!(ctx.project_path.join("helix.toml").exists());
-        assert!(ctx.project_path.join(".helix").exists());
+        assert!(ctx.project_path.join("sparrow.toml").exists());
+        assert!(ctx.project_path.join(".sparrow").exists());
         assert!(ctx.project_path.join("db/schema.hx").exists());
         assert!(ctx.project_path.join("db/queries.hx").exists());
     }
