@@ -1,4 +1,4 @@
-use crate::commands::data::{clone_impl, copy_dir_all, resolve_db_dir, snapshot_impl};
+use crate::commands::data::{clone_impl, copy_dir_all, resolve_db_dir, restore_impl, snapshot_impl};
 use std::fs;
 use tempfile::tempdir;
 
@@ -180,4 +180,62 @@ fn test_clone_errors_if_dest_is_non_empty() {
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("not empty"));
+}
+
+#[test]
+fn test_restore_copies_backup_to_empty_dest() {
+    let backup = tempdir().unwrap();
+    let dest = tempdir().unwrap();
+    fs::write(backup.path().join("data.mdb"), b"restored data").unwrap();
+
+    restore_impl(backup.path(), dest.path(), false).unwrap();
+
+    assert_eq!(
+        fs::read(dest.path().join("data.mdb")).unwrap(),
+        b"restored data"
+    );
+}
+
+#[test]
+fn test_restore_errors_on_non_empty_dest_without_force() {
+    let backup = tempdir().unwrap();
+    let dest = tempdir().unwrap();
+    fs::write(backup.path().join("data.mdb"), b"new data").unwrap();
+    fs::write(dest.path().join("data.mdb"), b"existing data").unwrap();
+
+    let result = restore_impl(backup.path(), dest.path(), false);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("--force"));
+}
+
+#[test]
+fn test_restore_overwrites_with_force() {
+    let backup = tempdir().unwrap();
+    let dest = tempdir().unwrap();
+    fs::write(backup.path().join("data.mdb"), b"new data").unwrap();
+    fs::write(dest.path().join("data.mdb"), b"old data").unwrap();
+    fs::write(dest.path().join("stale.txt"), b"stale").unwrap();
+
+    restore_impl(backup.path(), dest.path(), true).unwrap();
+
+    assert_eq!(fs::read(dest.path().join("data.mdb")).unwrap(), b"new data");
+    assert!(!dest.path().join("stale.txt").exists());
+}
+
+#[test]
+fn test_restore_preserves_nested_structure() {
+    let backup = tempdir().unwrap();
+    let dest = tempdir().unwrap();
+    fs::create_dir(backup.path().join("sub")).unwrap();
+    fs::write(backup.path().join("CURRENT"), b"current").unwrap();
+    fs::write(backup.path().join("sub").join("sst.sst"), b"sst").unwrap();
+
+    restore_impl(backup.path(), dest.path(), false).unwrap();
+
+    assert!(dest.path().join("CURRENT").exists());
+    assert_eq!(
+        fs::read(dest.path().join("sub").join("sst.sst")).unwrap(),
+        b"sst"
+    );
 }

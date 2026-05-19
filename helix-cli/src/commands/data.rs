@@ -106,6 +106,36 @@ pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Restore a HelixDB backup to a destination directory.
+///
+/// - If `dest` is non-empty and `force` is false, returns an error.
+/// - If `force` is true, removes all existing contents of `dest` before copying.
+pub fn restore_impl(backup: &Path, dest: &Path, force: bool) -> Result<()> {
+    if dest.exists() {
+        let is_empty = fs::read_dir(dest)?.next().is_none();
+        if !is_empty {
+            if !force {
+                return Err(eyre!(
+                    "Destination {} already contains data. Use --force to overwrite.",
+                    dest.display()
+                ));
+            }
+            // Remove existing contents before restoring
+            for entry in fs::read_dir(dest)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    fs::remove_dir_all(&path)?;
+                } else {
+                    fs::remove_file(&path)?;
+                }
+            }
+        }
+    }
+    copy_dir_all(backup, dest)?;
+    Ok(())
+}
+
 /// Copy an entire HelixDB database directory to a new location.
 ///
 /// Refuses to overwrite a non-empty destination.
@@ -178,8 +208,47 @@ pub async fn run(action: DataAction) -> Result<()> {
 
             Ok(())
         }
-        _ => {
-            todo!("implemented in later tasks")
+        DataAction::Restore { backup, dest, force } => {
+            let backup_path = PathBuf::from(&backup);
+
+            if !backup_path.exists() {
+                return Err(eyre!("Backup path {} does not exist.", backup_path.display()));
+            }
+
+            // Resolve destination: if it's a project instance name with existing volume, use that
+            let project = ProjectContext::find_and_load(None).ok();
+            let dest_path = if let Some(proj) = project.as_ref() {
+                let candidate = proj.instance_volume(&dest).join("user");
+                if candidate.exists() {
+                    candidate
+                } else {
+                    PathBuf::from(&dest)
+                }
+            } else {
+                PathBuf::from(&dest)
+            };
+
+            crate::output::info(
+                "Warning: ensure the destination instance is stopped before restoring.",
+            );
+
+            let op = Operation::new("Restoring", &dest);
+            let mut step = Step::with_messages("Restoring database", "Database restored");
+            step.start();
+
+            restore_impl(&backup_path, &dest_path, force)?;
+
+            step.done();
+            op.success();
+
+            if crate::output::Verbosity::current().show_normal() {
+                Operation::print_details(&[
+                    ("Backup",      &backup_path.display().to_string()),
+                    ("Destination", &dest_path.display().to_string()),
+                ]);
+            }
+
+            Ok(())
         }
     }
 }
