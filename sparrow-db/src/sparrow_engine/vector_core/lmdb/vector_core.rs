@@ -562,6 +562,177 @@ impl VectorCore {
     }
 }
 
+#[cfg(test)]
+mod prune_tests {
+    use super::*;
+    use bumpalo::Bump;
+    use heed3::EnvOpenOptions;
+
+    fn setup_env() -> (heed3::Env, tempfile::TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path();
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(64 * 1024 * 1024)
+                .max_dbs(16)
+                .open(path)
+                .unwrap()
+        };
+        (env, temp_dir)
+    }
+
+    /// Write only the raw vector data that `get_raw_vector_data` needs:
+    /// vectors_db key = [b"v:", id(16 BE), 0usize(8 BE)], value = f64 bytes
+    fn write_vector_data(
+        vc: &VectorCore,
+        txn: &mut RwTxn,
+        id: u128,
+        data: &[f64],
+    ) {
+        let key = VectorCore::vector_key(id, 0);
+        let bytes: &[u8] = bytemuck::cast_slice(data);
+        vc.vectors_db.put(txn, &key, bytes).unwrap();
+    }
+
+    /// Write a directed edge: source_id -> sink_id at the given level.
+    fn write_edge(vc: &VectorCore, txn: &mut RwTxn, source: u128, sink: u128, level: usize) {
+        let key = VectorCore::out_edges_key(source, level, Some(sink));
+        vc.edges_db.put(txn, &key, &()).unwrap();
+    }
+
+    /// Count outgoing edges from `node_id` at `level`.
+    fn count_edges(vc: &VectorCore, txn: &RoTxn, node_id: u128, level: usize) -> usize {
+        let prefix = VectorCore::out_edges_key(node_id, level, None);
+        vc.edges_db
+            .prefix_iter(txn, &prefix)
+            .unwrap()
+            .count()
+    }
+
+    /// Fabricate a deterministic u128 from an index.
+    fn fake_id(i: u64) -> u128 {
+        // Use a non-zero base so IDs are spread out and don't collide with 0.
+        0x0123_4567_89ab_cdef_0000_0000_0000_0000u128 | (i as u128)
+    }
+
+    #[test]
+    fn test_prune_if_over_degree_caps_hub_edges() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+
+        // Use small m so m_max_0 = 6 for easy over-saturation.
+        let config = HNSWConfig::new(Some(3), Some(40), Some(40));
+        let vc = VectorCore::new(&env, &mut txn, config).unwrap();
+
+        let m_max_0 = vc.config.m_max_0; // = 6
+        let over_count = m_max_0 + 4;    // 10 satellites — 4 more than the limit
+
+        // IDs
+        let hub_id = fake_id(0);
+        let hub_data = vec![0.0f64, 0.0, 0.0, 0.0];
+
+        // Write hub's raw vector data.
+        write_vector_data(&vc, &mut txn, hub_id, &hub_data);
+
+        // Write each satellite's raw vector data and one forward edge hub -> sat.
+        for i in 1..=(over_count as u64) {
+            let sat_id = fake_id(i);
+            let d = 0.001 * i as f64;
+            write_vector_data(&vc, &mut txn, sat_id, &[d, d, d, d]);
+            write_edge(&vc, &mut txn, hub_id, sat_id, 0);
+        }
+
+        // Verify we deliberately seeded more edges than the limit.
+        let before = count_edges(&vc, &txn, hub_id, 0);
+        assert_eq!(before, over_count, "pre-condition: hub must start over-degree");
+
+        // Build a minimal HVector for hub_id so prune_if_over_degree can compute distances.
+        let arena = Bump::new();
+        let hub_data_arena = arena.alloc_slice_copy(&hub_data);
+        let hub_vec = HVector::from_raw_vector_data(&arena, bytemuck::cast_slice(hub_data_arena), "test", hub_id).unwrap();
+
+        // Call the private method directly (we are in the same module).
+        vc.prune_if_over_degree(&mut txn, hub_id, &hub_vec, 0, m_max_0, &arena)
+            .unwrap();
+
+        let after = count_edges(&vc, &txn, hub_id, 0);
+        assert!(
+            after <= m_max_0,
+            "after prune: hub has {after} edges but limit is {m_max_0}"
+        );
+        // Sanity: some edges must have been removed.
+        assert!(
+            after < before,
+            "prune must have removed at least one edge (before={before}, after={after})"
+        );
+
+        txn.commit().unwrap();
+    }
+
+    /// This test validates the call-site: it pre-seeds a satellite with `m_max_0`
+    /// existing neighbours in `edges_db`, then calls `set_neighbours` on the hub with
+    /// that satellite listed as a neighbour.  `set_neighbours` writes one more back-link
+    /// (hub -> satellite), pushing the satellite over the limit, which must trigger
+    /// `prune_if_over_degree` to bring it back down to `m_max_0`.
+    ///
+    /// If the `prune_if_over_degree` call is removed from `set_neighbours` this test
+    /// will fail because the satellite's edge count will exceed `m_max_0`.
+    #[test]
+    fn test_set_neighbours_triggers_prune_via_back_link() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+
+        // m=5, so m_max_0=10.  We'll use m=3 (m_max_0=6) for a compact test.
+        let config = HNSWConfig::new(Some(3), Some(40), Some(40));
+        let vc = VectorCore::new(&env, &mut txn, config).unwrap();
+
+        let m_max_0 = vc.config.m_max_0; // = 6
+        let label = "test";
+
+        // IDs
+        let hub_id    = fake_id(100);
+        let sat_id    = fake_id(200);
+
+        // Write raw vector data for both.
+        write_vector_data(&vc, &mut txn, hub_id, &[0.0, 0.0, 0.0, 0.0]);
+        write_vector_data(&vc, &mut txn, sat_id, &[0.001, 0.001, 0.001, 0.001]);
+
+        // Write m_max_0 existing outgoing edges for the satellite so it is already
+        // at the degree limit before set_neighbours adds one more back-link.
+        for i in 1..=(m_max_0 as u64) {
+            let bystander_id = fake_id(1000 + i);
+            write_vector_data(&vc, &mut txn, bystander_id, &[0.1 * i as f64; 4]);
+            write_edge(&vc, &mut txn, sat_id, bystander_id, 0);
+        }
+
+        let before_sat = count_edges(&vc, &txn, sat_id, 0);
+        assert_eq!(before_sat, m_max_0, "satellite must start at exactly the degree limit");
+
+        // Build a BinaryHeap containing only the satellite, representing the
+        // neighbours we want to assign to the hub at level 0.
+        let arena = Bump::new();
+        let sat_data_arena = arena.alloc_slice_copy(&[0.001f64, 0.001, 0.001, 0.001]);
+        let mut sat_vec = HVector::from_raw_vector_data(&arena, bytemuck::cast_slice(sat_data_arena), label, sat_id).unwrap();
+        sat_vec.set_distance(0.001);
+
+        let mut heap = super::super::binary_heap::BinaryHeap::new(&arena);
+        heap.push(sat_vec);
+
+        // Call set_neighbours on hub with the satellite as its only neighbour.
+        // Internally this writes edge hub->sat AND sat->hub (back-link), pushing
+        // sat's degree to m_max_0+1.  prune_if_over_degree should trim it back.
+        vc.set_neighbours(&mut txn, hub_id, &heap, 0, &arena).unwrap();
+
+        let after_sat = count_edges(&vc, &txn, sat_id, 0);
+        assert!(
+            after_sat <= m_max_0,
+            "satellite degree after set_neighbours must be <= m_max_0 ({m_max_0}), got {after_sat}"
+        );
+
+        txn.commit().unwrap();
+    }
+}
+
 impl HNSW for VectorCore {
     fn search<'db, 'arena, 'txn, F>(
         &self,
