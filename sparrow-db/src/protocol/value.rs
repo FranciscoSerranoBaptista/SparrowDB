@@ -26,6 +26,7 @@ pub enum Value {
     I16(i16),
     I32(i32),
     I64(i64),
+    I128(i128),
     U8(u8),
     U16(u16),
     U32(u32),
@@ -50,6 +51,7 @@ impl Value {
             Value::I16(_) => 4,
             Value::I32(_) => 5,
             Value::I64(_) => 6,
+            Value::I128(_) => 18,
             Value::U8(_) => 7,
             Value::U16(_) => 8,
             Value::U32(_) => 9,
@@ -73,6 +75,7 @@ impl Value {
             Value::I16(i) => i.to_string(),
             Value::I32(i) => i.to_string(),
             Value::I64(i) => i.to_string(),
+            Value::I128(i) => i.to_string(),
             Value::U8(u) => u.to_string(),
             Value::U16(u) => u.to_string(),
             Value::U32(u) => u.to_string(),
@@ -104,6 +107,7 @@ impl Value {
             Value::I16(i) => Cow::Owned(i.to_string()),
             Value::I32(i) => Cow::Owned(i.to_string()),
             Value::I64(i) => Cow::Owned(i.to_string()),
+            Value::I128(i) => Cow::Owned(i.to_string()),
             Value::U8(u) => Cow::Owned(u.to_string()),
             Value::U16(u) => Cow::Owned(u.to_string()),
             Value::U32(u) => Cow::Owned(u.to_string()),
@@ -125,6 +129,7 @@ impl Value {
             Value::I16(_) => "I16",
             Value::I32(_) => "I32",
             Value::I64(_) => "I64",
+            Value::I128(_) => "I128",
             Value::U8(_) => "U8",
             Value::U16(_) => "U16",
             Value::U32(_) => "U32",
@@ -180,6 +185,7 @@ impl Ord for Value {
                 Value::I16(v) => Some(*v as i128),
                 Value::I32(v) => Some(*v as i128),
                 Value::I64(v) => Some(*v as i128),
+                Value::I128(v) => Some(*v),
                 Value::U8(v) => Some(*v as i128),
                 Value::U16(v) => Some(*v as i128),
                 Value::U32(v) => Some(*v as i128),
@@ -201,6 +207,7 @@ impl Ord for Value {
                     | Value::I16(_)
                     | Value::I32(_)
                     | Value::I64(_)
+                    | Value::I128(_)
                     | Value::U8(_)
                     | Value::U16(_)
                     | Value::U32(_)
@@ -267,6 +274,7 @@ impl PartialEq<Value> for Value {
                 Value::I16(v) => Some(*v as f64),
                 Value::I32(v) => Some(*v as f64),
                 Value::I64(v) => Some(*v as f64),
+                Value::I128(v) => Some(*v as f64),
                 Value::U8(v) => Some(*v as f64),
                 Value::U16(v) => Some(*v as f64),
                 Value::U32(v) => Some(*v as f64),
@@ -285,6 +293,7 @@ impl PartialEq<Value> for Value {
                     | Value::I16(_)
                     | Value::I32(_)
                     | Value::I64(_)
+                    | Value::I128(_)
                     | Value::U8(_)
                     | Value::U16(_)
                     | Value::U32(_)
@@ -336,6 +345,7 @@ impl Value {
             Value::I16(v) => Some(*v as f64),
             Value::I32(v) => Some(*v as f64),
             Value::I64(v) => Some(*v as f64),
+            Value::I128(v) => Some(*v as f64),
             Value::U8(v) => Some(*v as f64),
             Value::U16(v) => Some(*v as f64),
             Value::U32(v) => Some(*v as f64),
@@ -359,6 +369,18 @@ impl Value {
             Value::I16(v) => Some(*v as i64),
             Value::I32(v) => Some(*v as i64),
             Value::I64(v) => Some(*v),
+            Value::I128(v) => Some(*v as i64),
+            _ => None,
+        }
+    }
+
+    fn to_i128(&self) -> Option<i128> {
+        match self {
+            Value::I8(v) => Some(*v as i128),
+            Value::I16(v) => Some(*v as i128),
+            Value::I32(v) => Some(*v as i128),
+            Value::I64(v) => Some(*v as i128),
+            Value::I128(v) => Some(*v),
             _ => None,
         }
     }
@@ -367,7 +389,7 @@ impl Value {
     fn is_signed_int(&self) -> bool {
         matches!(
             self,
-            Value::I8(_) | Value::I16(_) | Value::I32(_) | Value::I64(_)
+            Value::I8(_) | Value::I16(_) | Value::I32(_) | Value::I64(_) | Value::I128(_)
         )
     }
 
@@ -504,30 +526,30 @@ impl std::ops::Add for Value {
                 Value::U128(a.wrapping_add(b_val))
             }
 
-            // Signed + Unsigned → I64 (safe widening that can represent both)
+            // Signed + Unsigned → I128 (safe: i128 can represent all i64 and all u64 values)
             (a, b) if a.is_signed_int() && b.is_unsigned_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = match b {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64, // May overflow for large u64
-                    Value::U128(v) => v as i64, // May overflow for large u128
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = match b {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                Value::I64(a_i64.wrapping_add(b_i64))
+                Value::I128(a_i128.wrapping_add(b_i128))
             }
             (a, b) if a.is_unsigned_int() && b.is_signed_int() => {
-                let a_i64 = match a {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64, // May overflow for large u64
-                    Value::U128(v) => v as i64, // May overflow for large u128
+                let a_i128 = match a {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_add(b_i64))
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_add(b_i128))
             }
 
             // String concatenation
@@ -648,30 +670,30 @@ impl std::ops::Sub for Value {
                 Value::U128(a.wrapping_sub(b_val))
             }
 
-            // Signed - Unsigned → I64
+            // Signed - Unsigned → I128 (safe: i128 can represent all i64 and all u64 values)
             (a, b) if a.is_signed_int() && b.is_unsigned_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = match b {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = match b {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                Value::I64(a_i64.wrapping_sub(b_i64))
+                Value::I128(a_i128.wrapping_sub(b_i128))
             }
             (a, b) if a.is_unsigned_int() && b.is_signed_int() => {
-                let a_i64 = match a {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = match a {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_sub(b_i64))
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_sub(b_i128))
             }
 
             // Invalid combinations
@@ -780,30 +802,30 @@ impl std::ops::Mul for Value {
                 Value::U128(a.wrapping_mul(b_val))
             }
 
-            // Signed * Unsigned → I64
+            // Signed * Unsigned → I128 (safe: i128 can represent all i64 and all u64 values)
             (a, b) if a.is_signed_int() && b.is_unsigned_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = match b {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = match b {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                Value::I64(a_i64.wrapping_mul(b_i64))
+                Value::I128(a_i128.wrapping_mul(b_i128))
             }
             (a, b) if a.is_unsigned_int() && b.is_signed_int() => {
-                let a_i64 = match a {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = match a {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_mul(b_i64))
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_mul(b_i128))
             }
 
             // Invalid combinations
@@ -935,30 +957,30 @@ impl std::ops::Div for Value {
                 Value::U128(a.wrapping_div(b_val))
             }
 
-            // Signed / Unsigned → I64
+            // Signed / Unsigned → I128 (safe: i128 can represent all i64 and all u64 values)
             (a, b) if a.is_signed_int() && b.is_unsigned_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = match b {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = match b {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                Value::I64(a_i64.wrapping_div(b_i64))
+                Value::I128(a_i128.wrapping_div(b_i128))
             }
             (a, b) if a.is_unsigned_int() && b.is_signed_int() => {
-                let a_i64 = match a {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = match a {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_div(b_i64))
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_div(b_i128))
             }
 
             // Invalid combinations
@@ -1097,30 +1119,30 @@ impl std::ops::Rem for Value {
                 Value::U128(a.wrapping_rem(b_val))
             }
 
-            // Signed % Unsigned → I64
+            // Signed % Unsigned → I128 (safe: i128 can represent all i64 and all u64 values)
             (a, b) if a.is_signed_int() && b.is_unsigned_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = match b {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = match b {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                Value::I64(a_i64.wrapping_rem(b_i64))
+                Value::I128(a_i128.wrapping_rem(b_i128))
             }
             (a, b) if a.is_unsigned_int() && b.is_signed_int() => {
-                let a_i64 = match a {
-                    Value::U8(v) => v as i64,
-                    Value::U16(v) => v as i64,
-                    Value::U32(v) => v as i64,
-                    Value::U64(v) => v as i64,
-                    Value::U128(v) => v as i64,
+                let a_i128 = match a {
+                    Value::U8(v) => v as i128,
+                    Value::U16(v) => v as i128,
+                    Value::U32(v) => v as i128,
+                    Value::U64(v) => v as i128,
+                    Value::U128(v) => v as i128,
                     _ => unreachable!(),
                 };
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_rem(b_i64))
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_rem(b_i128))
             }
 
             // Invalid combinations
@@ -1396,6 +1418,7 @@ impl Serialize for Value {
                 Value::I16(i) => i.serialize(serializer),
                 Value::I32(i) => i.serialize(serializer),
                 Value::I64(i) => i.serialize(serializer),
+                Value::I128(i) => i.serialize(serializer),
                 Value::U8(i) => i.serialize(serializer),
                 Value::U16(i) => i.serialize(serializer),
                 Value::U32(i) => i.serialize(serializer),
@@ -1431,6 +1454,7 @@ impl Serialize for Value {
                 Value::I16(i) => serializer.serialize_newtype_variant("Value", 4, "I16", i),
                 Value::I32(i) => serializer.serialize_newtype_variant("Value", 5, "I32", i),
                 Value::I64(i) => serializer.serialize_newtype_variant("Value", 6, "I64", i),
+                Value::I128(i) => serializer.serialize_newtype_variant("Value", 18, "I128", i),
                 Value::U8(i) => serializer.serialize_newtype_variant("Value", 7, "U8", i),
                 Value::U16(i) => serializer.serialize_newtype_variant("Value", 8, "U16", i),
                 Value::U32(i) => serializer.serialize_newtype_variant("Value", 9, "U32", i),
@@ -1644,9 +1668,10 @@ impl<'de> Deserialize<'de> for Value {
                         variant_data.unit_variant()?;
                         Ok(Value::Empty)
                     }
+                    18 => Ok(Value::I128(variant_data.newtype_variant()?)),
                     _ => Err(serde::de::Error::invalid_value(
                         serde::de::Unexpected::Unsigned(variant_idx as u64),
-                        &"variant index 0 through 17",
+                        &"variant index 0 through 18",
                     )),
                 }
             }
@@ -1692,7 +1717,7 @@ impl<'de> Deserialize<'de> for Value {
                 "Value",
                 &[
                     "String", "F32", "F64", "I8", "I16", "I32", "I64", "U8", "U16", "U32", "U64",
-                    "U128", "Date", "Boolean", "Id", "Array", "Object", "Empty",
+                    "U128", "Date", "Boolean", "Id", "Array", "Object", "Empty", "I128",
                 ],
                 ValueVisitor,
             )
@@ -1797,6 +1822,13 @@ impl From<i64> for Value {
     #[inline]
     fn from(i: i64) -> Self {
         Value::I64(i)
+    }
+}
+
+impl From<i128> for Value {
+    #[inline]
+    fn from(i: i128) -> Self {
+        Value::I128(i)
     }
 }
 
@@ -1986,6 +2018,7 @@ impl From<Value> for GenRef<String> {
             Value::I16(i) => GenRef::Std(format!("{i}")),
             Value::I32(i) => GenRef::Std(format!("{i}")),
             Value::I64(i) => GenRef::Std(format!("{i}")),
+            Value::I128(i) => GenRef::Std(format!("{i}")),
             Value::F32(f) => GenRef::Std(format!("{f:?}")), // {:?} forces decimal point
             Value::F64(f) => GenRef::Std(format!("{f:?}")),
             Value::Boolean(b) => GenRef::Std(format!("{b}")),
@@ -3903,5 +3936,28 @@ mod tests {
 
         // Cross-type division by zero
         let _ = Value::I32(42) / Value::F64(0.0);
+    }
+
+    #[test]
+    fn test_value_add_signed_unsigned_no_overflow() {
+        let a = Value::I64(-1_i64);
+        let b = Value::U64(u64::MAX);
+        let result = a + b;
+        match result {
+            Value::I128(v) => assert_eq!(v, 18446744073709551614_i128),
+            Value::U128(v) => assert_eq!(v as i128, 18446744073709551614_i128),
+            other => panic!("unexpected result type: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_value_sub_signed_unsigned_no_overflow() {
+        let a = Value::I64(0_i64);
+        let b = Value::U64(u64::MAX);
+        let result = a - b;
+        match result {
+            Value::I128(v) => assert_eq!(v, -18446744073709551615_i128),
+            other => panic!("unexpected result type: {:?}", other),
+        }
     }
 }

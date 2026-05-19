@@ -388,6 +388,10 @@ impl HBM25Config {
                 self.add_text_term_counts::<true>(term_counts, &i.to_string());
                 Ok(())
             }
+            Value::I128(i) => {
+                self.add_text_term_counts::<true>(term_counts, &i.to_string());
+                Ok(())
+            }
             Value::U8(u) => {
                 self.add_text_term_counts::<true>(term_counts, &u.to_string());
                 Ok(())
