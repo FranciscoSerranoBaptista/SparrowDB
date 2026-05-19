@@ -1,5 +1,6 @@
 use crate::sparrow_engine::{traversal_core::SparrowGraphEngine, types::GraphError};
 use crate::sparrow_gateway::{
+    embedding_providers::{EmbeddingModel, get_embedding_model},
     gateway::CoreSetter,
     mcp::mcp::MCPToolInput,
     router::router::{ContChan, ContMsg, HandlerInput, SparrowRouter},
@@ -82,9 +83,58 @@ impl WorkerPool {
 
     /// Process a request on the Worker Pool
     /// Write operations are routed to a dedicated writer thread to ensure proper LMDB locking
-    pub async fn process(&self, req: Request) -> Result<Response, SparrowError> {
+    pub async fn process(&self, mut req: Request) -> Result<Response, SparrowError> {
         let (ret_tx, ret_rx) = oneshot::channel();
         let req_name = req.name.clone();
+
+        // For search_vector_text: pre-compute the embedding here in the async context
+        // so the sync worker thread never needs to call block_on for an embedding API call,
+        // which would deadlock the Tokio runtime.
+        if req.name == "search_vector_text" {
+            #[derive(serde::Deserialize)]
+            struct QueryBody {
+                data: QueryData,
+            }
+            #[derive(serde::Deserialize)]
+            struct QueryData {
+                query: String,
+            }
+
+            match sonic_rs::from_slice::<QueryBody>(&req.body) {
+                Ok(parsed) => {
+                    match get_embedding_model(None, None, None) {
+                        Ok(model) => {
+                            match model.fetch_embedding_async(&parsed.data.query).await {
+                                Ok(embedding) => {
+                                    req.pre_computed_embedding = Some(embedding);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "[VECTOR_SEARCH] Failed to pre-compute embedding: {:?}",
+                                        e
+                                    );
+                                    return Err(SparrowError::Graph(e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "[VECTOR_SEARCH] Failed to get embedding model: {:?}",
+                                e
+                            );
+                            return Err(SparrowError::Graph(e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "[VECTOR_SEARCH] Failed to parse body for embedding pre-computation: {:?}",
+                        e
+                    );
+                    return Err(SparrowError::Graph(GraphError::from(e)));
+                }
+            }
+        }
 
         // Route to dedicated writer thread or reader worker pool
         let channel = if self.router.is_write_route(&req.name) {
@@ -273,7 +323,7 @@ impl Worker {
 }
 
 fn request_mapper(
-    request: Request,
+    mut request: Request,
     ret_chan: RetChan,
     graph_access: Arc<SparrowGraphEngine>,
     router: &SparrowRouter,
@@ -305,6 +355,7 @@ fn request_mapper(
         }
         RequestType::MCP => {
             if let Some(mcp_handler) = router.mcp_routes.get(&request.name) {
+                let embedding = request.pre_computed_embedding.take();
                 let mut mcp_input = MCPToolInput {
                     request,
                     mcp_backend: Arc::clone(
@@ -320,6 +371,7 @@ fn request_mapper(
                             .expect("MCP connections not found"),
                     ),
                     schema: graph_access.storage.storage_config.schema.clone(),
+                    embedding,
                 };
                 Some(mcp_handler(&mut mcp_input).map_err(Into::into))
             } else {

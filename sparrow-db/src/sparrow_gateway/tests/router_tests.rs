@@ -145,6 +145,7 @@ fn test_handler_invocation_success() {
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         },
         graph: graph.clone(),
     };
@@ -170,6 +171,7 @@ fn test_handler_invocation_error() {
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         },
         graph: graph.clone(),
     };
@@ -194,6 +196,7 @@ fn test_handler_invocation_echo() {
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         },
         graph: graph.clone(),
     };
@@ -225,6 +228,7 @@ fn test_handler_input_creation() {
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         },
         graph: graph.clone(),
     };
@@ -245,6 +249,7 @@ fn test_handler_input_with_body() {
             body: Bytes::from(body_data.clone()),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         },
         graph: graph.clone(),
     };

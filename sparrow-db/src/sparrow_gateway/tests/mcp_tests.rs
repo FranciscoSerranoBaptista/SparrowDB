@@ -178,6 +178,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -185,6 +186,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = collect(&mut input).unwrap();
@@ -329,6 +331,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -336,6 +339,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = out_step(&mut input).unwrap();
@@ -389,6 +393,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -396,6 +401,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = in_step(&mut input).unwrap();
@@ -447,6 +453,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -454,6 +461,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = out_e_step(&mut input).unwrap();
@@ -506,6 +514,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -513,6 +522,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = in_e_step(&mut input).unwrap();
@@ -552,6 +562,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -559,6 +570,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = n_from_type(&mut input).unwrap();
@@ -607,6 +619,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -614,6 +627,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = e_from_type(&mut input).unwrap();
@@ -678,6 +692,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -685,6 +700,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = filter_items(&mut input).unwrap();
@@ -748,6 +764,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -755,6 +772,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = order_by(&mut input).unwrap();
@@ -1259,6 +1277,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1266,6 +1285,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         // Note: search_keyword may return Empty if BM25 index is not initialized
@@ -1297,6 +1317,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1304,6 +1325,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_keyword(&mut input);
@@ -1339,6 +1361,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1346,6 +1369,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_keyword(&mut input);
@@ -1410,6 +1434,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1417,6 +1442,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_vector(&mut input);
@@ -1446,6 +1472,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1453,6 +1480,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_vector(&mut input);
@@ -1489,6 +1517,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1496,6 +1525,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_vector(&mut input);
@@ -1526,6 +1556,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1533,6 +1564,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_vector_text(&mut input);
@@ -1563,6 +1595,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1570,6 +1603,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_vector_text(&mut input);
@@ -1606,6 +1640,7 @@ mod mcp_tests {
             api_key: None,
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let mut input = MCPToolInput {
@@ -1613,6 +1648,7 @@ mod mcp_tests {
             mcp_backend: backend,
             mcp_connections: Arc::clone(&connections),
             schema: None,
+            embedding: None,
         };
 
         let response = search_vector_text(&mut input);
@@ -1666,12 +1702,14 @@ mod mcp_tests {
                 api_key: None,
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
+                pre_computed_embedding: None,
             };
             MCPToolInput {
                 request,
                 mcp_backend: Arc::clone(backend),
                 mcp_connections: Arc::clone(connections),
                 schema: None,
+                embedding: None,
             }
         };
 

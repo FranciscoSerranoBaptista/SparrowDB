@@ -46,6 +46,7 @@ fn create_test_request(name: &str, req_type: RequestType) -> Request {
         body: Bytes::new(),
         in_fmt: Format::Json,
         out_fmt: Format::Json,
+        pre_computed_embedding: None,
     }
 }
 
@@ -589,6 +590,7 @@ async fn test_request_with_body_data() {
         in_fmt: Format::Json,
         out_fmt: Format::Json,
         api_key: None,
+        pre_computed_embedding: None,
     };
 
     let result = pool.process(request).await;
@@ -649,6 +651,7 @@ async fn test_request_format_json() {
         in_fmt: Format::Json,
         out_fmt: Format::Json,
         api_key: None,
+        pre_computed_embedding: None,
     };
 
     let result = pool.process(request).await;
@@ -1144,6 +1147,7 @@ async fn test_request_with_large_body() {
         in_fmt: Format::Json,
         out_fmt: Format::Json,
         api_key: None,
+        pre_computed_embedding: None,
     };
 
     let result = pool.process(request).await;
@@ -1247,6 +1251,7 @@ async fn test_request_type_query_explicit() {
         in_fmt: Format::Json,
         out_fmt: Format::Json,
         api_key: None,
+        pre_computed_embedding: None,
     };
 
     let result = pool.process(request).await;
@@ -1749,6 +1754,7 @@ async fn test_writer_continuation_priority() {
             in_fmt: Format::Json,
             out_fmt: Format::Json,
             api_key: None,
+            pre_computed_embedding: None,
         };
         pool_a.process(request).await
     });
@@ -1767,6 +1773,7 @@ async fn test_writer_continuation_priority() {
             in_fmt: Format::Json,
             out_fmt: Format::Json,
             api_key: None,
+            pre_computed_embedding: None,
         };
         pool_b.process(request).await
     });
@@ -1857,6 +1864,7 @@ async fn test_read_continuation_channel_basic() {
         in_fmt: Format::Json,
         out_fmt: Format::Json,
         api_key: None,
+        pre_computed_embedding: None,
     };
 
     let timeout = std::time::Duration::from_secs(5);
@@ -1938,6 +1946,7 @@ async fn test_read_continuation_channel_concurrent() {
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
                 api_key: None,
+                pre_computed_embedding: None,
             };
             pool_clone.process(request).await
         });
@@ -2026,6 +2035,7 @@ async fn test_parallel_write_requests_no_crash() {
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
                 api_key: None,
+                pre_computed_embedding: None,
             };
             pool_clone.process(request).await
         });
@@ -2127,6 +2137,7 @@ async fn test_parallel_write_requests_with_continuations() {
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
                 api_key: None,
+                pre_computed_embedding: None,
             };
             pool_clone.process(request).await
         });
@@ -2229,6 +2240,7 @@ async fn test_parallel_writes_maintain_order() {
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
                 api_key: None,
+                pre_computed_embedding: None,
             };
             pool_clone.process(request).await
         });
@@ -2326,6 +2338,7 @@ async fn test_write_multiple_continuations_in_sequence() {
         in_fmt: Format::Json,
         out_fmt: Format::Json,
         api_key: None,
+        pre_computed_embedding: None,
     };
 
     let timeout = std::time::Duration::from_secs(5);
@@ -2451,6 +2464,7 @@ async fn test_mixed_read_write_with_continuations() {
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
                 api_key: None,
+                pre_computed_embedding: None,
             };
             pool_clone.process(request).await
         });
@@ -2564,6 +2578,7 @@ async fn test_stress_parallel_writes_with_continuations() {
                 in_fmt: Format::Json,
                 out_fmt: Format::Json,
                 api_key: None,
+                pre_computed_embedding: None,
             };
             pool_clone.process(request).await
         });

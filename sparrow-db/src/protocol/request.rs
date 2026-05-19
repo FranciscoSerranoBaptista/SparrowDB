@@ -22,6 +22,10 @@ pub struct Request {
     pub body: Bytes,
     pub in_fmt: Format,
     pub out_fmt: Format,
+    /// Pre-computed embedding vector, populated by the async dispatch layer
+    /// before handing the request to a sync worker thread. Avoids block_on
+    /// inside worker threads for embedding API calls.
+    pub pre_computed_embedding: Option<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -101,6 +105,7 @@ where
             body,
             in_fmt,
             out_fmt,
+            pre_computed_embedding: None,
         };
 
         Ok(out)
@@ -125,6 +130,7 @@ mod tests {
             body: body.clone(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert_eq!(request.name, "test_query");
@@ -142,6 +148,7 @@ mod tests {
             body: body.clone(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let cloned = request.clone();
@@ -158,6 +165,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let debug_str = format!("{:?}", request);
@@ -219,6 +227,7 @@ mod tests {
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert!(request.body.is_empty());
@@ -236,6 +245,7 @@ mod tests {
             body: body.clone(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert_eq!(request.body.len(), 10_000);
@@ -250,6 +260,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert!(request.name.contains("世界"));
@@ -270,6 +281,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert!(request.api_key.is_some());
@@ -289,6 +301,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let request2 = Request {
@@ -298,6 +311,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert_ne!(request1.api_key.unwrap(), request2.api_key.unwrap());
@@ -312,6 +326,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         assert!(request.api_key.is_none());
@@ -328,6 +343,7 @@ mod tests {
             body: Bytes::from("test"),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
+            pre_computed_embedding: None,
         };
 
         let cloned = request.clone();

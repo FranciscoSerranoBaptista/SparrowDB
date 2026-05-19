@@ -148,6 +148,10 @@ pub struct MCPToolInput {
     pub mcp_backend: Arc<McpBackend>,
     pub mcp_connections: Arc<Mutex<McpConnections>>,
     pub schema: Option<String>,
+    /// Pre-computed embedding vector forwarded from the async dispatch layer.
+    /// Populated for `search_vector_text` requests so that the sync worker
+    /// thread never has to call `block_on` to await an HTTP embedding API.
+    pub embedding: Option<Vec<f64>>,
 }
 
 pub type BasicMCPHandlerFn = for<'a> fn(&'a mut MCPToolInput) -> Result<Response, GraphError>;
@@ -940,7 +944,6 @@ pub struct SearchVectorTextInput {
 #[mcp_handler]
 pub fn search_vector_text(input: &mut MCPToolInput) -> Result<Response, GraphError> {
     use crate::sparrow_engine::traversal_core::ops::{g::G, vectors::search::SearchVAdapter};
-    use crate::sparrow_gateway::embedding_providers::{EmbeddingModel, get_embedding_model};
 
     let req: SearchVectorTextInput = match sonic_rs::from_slice(&input.request.body) {
         Ok(data) => data,
@@ -988,20 +991,22 @@ pub fn search_vector_text(input: &mut MCPToolInput) -> Result<Response, GraphErr
         e
     })?;
 
-    // Get embedding model and convert query text to vector
-    tracing::debug!("[VECTOR_SEARCH] Getting embedding model");
-    let embedding_model = get_embedding_model(None, None, None).map_err(|e| {
-        tracing::error!("[VECTOR_SEARCH] Failed to get embedding model: {:?}", e);
-        e
+    // Consume the pre-computed embedding forwarded by the async dispatch layer.
+    // The embedding must be computed in an async context (WorkerPool::process)
+    // before dispatching to this sync worker to avoid deadlocking the Tokio
+    // runtime with block_on.
+    tracing::debug!("[VECTOR_SEARCH] Using pre-computed embedding");
+    let query_embedding = input.embedding.take().ok_or_else(|| {
+        tracing::error!(
+            "[VECTOR_SEARCH] Pre-computed embedding missing — async dispatch layer must \
+             fetch the embedding before sending to the worker thread"
+        );
+        GraphError::EmbeddingError(
+            "embedding not pre-computed: async handler must call fetch_embedding_async \
+             before dispatching search_vector_text to a worker thread"
+                .into(),
+        )
     })?;
-
-    tracing::debug!("[VECTOR_SEARCH] Fetching embedding for query text");
-    let query_embedding = tokio::runtime::Handle::current()
-        .block_on(embedding_model.fetch_embedding_async(&req.data.query))
-        .map_err(|e| {
-            tracing::error!("[VECTOR_SEARCH] Failed to fetch embedding: {:?}", e);
-            e
-        })?;
     let query_vec_arena = arena.alloc_slice_copy(&query_embedding);
 
     // Perform vector search

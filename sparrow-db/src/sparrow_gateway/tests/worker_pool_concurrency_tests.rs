@@ -61,6 +61,7 @@ fn create_request(name: &str) -> Request {
         body: Bytes::new(),
         in_fmt: Format::Json,
         out_fmt: Format::Json,
+        pre_computed_embedding: None,
     }
 }
 
