@@ -59,6 +59,14 @@ impl HNSWConfig {
     }
 }
 
+pub struct VectorStats {
+    pub total: u64,
+    pub active: u64,
+    pub soft_deleted: u64,
+    pub hnsw_edges: u64,
+    pub entry_point_present: bool,
+}
+
 pub struct VectorCore {
     pub vectors_db: Database<Bytes, Bytes>,
     pub vector_properties_db: Database<U128<BE>, Bytes>,
@@ -452,6 +460,34 @@ impl VectorCore {
 
     pub fn num_inserted_vectors(&self, txn: &RoTxn) -> Result<u64, VectorError> {
         Ok(self.vectors_db.len(txn)?)
+    }
+
+    pub fn stats<'db>(&self, txn: &RoTxn<'db>) -> Result<VectorStats, VectorError> {
+        let mut total: u64 = 0;
+        let mut soft_deleted: u64 = 0;
+
+        let arena = bumpalo::Bump::new();
+        let iter = self.vector_properties_db.iter(txn)?;
+        for result in iter {
+            let (id, bytes) = result?;
+            let props = VectorWithoutData::from_bincode_bytes(&arena, bytes, id)
+                .map_err(|e| VectorError::VectorCoreError(e.to_string()))?;
+            total += 1;
+            if props.deleted {
+                soft_deleted += 1;
+            }
+        }
+
+        let hnsw_edges = self.edges_db.len(txn)? as u64;
+        let entry_point_present = self.vectors_db.get(txn, ENTRY_POINT_KEY)?.is_some();
+
+        Ok(VectorStats {
+            total,
+            active: total.saturating_sub(soft_deleted),
+            soft_deleted,
+            hnsw_edges,
+            entry_point_present,
+        })
     }
 
     #[inline]
@@ -996,5 +1032,73 @@ impl HNSW for VectorCore {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod stats_tests {
+    use super::*;
+    use heed3::EnvOpenOptions;
+
+    fn setup_env() -> (heed3::Env, tempfile::TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path();
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(64 * 1024 * 1024)
+                .max_dbs(16)
+                .open(path)
+                .unwrap()
+        };
+        (env, temp_dir)
+    }
+
+    #[test]
+    fn test_vector_stats_counts_correctly() {
+        let (env, _tmp) = setup_env();
+        let mut wtxn = env.write_txn().unwrap();
+        let config = HNSWConfig::new(None, None, None);
+        let vc = VectorCore::new(&env, &mut wtxn, config).unwrap();
+        let arena = bumpalo::Bump::new();
+
+        let dim = 4;
+        let mut v1_data = vec![0.0f64; dim];
+        v1_data[0] = 1.0;
+        let v1 = vc
+            .insert::<fn(&_, &_) -> bool>(&mut wtxn, "test", &v1_data, None, &arena)
+            .unwrap();
+
+        let mut v2_data = vec![0.0f64; dim];
+        v2_data[1] = 1.0;
+        let _v2 = vc
+            .insert::<fn(&_, &_) -> bool>(&mut wtxn, "test", &v2_data, None, &arena)
+            .unwrap();
+
+        vc.delete(&mut wtxn, v1.id, &arena).unwrap();
+
+        let stats = vc.stats(&wtxn).unwrap();
+        assert_eq!(stats.total, 2);
+        assert_eq!(stats.active, 1);
+        assert_eq!(stats.soft_deleted, 1);
+        assert!(stats.entry_point_present);
+
+        wtxn.commit().unwrap();
+    }
+
+    #[test]
+    fn test_vector_stats_empty() {
+        let (env, _tmp) = setup_env();
+        let mut wtxn = env.write_txn().unwrap();
+        let config = HNSWConfig::new(None, None, None);
+        let vc = VectorCore::new(&env, &mut wtxn, config).unwrap();
+        wtxn.commit().unwrap();
+
+        let rtxn = env.read_txn().unwrap();
+        let stats = vc.stats(&rtxn).unwrap();
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.active, 0);
+        assert_eq!(stats.soft_deleted, 0);
+        assert_eq!(stats.hnsw_edges, 0);
+        assert!(!stats.entry_point_present);
     }
 }

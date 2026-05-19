@@ -6,7 +6,7 @@ pub mod lmdb;
 #[cfg(feature = "lmdb")]
 pub use lmdb::{
     hnsw::HNSW,
-    vector_core::{ENTRY_POINT_KEY, HNSWConfig, VectorCore},
+    vector_core::{ENTRY_POINT_KEY, HNSWConfig, VectorCore, VectorStats},
     vector_distance::{self, DistanceCalc},
 };
 
