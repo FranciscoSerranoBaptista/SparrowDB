@@ -595,6 +595,101 @@ impl VectorCore {
     }
 }
 
+pub struct RebuildStats {
+    pub kept: u64,
+    pub purged_deleted: u64,
+}
+
+impl VectorCore {
+    /// Clears all vector data (vectors, edges, properties) and re-inserts every
+    /// non-deleted vector with its original ID.  Soft-deleted vectors are dropped.
+    pub fn rebuild<'db>(
+        &'db self,
+        txn: &mut RwTxn<'db>,
+        arena: &'db bumpalo::Bump,
+    ) -> Result<RebuildStats, VectorError> {
+        // Phase 1: Collect all non-deleted vectors as owned data.
+        // We own everything (Vec<f64>, String) so the borrow of `txn` ends here.
+        let mut to_reinsert: Vec<(u128, Vec<f64>, String)> = Vec::new();
+        let mut purged: u64 = 0;
+
+        {
+            let iter = self.vector_properties_db.iter(txn)?;
+            for result in iter {
+                let (id_key, bytes) = result?;
+                let id = id_key;
+                let props = VectorWithoutData::from_bincode_bytes(arena, bytes, id)
+                    .map_err(|e| VectorError::VectorCoreError(e.to_string()))?;
+                if props.deleted {
+                    purged += 1;
+                    continue;
+                }
+                let data_key = Self::vector_key(id, 0);
+                let data_bytes = self
+                    .vectors_db
+                    .get(txn, data_key.as_ref())?
+                    .map(|b| b.to_vec())
+                    .ok_or_else(|| VectorError::VectorNotFound(id.to_string()))?;
+                // Data is stored with bytemuck::cast_slice (native endianness).
+                let data_f64: Vec<f64> = bytemuck::cast_slice::<u8, f64>(&data_bytes).to_vec();
+                to_reinsert.push((id, data_f64, props.label.to_string()));
+            }
+        }
+
+        // Phase 2: Clear all three tables.
+        let all_vector_keys: Vec<Vec<u8>> = self
+            .vectors_db
+            .iter(txn)?
+            .filter_map(|r| r.ok().map(|(k, _)| k.to_vec()))
+            .collect();
+        for k in all_vector_keys {
+            self.vectors_db.delete(txn, k.as_ref())?;
+        }
+
+        let all_edge_keys: Vec<Vec<u8>> = self
+            .edges_db
+            .iter(txn)?
+            .filter_map(|r| r.ok().map(|(k, _)| k.to_vec()))
+            .collect();
+        for k in all_edge_keys {
+            self.edges_db.delete(txn, k.as_ref())?;
+        }
+
+        let all_prop_keys: Vec<u128> = self
+            .vector_properties_db
+            .iter(txn)?
+            .filter_map(|r| r.ok().map(|(k, _)| k))
+            .collect();
+        for k in all_prop_keys {
+            self.vector_properties_db.delete(txn, &k)?;
+        }
+
+        // Phase 3: Re-insert each active vector with its original ID.
+        let kept = to_reinsert.len() as u64;
+        for (id, data, label) in to_reinsert {
+            let data_arena: &[f64] = arena.alloc_slice_copy(&data);
+            let label_arena: &str = arena.alloc_str(&label);
+            self.insert_with_id::<fn(&_, &_) -> bool>(
+                txn, id, label_arena, data_arena, None, arena,
+            )?;
+        }
+
+        Ok(RebuildStats {
+            kept,
+            purged_deleted: purged,
+        })
+    }
+
+    /// Thin wrapper around `rebuild` — removes soft-deleted vectors from the index.
+    pub fn purge_soft_deleted<'db>(
+        &'db self,
+        txn: &mut RwTxn<'db>,
+        arena: &'db bumpalo::Bump,
+    ) -> Result<RebuildStats, VectorError> {
+        self.rebuild(txn, arena)
+    }
+}
+
 #[cfg(test)]
 mod prune_tests {
     use super::*;
@@ -1032,6 +1127,94 @@ impl HNSW for VectorCore {
         }
 
         Ok(())
+    }
+
+    fn insert_with_id<'db, 'arena, 'txn, F>(
+        &'db self,
+        txn: &'txn mut RwTxn<'db>,
+        id: u128,
+        label: &'arena str,
+        data: &'arena [f64],
+        properties: Option<ImmutablePropertiesMap<'arena>>,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<HVector<'arena>, VectorError>
+    where
+        F: Fn(&HVector<'arena>, &RoTxn<'db>) -> bool,
+        'db: 'arena,
+        'arena: 'txn,
+    {
+        let new_level = self.get_new_level();
+
+        let mut query = HVector {
+            id,
+            label,
+            version: 1,
+            deleted: false,
+            level: 0,
+            distance: None,
+            data,
+            properties,
+        };
+        self.put_vector(txn, &query)?;
+
+        query.level = new_level;
+
+        let entry_point = match self.get_entry_point(txn, label, arena) {
+            Ok(ep) => ep,
+            Err(_) => {
+                self.set_entry_point(txn, &query)?;
+                query.set_distance(0.0);
+                return Ok(query);
+            }
+        };
+
+        let l = entry_point.level;
+        let mut curr_ep = entry_point;
+        for level in (new_level + 1..=l).rev() {
+            let mut nearest =
+                self.search_level::<F>(txn, label, &query, &mut curr_ep, 1, level, None, arena)?;
+            curr_ep = nearest.pop().ok_or(VectorError::VectorCoreError(
+                "emtpy search result".to_string(),
+            ))?;
+        }
+
+        for level in (0..=l.min(new_level)).rev() {
+            let nearest = self.search_level::<F>(
+                txn,
+                label,
+                &query,
+                &mut curr_ep,
+                self.config.ef_construct,
+                level,
+                None,
+                arena,
+            )?;
+            curr_ep = *nearest.peek().ok_or(VectorError::VectorCoreError(
+                "emtpy search result".to_string(),
+            ))?;
+
+            let neighbors =
+                self.select_neighbors::<F>(txn, label, &query, nearest, level, true, None, arena)?;
+            self.set_neighbours(txn, query.id, &neighbors, level, arena)?;
+
+            for e in neighbors {
+                let id = e.id;
+                let e_conns = BinaryHeap::from(
+                    arena,
+                    self.get_neighbors::<F>(txn, label, id, level, None, arena)?,
+                );
+                let e_new_conn = self
+                    .select_neighbors::<F>(txn, label, &query, e_conns, level, true, None, arena)?;
+                self.set_neighbours(txn, id, &e_new_conn, level, arena)?;
+            }
+        }
+
+        if new_level > l {
+            self.set_entry_point(txn, &query)?;
+        }
+
+        debug_println!("vector inserted with id {}", query.id);
+        Ok(query)
     }
 }
 

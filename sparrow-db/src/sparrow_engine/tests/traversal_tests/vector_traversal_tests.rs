@@ -864,6 +864,73 @@ fn test_v_from_type_after_migration() {
 }
 
 // ============================================================================
+// insert_with_id / rebuild / purge_soft_deleted tests
+// ============================================================================
+
+#[test]
+fn test_insert_with_id_preserves_id() {
+    use crate::sparrow_engine::vector_core::HNSW;
+
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = bumpalo::Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    let fixed_id: u128 = 0xdeadbeef_cafebabe_u128 << 64 | 0x1234567890abcdef_u128;
+    let data = arena.alloc_slice_copy(&[1.0f64, 0.0, 0.0]);
+    let inserted = storage
+        .vectors
+        .insert_with_id::<fn(&_, &_) -> bool>(&mut txn, fixed_id, "test", data, None, &arena)
+        .expect("insert_with_id failed");
+
+    assert_eq!(inserted.id, fixed_id, "id must be preserved");
+    txn.commit().unwrap();
+}
+
+#[test]
+fn test_rebuild_preserves_active_and_purges_deleted() {
+    use crate::sparrow_engine::vector_core::HNSW;
+
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = bumpalo::Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    let mut d1 = [0.0f64; 3];
+    d1[0] = 1.0;
+    let v1 = storage
+        .vectors
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &d1, None, &arena)
+        .unwrap();
+
+    let mut d2 = [0.0f64; 3];
+    d2[1] = 1.0;
+    let v2 = storage
+        .vectors
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &d2, None, &arena)
+        .unwrap();
+
+    // Soft-delete v1
+    storage.vectors.delete(&mut txn, v1.id, &arena).unwrap();
+
+    let stats = storage
+        .vectors
+        .rebuild(&mut txn, &arena)
+        .expect("rebuild failed");
+
+    assert_eq!(stats.kept, 1, "exactly one active vector must survive rebuild");
+    assert_eq!(stats.purged_deleted, 1, "exactly one deleted vector must be purged");
+
+    // v2 must still be findable with its original id
+    let found = storage.vectors.get_full_vector(&txn, v2.id, &arena);
+    assert!(found.is_ok(), "active vector must survive rebuild: {:?}", found.err());
+
+    // v1 must be gone from properties db
+    let props = storage.vectors.vector_properties_db.get(&txn, &v1.id).unwrap();
+    assert!(props.is_none(), "deleted vector must be purged after rebuild");
+
+    txn.commit().unwrap();
+}
+
+// ============================================================================
 // Error Tests for v_from_id
 // ============================================================================
 

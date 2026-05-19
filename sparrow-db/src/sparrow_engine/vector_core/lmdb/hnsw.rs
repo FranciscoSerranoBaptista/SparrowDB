@@ -53,6 +53,23 @@ pub trait HNSW {
         'db: 'arena,
         'arena: 'txn;
 
+    /// Insert a new vector with a caller-specified ID
+    ///
+    /// Identical to `insert` but uses the provided `id` instead of generating one.
+    fn insert_with_id<'db, 'arena, 'txn, F>(
+        &'db self,
+        txn: &'txn mut RwTxn<'db>,
+        id: u128,
+        label: &'arena str,
+        data: &'arena [f64],
+        properties: Option<ImmutablePropertiesMap<'arena>>,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<HVector<'arena>, VectorError>
+    where
+        F: Fn(&HVector<'arena>, &RoTxn<'db>) -> bool,
+        'db: 'arena,
+        'arena: 'txn;
+
     /// Delete a vector from the index
     ///
     /// # Arguments

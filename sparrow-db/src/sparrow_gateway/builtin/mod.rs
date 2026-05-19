@@ -6,3 +6,4 @@ pub mod nodes_by_label;
 #[cfg(feature = "rocks")]
 pub mod rocks_utils;
 pub mod vector_ops;
+pub mod vector_rebuild;
