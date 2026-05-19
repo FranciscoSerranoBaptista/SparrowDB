@@ -117,6 +117,22 @@ enum Commands {
         instance: Option<String>,
     },
 
+    /// Run a pre-built binary directly without Docker
+    Run {
+        /// Directory containing the built binary (output of `helix build --bin <dir>`)
+        #[arg(long)]
+        bin: String,
+        /// Instance name for config lookup (port, data-dir defaults)
+        #[arg(short, long)]
+        instance: Option<String>,
+        /// Override the data directory (sets HELIX_DATA_DIR)
+        #[arg(long)]
+        data_dir: Option<String>,
+        /// Override the port (sets HELIX_PORT)
+        #[arg(long)]
+        port: Option<u16>,
+    },
+
     /// Stop an instance
     Stop {
         /// Instance name to stop (interactive selection if not provided)
@@ -426,6 +442,12 @@ async fn main() -> Result<()> {
             }
             Commands::Sync { instance, yes } => commands::sync::run(instance, yes).await,
             Commands::Start { instance } => commands::start::run(instance).await,
+            Commands::Run {
+                bin,
+                instance,
+                data_dir,
+                port,
+            } => commands::run::run(bin, instance, data_dir, port).await,
             Commands::Stop { instance } => commands::stop::run(instance).await,
             Commands::Restart { instance } => commands::restart::run(instance).await,
             Commands::Status => commands::status::run().await,

@@ -21,3 +21,5 @@ pub mod utility_tests;
 // pub mod status_tests;
 #[cfg(test)]
 pub mod project_tests;
+#[cfg(test)]
+pub mod run_tests;
