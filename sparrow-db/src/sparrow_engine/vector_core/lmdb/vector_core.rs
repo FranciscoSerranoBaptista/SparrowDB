@@ -285,6 +285,7 @@ impl VectorCore {
                     arr.copy_from_slice(&key[24..40]);
                     Some(u128::from_be_bytes(arr))
                 } else {
+                    debug_assert!(false, "malformed HNSW edge key: expected 40 bytes, got {}", key.len());
                     None
                 }
             })
@@ -307,23 +308,19 @@ impl VectorCore {
         // Sort ascending by distance — closest neighbors are kept
         scored.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let keep_ids: HashSet<u128> = scored.iter().take(limit).map(|(id, _)| *id).collect();
+        for (nid, _) in &scored[limit..] {
+            let mut fwd = [0u8; 40];
+            fwd[..16].copy_from_slice(&node_id.to_be_bytes());
+            fwd[16..24].copy_from_slice(&level.to_be_bytes());
+            fwd[24..40].copy_from_slice(&nid.to_be_bytes());
 
-        for (nid, _) in &scored {
-            if !keep_ids.contains(nid) {
-                let mut fwd = [0u8; 40];
-                fwd[..16].copy_from_slice(&node_id.to_be_bytes());
-                fwd[16..24].copy_from_slice(&level.to_be_bytes());
-                fwd[24..40].copy_from_slice(&nid.to_be_bytes());
+            let mut rev = [0u8; 40];
+            rev[..16].copy_from_slice(&nid.to_be_bytes());
+            rev[16..24].copy_from_slice(&level.to_be_bytes());
+            rev[24..40].copy_from_slice(&node_id.to_be_bytes());
 
-                let mut rev = [0u8; 40];
-                rev[..16].copy_from_slice(&nid.to_be_bytes());
-                rev[16..24].copy_from_slice(&level.to_be_bytes());
-                rev[24..40].copy_from_slice(&node_id.to_be_bytes());
-
-                let _ = self.edges_db.delete(txn, &fwd);
-                let _ = self.edges_db.delete(txn, &rev);
-            }
+            let _ = self.edges_db.delete(txn, &fwd);
+            let _ = self.edges_db.delete(txn, &rev);
         }
 
         Ok(())

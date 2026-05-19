@@ -575,6 +575,30 @@ fn test_set_neighbours_respects_m_max_0_degree_limit() {
         "hub has {hub_degree} edges at level 0 but m_max_0 = {m_max_0}"
     );
 
+    // Also verify that no node has more than m_max_0 edges at level 0.
+    // This is what prune_if_over_degree actually enforces — satellites can accumulate
+    // back-links during insertion, and prune_if_over_degree caps them.
+    // Check all vectors in the index.
+    let all_node_ids: Vec<u128> = index.vector_properties_db
+        .iter(&txn).unwrap()
+        .filter_map(|r| r.ok().map(|(id, _)| id))
+        .collect();
+
+    for node_id in &all_node_ids {
+        let mut prefix = [0u8; 24];
+        prefix[..16].copy_from_slice(&node_id.to_be_bytes());
+        prefix[16..24].copy_from_slice(&(0usize).to_be_bytes()); // level 0
+
+        let degree = index.edges_db
+            .prefix_iter(&txn, &prefix).unwrap()
+            .count();
+
+        assert!(
+            degree <= m_max_0,
+            "node {node_id:?} has {degree} edges at level 0 but m_max_0 = {m_max_0}"
+        );
+    }
+
     txn.commit().unwrap();
 }
 
