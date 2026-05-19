@@ -2,9 +2,9 @@
 
 use heed3::RoTxn;
 use get_routes::handler;
-use helix_db::{field_remapping, identifier_remapping, traversal_remapping, exclude_field};
-use helix_db::helix_engine::vector_core::vector::HVector;
-use helix_db::{
+use sparrow_db::{field_remapping, identifier_remapping, traversal_remapping, exclude_field};
+use sparrow_db::helix_engine::vector_core::vector::HVector;
+use sparrow_db::{
     helix_engine::graph_core::ops::{
         g::G,
         in_::{in_::InAdapter, in_e::InEdgesAdapter, to_n::ToNAdapter},

@@ -1,5 +1,5 @@
 // DEFAULT CODE
-// use helix_db::helix_engine::traversal_core::config::Config;
+// use sparrow_db::helix_engine::traversal_core::config::Config;
 
 // pub fn config() -> Option<Config> {
 //     None
@@ -8,7 +8,7 @@
 use bumpalo::Bump;
 use chrono::{DateTime, Utc};
 use heed3::RoTxn;
-use helix_db::{
+use sparrow_db::{
     embed, embed_async, field_addition_from_old_field, field_addition_from_value, field_type_cast,
     helix_engine::{
         reranker::{
@@ -76,7 +76,7 @@ use helix_db::{
         properties::ImmutablePropertiesMap,
     },
 };
-use helix_macros::{handler, mcp_handler, migration, tool_call};
+use sparrow_macros::{handler, mcp_handler, migration, tool_call};
 use sonic_rs::{Deserialize, Serialize, json};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

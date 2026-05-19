@@ -1,6 +1,6 @@
 
 // DEFAULT CODE
-// use helix_db::helix_engine::traversal_core::config::Config;
+// use sparrow_db::helix_engine::traversal_core::config::Config;
 
 // pub fn config() -> Option<Config> {
 //     None
@@ -10,8 +10,8 @@
 
 use bumpalo::Bump;
 use heed3::RoTxn;
-use helix_macros::{handler, tool_call, mcp_handler, migration};
-use helix_db::{
+use sparrow_macros::{handler, tool_call, mcp_handler, migration};
+use sparrow_db::{
     helix_engine::{
         traversal_core::{
             config::{Config, GraphConfig, VectorConfig},

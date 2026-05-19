@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "helix-db",
-    "helix-container",
-    "helix-macros",
-    "helix-cli",
+    "sparrow-db",
+    "sparrow-container",
+    "sparrow-macros",
+    "sparrow-cli",
     "hql-tests",
     "metrics",
 ]
