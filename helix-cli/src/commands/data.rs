@@ -1,8 +1,10 @@
 //! Data management commands for HelixDB (snapshot, clone, restore)
 
 use crate::DataAction;
+use crate::output::{Operation, Step};
 use crate::project::ProjectContext;
 use eyre::{Result, eyre};
+use heed3::{CompactionOption, EnvFlags, EnvOpenOptions};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -72,6 +74,71 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<u64> {
     Ok(total_bytes)
 }
 
-pub async fn run(_action: DataAction) -> Result<()> {
-    todo!("implemented in later tasks")
+/// Create a snapshot of a HelixDB database directory.
+///
+/// - For LMDB (`data.mdb`): uses heed3's built-in hot-copy via `env.copy_to_path`.
+/// - For RocksDB (`CURRENT`): falls back to a filesystem copy (requires instance to be stopped).
+/// - Otherwise: returns an error.
+pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
+    fs::create_dir_all(output)?;
+
+    if db_dir.join("data.mdb").exists() {
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .flags(EnvFlags::READ_ONLY)
+                .max_dbs(200)
+                .max_readers(200)
+                .open(db_dir)?
+        };
+        env.copy_to_path(output.join("data.mdb"), CompactionOption::Disabled)?;
+    } else if db_dir.join("CURRENT").exists() {
+        crate::output::info(
+            "RocksDB detected: filesystem copy. Ensure the instance is stopped for a consistent backup.",
+        );
+        copy_dir_all(db_dir, output)?;
+    } else {
+        return Err(eyre!(
+            "No HelixDB database found at {}.",
+            db_dir.display()
+        ));
+    }
+
+    Ok(())
+}
+
+pub async fn run(action: DataAction) -> Result<()> {
+    match action {
+        DataAction::Snapshot { source, output } => {
+            let project = ProjectContext::find_and_load(None).ok();
+            let db_dir = resolve_db_dir(&source, project.as_ref())?;
+
+            let output_dir = match output {
+                Some(path) => PathBuf::from(path),
+                None => {
+                    let ts = chrono::Local::now()
+                        .format("snapshot-%Y%m%d-%H%M%S")
+                        .to_string();
+                    PathBuf::from("backups").join(ts)
+                }
+            };
+
+            let op = Operation::new("Snapshotting", &source);
+            let mut step = Step::with_messages("Copying database", "Database copied");
+            step.start();
+
+            snapshot_impl(&db_dir, &output_dir)?;
+
+            step.done();
+            op.success();
+
+            if crate::output::Verbosity::current().show_normal() {
+                Operation::print_details(&[("Snapshot location", &output_dir.display().to_string())]);
+            }
+
+            Ok(())
+        }
+        _ => {
+            todo!("implemented in later tasks")
+        }
+    }
 }
