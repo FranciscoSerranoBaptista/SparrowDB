@@ -74,7 +74,7 @@ serial_test = "3.2"   # Serialize LMDB stress tests to avoid interference
 
 [features]
 debug-output = ["helix-macros/debug-output"]
-compiler = ["pest", "pest_derive"]
+compiler = ["pest", "pest_derive", "ariadne"]
 cosine = []
 api-key = []
 build = ["compiler"]
