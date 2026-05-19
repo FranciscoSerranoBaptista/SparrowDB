@@ -49,8 +49,10 @@ pub fn resolve_db_dir(source: &str, project: Option<&ProjectContext>) -> Result<
     ))
 }
 
-/// Recursively copy a directory tree from `src` to `dst`.
-/// Returns the total number of bytes copied.
+/// Recursively copies `src` into `dst`, creating `dst` if needed.
+/// Does NOT clear pre-existing files in `dst` — callers that need
+/// a clean destination must remove its contents before calling this.
+/// Returns total bytes copied.
 pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<u64> {
     fs::create_dir_all(dst)?;
     let mut total_bytes: u64 = 0;
