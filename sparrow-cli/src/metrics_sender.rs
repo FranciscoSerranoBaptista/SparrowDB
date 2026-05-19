@@ -15,7 +15,6 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
-const METRICS_URL: &str = "https://logs.helix-db.com/v2";
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -219,27 +218,8 @@ async fn upload_previous_logs() -> Result<()> {
     Ok(())
 }
 
-async fn upload_log_file(client: &Client, path: &PathBuf) -> Result<()> {
-    let content = fs::read_to_string(path)?;
-
-    if content.trim().is_empty() {
-        return Ok(());
-    }
-
-    let response = client
-        .post(METRICS_URL) // TODO: change to actual logs endpoint
-        .header("Content-Type", "application/x-ndjson")
-        .body(content)
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        return Err(eyre!(
-            "Failed to upload log file: HTTP {}",
-            response.status()
-        ));
-    }
-
+async fn upload_log_file(_client: &Client, _path: &PathBuf) -> Result<()> {
+    // HTTP telemetry upload is disabled
     Ok(())
 }
 

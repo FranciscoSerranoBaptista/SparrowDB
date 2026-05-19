@@ -300,9 +300,9 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
     println!("{}", "🏠 Home Directory Migration:".bold().underline());
     let home_dir =
         dirs::home_dir().ok_or_else(|| CliError::new("Could not find home directory"))?;
-    let v1_helix_dir = home_dir.join(".sparrow");
-    if v1_helix_dir.exists() {
-        let v2_marker = v1_helix_dir.join(".v2");
+    let v1_sparrow_dir = home_dir.join(".sparrow");
+    if v1_sparrow_dir.exists() {
+        let v2_marker = v1_sparrow_dir.join(".v2");
         if v2_marker.exists() {
             println!(
                 "  {}: ~/.sparrow directory already migrated to v2",
@@ -313,7 +313,7 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
                 "  {}: ~/.sparrow → ~/.sparrow-v1-backup",
                 "Create backup".bright_white().bold()
             );
-            if v1_helix_dir.join("dockerdev").exists() {
+            if v1_sparrow_dir.join("dockerdev").exists() {
                 println!(
                     "  {}: Stop/remove sparrow-dockerdev containers and images",
                     "Clean up Docker".bright_white().bold()
@@ -323,13 +323,13 @@ fn show_migration_plan(ctx: &MigrationContext) -> Result<()> {
                 "  {}: Remove all except ~/.sparrow/credentials and ~/.sparrow/repo",
                 "Clean directory".bright_white().bold()
             );
-            if v1_helix_dir.join("credentials").exists() {
+            if v1_sparrow_dir.join("credentials").exists() {
                 println!(
                     "  {}: ~/.sparrow/credentials",
                     "Preserve file".bright_white().bold()
                 );
             }
-            if v1_helix_dir.join("repo").exists() {
+            if v1_sparrow_dir.join("repo").exists() {
                 println!(
                     "  {}: ~/.sparrow/repo",
                     "Preserve directory".bright_white().bold()
@@ -560,15 +560,15 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
     let home_dir =
         dirs::home_dir().ok_or_else(|| CliError::new("Could not find home directory"))?;
 
-    let v1_helix_dir = home_dir.join(".sparrow");
+    let v1_sparrow_dir = home_dir.join(".sparrow");
 
-    if !v1_helix_dir.exists() {
+    if !v1_sparrow_dir.exists() {
         output::info("No ~/.sparrow directory found, skipping home migration");
         return Ok(());
     }
 
     // Check if already migrated
-    let v2_marker = v1_helix_dir.join(".v2");
+    let v2_marker = v1_sparrow_dir.join(".v2");
     if v2_marker.exists() {
         output::info("~/.sparrow directory already migrated to v2, skipping home migration");
         return Ok(());
@@ -584,21 +584,21 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
     }
 
     // Use the utility function to copy the directory without exclusions
-    crate::utils::copy_dir_recursively(&v1_helix_dir, &backup_dir).map_err(|e| {
+    crate::utils::copy_dir_recursively(&v1_sparrow_dir, &backup_dir).map_err(|e| {
         CliError::new("Failed to backup ~/.sparrow directory").with_caused_by(e.to_string())
     })?;
 
     output::success("Created backup: ~/.sparrow-v1-backup");
 
     // Clean up dockerdev containers/images if present
-    let dockerdev_dir = v1_helix_dir.join("dockerdev");
+    let dockerdev_dir = v1_sparrow_dir.join("dockerdev");
     if dockerdev_dir.exists() {
         cleanup_dockerdev()?;
     }
 
     // Remove everything except credentials and repo
-    let credentials_path = v1_helix_dir.join("credentials");
-    let repo_path = v1_helix_dir.join("repo");
+    let credentials_path = v1_sparrow_dir.join("credentials");
+    let repo_path = v1_sparrow_dir.join("repo");
 
     // Temporarily move credentials and repo out of the way
     let temp_credentials = if credentials_path.exists() {
@@ -621,12 +621,12 @@ fn migrate_home_directory(_ctx: &MigrationContext) -> Result<()> {
     };
 
     // Remove the entire .sparrow directory
-    fs::remove_dir_all(&v1_helix_dir).map_err(|e| {
+    fs::remove_dir_all(&v1_sparrow_dir).map_err(|e| {
         CliError::new("Failed to remove ~/.sparrow directory").with_caused_by(e.to_string())
     })?;
 
     // Recreate .sparrow directory
-    fs::create_dir_all(&v1_helix_dir).map_err(|e| {
+    fs::create_dir_all(&v1_sparrow_dir).map_err(|e| {
         CliError::new("Failed to recreate ~/.sparrow directory").with_caused_by(e.to_string())
     })?;
 

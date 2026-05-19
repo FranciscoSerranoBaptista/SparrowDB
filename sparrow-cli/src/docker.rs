@@ -872,8 +872,8 @@ networks:
         Ok(())
     }
 
-    /// Get all Helix-related images from the system
-    pub fn get_helix_images(runtime: ContainerRuntime) -> Result<Vec<String>> {
+    /// Get all Sparrow-related images from the system
+    pub fn get_sparrow_images(runtime: ContainerRuntime) -> Result<Vec<String>> {
         let output = Command::new(runtime.binary())
             .args([
                 "images",
@@ -907,7 +907,7 @@ networks:
             runtime.label()
         ));
 
-        let images = Self::get_helix_images(runtime)?;
+        let images = Self::get_sparrow_images(runtime)?;
 
         if images.is_empty() {
             Step::verbose_substep(&format!(
