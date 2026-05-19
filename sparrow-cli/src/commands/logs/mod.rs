@@ -31,7 +31,7 @@ pub async fn run(
         Some(name) => name,
         None if prompts::is_interactive() => {
             let instances = project.config.list_instances_with_types();
-            prompts::intro("helix logs", Some("View logs for your instance\n"))?;
+            prompts::intro("sparrow logs", Some("View logs for your instance\n"))?;
             prompts::select_instance(&instances)?
         }
         None => {

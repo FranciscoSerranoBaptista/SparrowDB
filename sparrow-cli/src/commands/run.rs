@@ -4,7 +4,7 @@ use tokio::process::Command;
 
 use crate::project::ProjectContext;
 
-/// Find the sparrow-container binary in a `helix build --bin <dir>` output directory.
+/// Find the sparrow-container binary in a `sparrow build --bin <dir>` output directory.
 /// Prefers `<dir>/release/sparrow-container` over `<dir>/debug/sparrow-container`.
 pub fn resolve_binary(bin_dir: &Path) -> Result<PathBuf> {
     for profile in ["release", "debug"] {
