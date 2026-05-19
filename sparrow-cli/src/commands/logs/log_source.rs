@@ -57,7 +57,7 @@ impl LogSource {
 
         if instance_config.is_local() {
             let docker = DockerManager::new(project);
-            let project_name = format!("helix-{}-{}", project.config.project.name, instance_name);
+            let project_name = format!("sparrow-{}-{}", project.config.project.name, instance_name);
             let container_name = format!("{project_name}_app");
 
             Ok(LogSource::Local {

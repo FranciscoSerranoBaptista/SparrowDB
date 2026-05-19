@@ -23,7 +23,7 @@ fn setup_test_project() -> (TempDir, ProjectContext) {
 /// Regression test: SPARROW_DATA_DIR must always be /data inside container
 /// (Bug from PR #823 where host path was incorrectly passed to container)
 #[test]
-fn test_helix_data_dir_uses_container_path() {
+fn test_sparrow_data_dir_uses_container_path() {
     let (_temp_dir, context) = setup_test_project();
     let docker = DockerManager::new(&context);
 

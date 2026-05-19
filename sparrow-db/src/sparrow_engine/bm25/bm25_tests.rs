@@ -44,7 +44,7 @@ mod tests {
         (config, temp_dir)
     }
 
-    fn setup_helix_storage() -> (SparrowGraphStorage, tempfile::TempDir) {
+    fn setup_sparrow_storage() -> (SparrowGraphStorage, tempfile::TempDir) {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().to_str().unwrap();
         let config = Config::default();
@@ -1906,7 +1906,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_search() {
-        let (storage, _temp_dir) = setup_helix_storage();
+        let (storage, _temp_dir) = setup_sparrow_storage();
 
         let mut wtxn = storage.graph_env.write_txn().unwrap();
         let docs = vec![
@@ -1950,7 +1950,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_search_alpha_vectors() {
-        let (storage, _temp_dir) = setup_helix_storage();
+        let (storage, _temp_dir) = setup_sparrow_storage();
 
         // Insert some test documents first
         let mut wtxn = storage.graph_env.write_txn().unwrap();
@@ -1996,7 +1996,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_search_alpha_bm25() {
-        let (storage, _temp_dir) = setup_helix_storage();
+        let (storage, _temp_dir) = setup_sparrow_storage();
 
         // Insert some test documents first
         let mut wtxn = storage.graph_env.write_txn().unwrap();

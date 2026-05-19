@@ -179,7 +179,7 @@ impl<'a> FlyManager<'a> {
     /// Note: Underscores in project names are converted to hyphens for fly.io compatibility
     fn app_name(&self, instance_name: &str) -> String {
         let sanitized_project_name = self.project.config.project.name.replace('_', "-");
-        format!("helix-{}-{}", sanitized_project_name, instance_name)
+        format!("sparrow-{}-{}", sanitized_project_name, instance_name)
     }
 
     /// Get the volume name for an instance
@@ -412,7 +412,7 @@ impl<'a> FlyManager<'a> {
             }
             FlyAuth::Cli => {
                 // Configure app with launch
-                let helix_dir_path = self.project.instance_workspace(instance_name);
+                let sparrow_dir_path = self.project.instance_workspace(instance_name);
 
                 let volume_size_str = config.volume_initial_size.to_string();
 
@@ -420,9 +420,9 @@ impl<'a> FlyManager<'a> {
                     "launch",
                     "--no-deploy",
                     "--path",
-                    helix_dir_path.to_str().ok_or_else(|| {
+                    sparrow_dir_path.to_str().ok_or_else(|| {
                         eyre!(
-                            "cannot convert helix instance workspace to string: {helix_dir_path:?}"
+                            "cannot convert helix instance workspace to string: {sparrow_dir_path:?}"
                         )
                     })?,
                 ];
@@ -474,7 +474,7 @@ impl<'a> FlyManager<'a> {
     ) -> Result<()> {
         let app_name = self.app_name(instance_name);
         let registry_image = self.registry_image_name(image_name);
-        let helix_dir_path = &self
+        let sparrow_dir_path = &self
             .project
             .instance_workspace(instance_name)
             .join("fly.toml")
@@ -513,7 +513,7 @@ impl<'a> FlyManager<'a> {
                     "--image",
                     &registry_image,
                     "--config",
-                    &helix_dir_path,
+                    &sparrow_dir_path,
                     "-a",
                     &app_name,
                     "--now",
@@ -583,7 +583,7 @@ impl<'a> FlyManager<'a> {
 
         let mut statuses = Vec::new();
         let sanitized_project_name = self.project.config.project.name.replace('_', "-");
-        let project_prefix = format!("helix-{}-", sanitized_project_name);
+        let project_prefix = format!("sparrow-{}-", sanitized_project_name);
 
         if let Some(apps_array) = apps.as_array() {
             for app in apps_array {

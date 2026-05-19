@@ -589,7 +589,7 @@ pub mod rocks {
 
     pub type Txn<'db> = rocksdb::Transaction<'db, rocksdb::TransactionDB>;
 
-    pub fn default_helix_rocksdb_options() -> rocksdb::Options {
+    pub fn default_sparrow_rocksdb_options() -> rocksdb::Options {
         let mut db_opts = rocksdb::Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
@@ -658,7 +658,7 @@ pub mod rocks {
             fs::create_dir_all(path)?;
 
             // Base options
-            let db_opts = default_helix_rocksdb_options();
+            let db_opts = default_sparrow_rocksdb_options();
 
             // Set up column families
             let mut cf_descriptors = vec![

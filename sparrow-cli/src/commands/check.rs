@@ -5,7 +5,7 @@ use crate::github_issue::{GitHubIssueBuilder, filter_errors_only};
 use crate::metrics_sender::MetricsSender;
 use crate::output::{Operation, Step};
 use crate::project::ProjectContext;
-use crate::utils::helixc_utils::{
+use crate::utils::sparrowc_utils::{
     analyze_source, collect_hx_contents, collect_hx_files, generate_content, parse_content,
 };
 use crate::utils::{print_confirm, print_error, print_warning};
@@ -51,7 +51,7 @@ async fn check_instance(
     validate_project_syntax(project)?;
     syntax_step.done();
 
-    // Step 2: Ensure helix repo is cached (reuse from build.rs)
+    // Step 2: Ensure sparrow repo is cached (reuse from build.rs)
     let mut repo_step = Step::with_messages("Syncing repository", "Repository synced");
     repo_step.start();
     build::ensure_sparrow_repo_cached().await?;
@@ -85,8 +85,8 @@ async fn check_instance(
     let mut cargo_step = Step::with_messages("Running cargo check", "Cargo check passed");
     cargo_step.start();
     Step::verbose_substep("Running cargo check on generated code...");
-    let helix_container_dir = instance_workspace.join("sparrow-repo-copy/sparrow-container");
-    let cargo_output = run_cargo_check(&helix_container_dir)?;
+    let sparrow_container_dir = instance_workspace.join("sparrow-repo-copy/sparrow-container");
+    let cargo_output = run_cargo_check(&sparrow_container_dir)?;
 
     let compile_time = start_time.elapsed().as_secs() as u32;
 
@@ -150,7 +150,7 @@ fn validate_project_syntax(project: &ProjectContext) -> Result<()> {
     // Collect all .hx files for validation
     let hx_files = collect_hx_files(&project.root, &project.config.project.queries)?;
 
-    // Generate content and validate using helix-db parsing logic
+    // Generate content and validate using sparrow-db parsing logic
     let content = generate_content(&hx_files)?;
     let source = parse_content(&content)?;
 
@@ -169,11 +169,11 @@ fn validate_project_syntax(project: &ProjectContext) -> Result<()> {
 }
 
 /// Run cargo check on the generated code.
-fn run_cargo_check(helix_container_dir: &Path) -> Result<CargoCheckOutput> {
+fn run_cargo_check(sparrow_container_dir: &Path) -> Result<CargoCheckOutput> {
     let output = Command::new("cargo")
         .arg("check")
         .arg("--color=never") // Disable color codes for cleaner output
-        .current_dir(helix_container_dir)
+        .current_dir(sparrow_container_dir)
         .output()
         .map_err(|e| eyre::eyre!("Failed to run cargo check: {}", e))?;
 

@@ -6,7 +6,7 @@ use eyre::Result;
 use crate::{
     output::{Operation, Step},
     project::ProjectContext,
-    utils::helixc_utils::{
+    utils::sparrowc_utils::{
         analyze_source, collect_hx_files, generate_content, generate_rust_code, parse_content,
     },
 };

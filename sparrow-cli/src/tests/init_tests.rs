@@ -10,7 +10,7 @@ fn setup_test_dir() -> TempDir {
 }
 
 /// Helper function to check if sparrow.toml exists and is valid
-fn assert_helix_config_exists(project_dir: &PathBuf) {
+fn assert_sparrow_config_exists(project_dir: &PathBuf) {
     let config_path = project_dir.join("sparrow.toml");
     assert!(
         config_path.exists(),
@@ -87,7 +87,7 @@ async fn test_init_creates_project_structure() {
     .await;
 
     assert!(result.is_ok(), "Init should succeed: {:?}", result.err());
-    assert_helix_config_exists(&project_path);
+    assert_sparrow_config_exists(&project_path);
     assert_project_structure(&project_path, "queries");
 }
 
@@ -105,7 +105,7 @@ async fn test_init_with_default_path() {
     .await;
 
     assert!(result.is_ok(), "Init with default path should succeed");
-    assert_helix_config_exists(&temp_dir.path().to_path_buf());
+    assert_sparrow_config_exists(&temp_dir.path().to_path_buf());
 }
 
 #[tokio::test]
@@ -138,7 +138,7 @@ async fn test_init_with_custom_queries_path() {
 }
 
 #[tokio::test]
-async fn test_init_fails_if_helix_toml_exists() {
+async fn test_init_fails_if_sparrow_toml_exists() {
     let temp_dir = setup_test_dir();
     let project_path = temp_dir.path().to_path_buf();
 
@@ -434,7 +434,7 @@ async fn test_init_with_nested_queries_path() {
 }
 
 #[tokio::test]
-async fn test_init_helix_dir_is_created() {
+async fn test_init_sparrow_dir_is_created() {
     let temp_dir = setup_test_dir();
     let project_path = temp_dir.path().to_path_buf();
 

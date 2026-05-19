@@ -22,7 +22,7 @@ pub async fn run(instance: Option<String>, all: bool) -> Result<()> {
         Err(_) => {
             // Outside a Helix project - offer system-wide clean
             if instance.is_some() || all {
-                return Err(project_error("not in a Helix project directory")
+                return Err(project_error("not in a Sparrow project directory")
                     .with_hint("use 'sparrow prune' without arguments for system-wide cleanup")
                     .into());
             }
@@ -185,7 +185,7 @@ async fn prune_unused_resources(project: &ProjectContext) -> Result<()> {
 }
 
 async fn prune_system_wide() -> Result<()> {
-    print_warning("You are not in a Helix project directory.");
+    print_warning("You are not in a Sparrow project directory.");
     print_lines(&[
         "This will remove ALL Helix-related Docker images from your system.",
         "This action cannot be undone.",
@@ -209,7 +209,7 @@ async fn prune_system_wide() -> Result<()> {
             );
             runtime_step.start();
 
-            DockerManager::clean_all_helix_images(runtime)?;
+            DockerManager::clean_all_sparrow_images(runtime)?;
             // Run system prune for this runtime
             let output = std::process::Command::new(runtime.binary())
                 .args(["system", "prune", "-f"])

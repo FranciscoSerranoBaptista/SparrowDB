@@ -48,7 +48,7 @@ fn test_resolve_data_dir_uses_override_when_provided() {
 }
 
 #[test]
-fn test_resolve_data_dir_falls_back_to_helix_dir() {
+fn test_resolve_data_dir_falls_back_to_sparrow_dir() {
     // No override, no project — should fall back to ~/.sparrow
     // sparrow-container will append /user, so database lands at ~/.sparrow/user
     let result = resolve_data_dir(None, None, None);

@@ -18,9 +18,9 @@ pub mod utils;
 
 #[derive(Subcommand)]
 pub enum AuthAction {
-    /// Login to Helix cloud
+    /// Login to Sparrow cloud
     Login,
-    /// Logout from Helix cloud
+    /// Logout from Sparrow cloud
     Logout,
     /// Rotate a cluster API key
     CreateKey {
@@ -52,13 +52,13 @@ pub enum DashboardAction {
         #[arg(short, long, default_value = "3000")]
         port: u16,
 
-        /// Helix host to connect to (e.g., localhost). Bypasses project config.
+        /// Sparrow host to connect to (e.g., localhost). Bypasses project config.
         #[arg(long)]
         host: Option<String>,
 
-        /// Helix port to connect to. Used with --host.
+        /// Sparrow port to connect to. Used with --host.
         #[arg(long, default_value = "6969")]
-        helix_port: u16,
+        sparrow_port: u16,
 
         /// Run dashboard in foreground with logs
         #[arg(long)]

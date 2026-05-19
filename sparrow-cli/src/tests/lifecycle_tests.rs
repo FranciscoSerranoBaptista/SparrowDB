@@ -13,7 +13,7 @@ use std::fs;
 // ============================================================================
 
 #[tokio::test]
-async fn test_start_fails_without_helix_project() {
+async fn test_start_fails_without_sparrow_project() {
     let ctx = TestContext::new();
     // Don't set up any project
 
@@ -99,7 +99,7 @@ async fn test_start_requires_instance_when_non_interactive() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_stop_fails_without_helix_project() {
+async fn test_stop_fails_without_sparrow_project() {
     let ctx = TestContext::new();
     // Don't set up any project
 
@@ -149,7 +149,7 @@ async fn test_stop_requires_instance_when_non_interactive() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_restart_fails_without_helix_project() {
+async fn test_restart_fails_without_sparrow_project() {
     let ctx = TestContext::new();
     // Don't set up any project
 
@@ -362,7 +362,7 @@ async fn test_instance_validation_rejects_empty_name() {
 }
 
 #[tokio::test]
-async fn test_project_context_finds_helix_toml() {
+async fn test_project_context_finds_sparrow_toml() {
     use crate::project::ProjectContext;
 
     let ctx = TestContext::new();
@@ -380,7 +380,7 @@ async fn test_project_context_finds_helix_toml() {
 }
 
 #[tokio::test]
-async fn test_project_context_fails_without_helix_toml() {
+async fn test_project_context_fails_without_sparrow_toml() {
     use crate::project::ProjectContext;
 
     let ctx = TestContext::new();

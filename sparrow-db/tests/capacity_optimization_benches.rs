@@ -9,7 +9,7 @@ mod tests {
     use heed3::RoTxn;
     use sparrow_db::{
         sparrow_engine::{
-            bm25::bm25::{BM25, HBM25Config},
+            bm25::{BM25, HBM25Config},
             storage_core::{SparrowGraphStorage, storage_methods::StorageMethods},
             traversal_core::{
                 config::Config,
@@ -114,7 +114,6 @@ mod tests {
                     hub_node.id(),
                     node.id(),
                     false,
-                    false,
                 )
                 .collect_to_obj()
                 .unwrap();
@@ -140,11 +139,11 @@ mod tests {
                     Ok((_, value)) => match SparrowGraphStorage::unpack_adj_edge_data(value) {
                         Ok((edge_id, to_node)) => {
                             if connected_node_ids.insert(to_node)
-                                && let Ok(node) = storage.get_node(&rtxn, &to_node, &arena)
+                                && let Ok(node) = storage.get_node(&rtxn, to_node, &arena)
                             {
                                 connected_nodes.push(TraversalValue::Node(node));
                             }
-                            match storage.get_edge(&rtxn, &edge_id, &arena) {
+                            match storage.get_edge(&rtxn, edge_id, &arena) {
                                 Ok(edge) => Some(TraversalValue::Edge(edge)),
                                 Err(_) => None,
                             }
@@ -175,11 +174,11 @@ mod tests {
                     Ok((_, value)) => match SparrowGraphStorage::unpack_adj_edge_data(value) {
                         Ok((edge_id, to_node)) => {
                             if connected_node_ids.insert(to_node)
-                                && let Ok(node) = storage.get_node(&rtxn, &to_node, &arena)
+                                && let Ok(node) = storage.get_node(&rtxn, to_node, &arena)
                             {
                                 connected_nodes.push(TraversalValue::Node(node));
                             }
-                            match storage.get_edge(&rtxn, &edge_id, &arena) {
+                            match storage.get_edge(&rtxn, edge_id, &arena) {
                                 Ok(edge) => Some(TraversalValue::Edge(edge)),
                                 Err(_) => None,
                             }
@@ -208,11 +207,11 @@ mod tests {
                     Ok((_, value)) => match SparrowGraphStorage::unpack_adj_edge_data(value) {
                         Ok((edge_id, to_node)) => {
                             if connected_node_ids.insert(to_node)
-                                && let Ok(node) = storage.get_node(&rtxn, &to_node, &arena)
+                                && let Ok(node) = storage.get_node(&rtxn, to_node, &arena)
                             {
                                 connected_nodes.push(TraversalValue::Node(node));
                             }
-                            match storage.get_edge(&rtxn, &edge_id, &arena) {
+                            match storage.get_edge(&rtxn, edge_id, &arena) {
                                 Ok(edge) => Some(TraversalValue::Edge(edge)),
                                 Err(_) => None,
                             }
@@ -243,11 +242,11 @@ mod tests {
                     Ok((_, value)) => match SparrowGraphStorage::unpack_adj_edge_data(value) {
                         Ok((edge_id, to_node)) => {
                             if connected_node_ids.insert(to_node)
-                                && let Ok(node) = storage.get_node(&rtxn, &to_node, &arena)
+                                && let Ok(node) = storage.get_node(&rtxn, to_node, &arena)
                             {
                                 connected_nodes.push(TraversalValue::Node(node));
                             }
-                            match storage.get_edge(&rtxn, &edge_id, &arena) {
+                            match storage.get_edge(&rtxn, edge_id, &arena) {
                                 Ok(edge) => Some(TraversalValue::Edge(edge)),
                                 Err(_) => None,
                             }

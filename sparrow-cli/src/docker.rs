@@ -497,7 +497,7 @@ impl<'a> DockerManager<'a> {
         };
 
         let dockerfile = format!(
-            r#"# Generated Dockerfile for Helix instance: {instance_name}
+            r#"# Generated Dockerfile for Sparrow instance: {instance_name}
 FROM lukemathwalker/cargo-chef:latest-rust-1.88 AS chef
 WORKDIR /build
 
@@ -580,7 +580,7 @@ CMD ["sparrow-container"]
             .join("\n");
 
         let compose = format!(
-            r#"# Generated docker-compose.yml for Helix instance: {instance_name}
+            r#"# Generated docker-compose.yml for Sparrow instance: {instance_name}
 services:
   {service_name}:
     build:
@@ -900,8 +900,8 @@ networks:
         Ok(images)
     }
 
-    /// Remove all Helix-related images from the system
-    pub fn clean_all_helix_images(runtime: ContainerRuntime) -> Result<()> {
+    /// Remove all Sparrow-related images from the system
+    pub fn clean_all_sparrow_images(runtime: ContainerRuntime) -> Result<()> {
         Step::verbose_substep(&format!(
             "{}: Finding all Helix images on system...",
             runtime.label()

@@ -301,7 +301,7 @@ impl Template {
     }
 }
 
-pub mod helixc_utils {
+pub mod sparrowc_utils {
     use eyre::Result;
     use sparrow_db::sparrowc::{
         analyzer::analyze,

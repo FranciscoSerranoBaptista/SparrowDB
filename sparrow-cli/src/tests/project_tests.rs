@@ -316,7 +316,7 @@ fn test_find_project_root_stops_at_filesystem_root() {
 }
 
 #[test]
-fn test_legacy_helix_toml_without_project_id_still_loads() {
+fn test_legacy_sparrow_toml_without_project_id_still_loads() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let project_path = temp_dir.path().to_path_buf();
     let config_path = project_path.join("sparrow.toml");

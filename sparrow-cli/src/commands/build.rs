@@ -7,7 +7,7 @@ use crate::project::{ProjectContext, get_sparrow_repo_cache};
 use crate::prompts;
 use crate::utils::{
     copy_dir_recursive_excluding, diagnostic_source,
-    helixc_utils::{collect_hx_contents, collect_hx_files},
+    sparrowc_utils::{collect_hx_contents, collect_hx_files},
     print_confirm, print_error, print_warning,
 };
 use eyre::{Result, eyre};

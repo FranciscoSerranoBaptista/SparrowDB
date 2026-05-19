@@ -89,7 +89,7 @@ impl<'a> EcrManager<'a> {
 
     /// Get the ECR repository name for an instance
     fn repository_name(&self, instance_name: &str) -> String {
-        format!("helix-{}-{instance_name}", self.project.config.project.name)
+        format!("sparrow-{}-{instance_name}", self.project.config.project.name)
     }
 
     fn image_name(&self, repository_name: &str, build_mode: BuildMode) -> String {
@@ -412,7 +412,7 @@ impl<'a> EcrManager<'a> {
     #[allow(dead_code)]
     pub async fn get_project_status(&self) -> Result<Vec<EcrRepositoryStatus>> {
         let _account_id = self.get_account_id().await?;
-        let project_prefix = format!("helix-{}-", self.project.config.project.name);
+        let project_prefix = format!("sparrow-{}-", self.project.config.project.name);
 
         // List all repositories
         let output = self

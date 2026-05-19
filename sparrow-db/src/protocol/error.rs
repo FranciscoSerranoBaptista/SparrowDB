@@ -101,7 +101,7 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn test_helix_error_not_found() {
+    fn test_sparrow_error_not_found() {
         let error = SparrowError::NotFound {
             ty: RequestType::Query,
             name: "test_query".to_string(),
@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn test_helix_error_not_found_mcp() {
+    fn test_sparrow_error_not_found_mcp() {
         let error = SparrowError::NotFound {
             ty: RequestType::MCP,
             name: "test_mcp".to_string(),
@@ -125,21 +125,21 @@ mod tests {
     }
 
     #[test]
-    fn test_helix_error_graph() {
+    fn test_sparrow_error_graph() {
         let graph_err = GraphError::DecodeError("test decode error".to_string());
-        let helix_err = SparrowError::from(graph_err);
+        let sparrow_err = SparrowError::from(graph_err);
 
-        assert!(matches!(helix_err, SparrowError::Graph(_)));
-        let error_string = helix_err.to_string();
+        assert!(matches!(sparrow_err, SparrowError::Graph(_)));
+        let error_string = sparrow_err.to_string();
         assert!(error_string.contains("test decode error"));
     }
 
     #[test]
-    fn test_helix_error_vector() {
+    fn test_sparrow_error_vector() {
         let vector_err = VectorError::InvalidVectorLength;
-        let helix_err = SparrowError::from(vector_err);
+        let sparrow_err = SparrowError::from(vector_err);
 
-        assert!(matches!(helix_err, SparrowError::Vector(_)));
+        assert!(matches!(sparrow_err, SparrowError::Vector(_)));
     }
 
     // ============================================================================
@@ -147,7 +147,7 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn test_helix_error_into_response_not_found() {
+    fn test_sparrow_error_into_response_not_found() {
         let error = SparrowError::NotFound {
             ty: RequestType::Query,
             name: "missing".to_string(),
@@ -162,11 +162,11 @@ mod tests {
     }
 
     #[test]
-    fn test_helix_error_into_response_graph_error() {
+    fn test_sparrow_error_into_response_graph_error() {
         let graph_err = GraphError::DecodeError("decode failed".to_string());
-        let helix_err = SparrowError::from(graph_err);
+        let sparrow_err = SparrowError::from(graph_err);
 
-        let response = helix_err.into_response();
+        let response = sparrow_err.into_response();
         assert_eq!(response.status(), 500);
         assert_eq!(
             response.headers().get(CONTENT_TYPE).unwrap(),
@@ -175,11 +175,11 @@ mod tests {
     }
 
     #[test]
-    fn test_helix_error_into_response_vector_error() {
+    fn test_sparrow_error_into_response_vector_error() {
         let vector_err = VectorError::InvalidVectorData;
-        let helix_err = SparrowError::from(vector_err);
+        let sparrow_err = SparrowError::from(vector_err);
 
-        let response = helix_err.into_response();
+        let response = sparrow_err.into_response();
         assert_eq!(response.status(), 500);
         assert_eq!(
             response.headers().get(CONTENT_TYPE).unwrap(),
@@ -192,19 +192,19 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn test_helix_error_code_graph() {
+    fn test_sparrow_error_code_graph() {
         let error = SparrowError::Graph(GraphError::NodeNotFound);
         assert_eq!(error.code(), "GRAPH_ERROR");
     }
 
     #[test]
-    fn test_helix_error_code_vector() {
+    fn test_sparrow_error_code_vector() {
         let error = SparrowError::Vector(VectorError::InvalidVectorLength);
         assert_eq!(error.code(), "VECTOR_ERROR");
     }
 
     #[test]
-    fn test_helix_error_code_not_found() {
+    fn test_sparrow_error_code_not_found() {
         let error = SparrowError::NotFound {
             ty: RequestType::Query,
             name: "test".to_string(),
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn test_helix_error_code_invalid_api_key() {
+    fn test_sparrow_error_code_invalid_api_key() {
         let error = SparrowError::InvalidApiKey;
         assert_eq!(error.code(), "INVALID_API_KEY");
     }
@@ -223,7 +223,7 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn test_helix_error_is_error_trait() {
+    fn test_sparrow_error_is_error_trait() {
         let error = SparrowError::NotFound {
             ty: RequestType::Query,
             name: "test".to_string(),
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn test_helix_error_debug() {
+    fn test_sparrow_error_debug() {
         let error = SparrowError::NotFound {
             ty: RequestType::Query,
             name: "debug_test".to_string(),
@@ -251,21 +251,21 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn test_helix_error_invalid_api_key() {
+    fn test_sparrow_error_invalid_api_key() {
         let error = SparrowError::InvalidApiKey;
         let error_string = error.to_string();
         assert_eq!(error_string, "Invalid API key");
     }
 
     #[test]
-    fn test_helix_error_invalid_api_key_into_response() {
+    fn test_sparrow_error_invalid_api_key_into_response() {
         let error = SparrowError::InvalidApiKey;
         let response = error.into_response();
         assert_eq!(response.status(), 403);
     }
 
     #[test]
-    fn test_helix_error_invalid_api_key_debug() {
+    fn test_sparrow_error_invalid_api_key_debug() {
         let error = SparrowError::InvalidApiKey;
         let debug_str = format!("{:?}", error);
         assert!(debug_str.contains("InvalidApiKey"));

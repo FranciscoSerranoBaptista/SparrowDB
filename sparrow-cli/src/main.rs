@@ -25,7 +25,7 @@ mod update;
 mod utils;
 
 #[derive(Parser)]
-#[command(name = "Helix CLI")]
+#[command(name = "Sparrow CLI")]
 #[command(version)]
 struct Cli {
     /// Suppress output (errors and final result only)
@@ -42,7 +42,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new Helix project with sparrow.toml
+    /// Initialize a new Sparrow project with sparrow.toml
     Init {
         /// Project directory (defaults to current directory)
         #[arg(short, long)]
@@ -59,7 +59,7 @@ enum Commands {
         cloud: Option<CloudDeploymentTypeCommand>,
     },
 
-    /// Add a new instance to an existing Helix project
+    /// Add a new instance to an existing Sparrow project
     Add {
         #[command(subcommand)]
         cloud: Option<CloudDeploymentTypeCommand>,
@@ -96,12 +96,12 @@ enum Commands {
     Push {
         /// Instance name to push (interactive selection if not provided)
         instance: Option<String>,
-        /// Use development profile for faster builds (Helix Cloud only)
+        /// Use development profile for faster builds (Sparrow Cloud only)
         #[arg(long)]
         dev: bool,
     },
 
-    /// Sync .hx source files and config from a deployed Helix Cloud instance
+    /// Sync .hx source files and config from a deployed Sparrow Cloud instance
     Sync {
         /// Instance name to sync from (interactive selection if not provided)
         instance: Option<String>,
@@ -204,7 +204,7 @@ enum Commands {
         action: MetricsAction,
     },
 
-    /// Launch the Helix Dashboard
+    /// Launch the Sparrow Dashboard
     Dashboard {
         #[command(subcommand)]
         action: DashboardAction,
@@ -260,7 +260,7 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
-    /// Send feedback to the Helix team
+    /// Send feedback to the Sparrow team
     Feedback {
         /// Feedback message (opens interactive prompt if not provided)
         message: Option<String>,
@@ -358,7 +358,7 @@ fn display_welcome(update_available: Option<String>) {
         "Launch the SparrowDB Dashboard",
         use_color,
     );
-    print_command("sparrow auth login", "Login to Helix Cloud", use_color);
+    print_command("sparrow auth login", "Login to Sparrow Cloud", use_color);
 
     println!();
     println!(

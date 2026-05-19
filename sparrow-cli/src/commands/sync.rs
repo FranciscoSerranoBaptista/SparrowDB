@@ -14,7 +14,7 @@ use crate::config::{
 use crate::output::{Operation, Step};
 use crate::project::ProjectContext;
 use crate::prompts;
-use crate::utils::helixc_utils::{
+use crate::utils::sparrowc_utils::{
     analyze_source, collect_hx_files, generate_content, parse_content,
 };
 use crate::utils::print_warning;
@@ -1483,7 +1483,7 @@ fn extract_standard_snapshot_config(
         return Some(config);
     }
 
-    let mut helix_configs = remote_config
+    let mut sparrow_configs = remote_config
         .cloud
         .values()
         .filter_map(|entry| match entry {
@@ -1491,8 +1491,8 @@ fn extract_standard_snapshot_config(
             _ => None,
         });
 
-    let first = helix_configs.next()?;
-    if helix_configs.next().is_none() {
+    let first = sparrow_configs.next()?;
+    if sparrow_configs.next().is_none() {
         Some(first)
     } else {
         None
@@ -1640,17 +1640,17 @@ fn resolve_selected_project_queries_path(selected_snapshot: Option<&SparrowConfi
         .unwrap_or_else(|| PathBuf::from(DEFAULT_QUERIES_DIR))
 }
 
-fn update_project_queries_path_in_helix_toml(
+fn update_project_queries_path_in_sparrow_toml(
     project_root: &Path,
     queries_path: &Path,
 ) -> Result<()> {
-    let helix_toml_path = project_root.join("sparrow.toml");
-    let mut config = SparrowConfig::from_file(&helix_toml_path)
+    let sparrow_toml_path = project_root.join("sparrow.toml");
+    let mut config = SparrowConfig::from_file(&sparrow_toml_path)
         .map_err(|e| eyre!("Failed to load sparrow.toml for queries path update: {}", e))?;
 
     config.project.queries = sanitize_relative_path(queries_path)?;
     config
-        .save_to_file(&helix_toml_path)
+        .save_to_file(&sparrow_toml_path)
         .map_err(|e| eyre!("Failed to update queries path in sparrow.toml: {}", e))?;
 
     Ok(())
@@ -1693,9 +1693,9 @@ async fn reconcile_project_config_from_cloud(
     project_clusters: &CliProjectClusters,
     initial_queries_path: Option<&Path>,
 ) -> Result<()> {
-    let helix_toml_path = project_root.join("sparrow.toml");
-    let mut config = if helix_toml_path.exists() {
-        SparrowConfig::from_file(&helix_toml_path)
+    let sparrow_toml_path = project_root.join("sparrow.toml");
+    let mut config = if sparrow_toml_path.exists() {
+        SparrowConfig::from_file(&sparrow_toml_path)
             .map_err(|e| eyre!("Failed to load sparrow.toml: {}", e))?
     } else {
         SparrowConfig {
@@ -1798,7 +1798,7 @@ async fn reconcile_project_config_from_cloud(
     }
 
     config
-        .save_to_file(&helix_toml_path)
+        .save_to_file(&sparrow_toml_path)
         .map_err(|e| eyre!("Failed to write sparrow.toml: {}", e))?;
 
     Ok(())
@@ -1969,7 +1969,7 @@ async fn run_project_sync_flow(project: &ProjectContext, assume_yes: bool) -> Re
         if let SyncReconciliationOutcome::Pulled = sync_outcome
             && project.config.project.queries != selected_queries_relative
         {
-            update_project_queries_path_in_helix_toml(&project.root, &selected_queries_relative)?;
+            update_project_queries_path_in_sparrow_toml(&project.root, &selected_queries_relative)?;
             Step::verbose_substep(&format!(
                 "  Updated project queries path to {}",
                 selected_queries_relative.display()
@@ -1995,7 +1995,7 @@ async fn run_project_sync_flow(project: &ProjectContext, assume_yes: bool) -> Re
         if let SyncReconciliationOutcome::Pulled = sync_outcome
             && project.config.project.queries != selected_queries_relative
         {
-            update_project_queries_path_in_helix_toml(&project.root, &selected_queries_relative)?;
+            update_project_queries_path_in_sparrow_toml(&project.root, &selected_queries_relative)?;
             Step::verbose_substep(&format!(
                 "  Updated project queries path to {}",
                 selected_queries_relative.display()
@@ -2381,7 +2381,7 @@ async fn pull_from_cloud_instance(
             if let SyncReconciliationOutcome::Pulled = sync_outcome
                 && project.config.project.queries != selected_queries_relative
             {
-                update_project_queries_path_in_helix_toml(
+                update_project_queries_path_in_sparrow_toml(
                     &project.root,
                     &selected_queries_relative,
                 )?;
@@ -2445,7 +2445,7 @@ async fn pull_from_cloud_instance(
             if let SyncReconciliationOutcome::Pulled = sync_outcome
                 && project.config.project.queries != selected_queries_relative
             {
-                update_project_queries_path_in_helix_toml(
+                update_project_queries_path_in_sparrow_toml(
                     &project.root,
                     &selected_queries_relative,
                 )?;

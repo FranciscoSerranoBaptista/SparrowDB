@@ -93,7 +93,7 @@ async fn test_compile_fails_with_invalid_syntax() {
 }
 
 #[tokio::test]
-async fn test_compile_fails_without_helix_toml() {
+async fn test_compile_fails_without_sparrow_toml() {
     let ctx = TestContext::new();
     // Don't set up any project
 

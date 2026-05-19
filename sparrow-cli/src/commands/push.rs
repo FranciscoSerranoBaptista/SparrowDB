@@ -177,7 +177,7 @@ async fn push_local_instance(
             ("Local URL", &format!("http://localhost:{actual_port}")),
             (
                 "Container",
-                &format!("helix-{project_name}-{instance_name}"),
+                &format!("sparrow-{project_name}-{instance_name}"),
             ),
             (
                 "Data volume",
@@ -200,8 +200,8 @@ async fn push_cloud_instance(
 
     // Handle enterprise instances separately
     if let InstanceInfo::Enterprise(config) = &instance_config {
-        let helix = SparrowManager::new(project);
-        helix
+        let sparrow_manager = SparrowManager::new(project);
+        sparrow_manager
             .deploy_enterprise(None, instance_name.to_string(), config)
             .await?;
         op.success();
@@ -258,7 +258,7 @@ async fn push_cloud_instance(
                 .await?;
         }
         CloudConfig::SparrowCloud(_) => {
-            let helix = SparrowManager::new(project);
+            let sparrow_manager = SparrowManager::new(project);
             let build_mode_override = if dev {
                 crate::output::warning(
                     "Using one-time dev build override for this deploy; sparrow.toml build_mode is unchanged.",
@@ -268,7 +268,7 @@ async fn push_cloud_instance(
                 None
             };
 
-            helix
+            sparrow_manager
                 .deploy(None, instance_name.to_string(), build_mode_override)
                 .await?;
         }

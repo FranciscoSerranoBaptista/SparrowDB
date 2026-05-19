@@ -20,7 +20,7 @@ const DEFAULT_SPARROW_PORT: u16 = 6969;
 
 struct DisplayInfo {
     host: String,
-    helix_port: u16,
+    sparrow_port: u16,
     instance_name: Option<String>,
     mode: String,
 }
@@ -31,10 +31,10 @@ pub async fn run(action: DashboardAction) -> Result<()> {
             instance,
             port,
             host,
-            helix_port,
+            sparrow_port,
             attach,
             restart,
-        } => start(instance, port, host, helix_port, attach, restart).await,
+        } => start(instance, port, host, sparrow_port, attach, restart).await,
         DashboardAction::Stop => stop(),
         DashboardAction::Status => status(),
     }
@@ -44,7 +44,7 @@ async fn start(
     instance: Option<String>,
     port: u16,
     host: Option<String>,
-    helix_port: u16,
+    sparrow_port: u16,
     attach: bool,
     restart: bool,
 ) -> Result<()> {
@@ -70,14 +70,14 @@ async fn start(
     }
 
     // Warn if --helix-port is specified without --host
-    if host.is_none() && helix_port != DEFAULT_SPARROW_PORT {
+    if host.is_none() && sparrow_port != DEFAULT_SPARROW_PORT {
         output::warning("--helix-port is ignored without --host; using project config or defaults");
     }
 
     // Prepare environment variables based on connection mode
     let (env_vars, display_info) = if let Some(host) = host {
         // Direct connection mode - no project needed
-        prepare_direct_env_vars(&host, helix_port, runtime)?
+        prepare_direct_env_vars(&host, sparrow_port, runtime)?
     } else {
         // Try to use project config, or fall back to defaults
         prepare_env_vars_from_context(instance, runtime).await?
@@ -96,7 +96,7 @@ async fn start(
         let mut details: Vec<(&str, String)> = vec![
             ("URL", url.clone()),
             ("Helix Host", display_info.host.clone()),
-            ("Helix Port", display_info.helix_port.to_string()),
+            ("Helix Port", display_info.sparrow_port.to_string()),
         ];
         if let Some(instance_name) = &display_info.instance_name {
             details.push(("Instance", instance_name.clone()));
@@ -119,7 +119,7 @@ async fn start(
 
 fn prepare_direct_env_vars(
     host: &str,
-    helix_port: u16,
+    sparrow_port: u16,
     runtime: ContainerRuntime,
 ) -> Result<(Vec<String>, DisplayInfo)> {
     // Use host.docker.internal for Docker, host.containers.internal for Podman
@@ -135,12 +135,12 @@ fn prepare_direct_env_vars(
 
     let env_vars = vec![
         format!("SPARROW_HOST={docker_host}"),
-        format!("SPARROW_PORT={helix_port}"),
+        format!("SPARROW_PORT={sparrow_port}"),
     ];
 
     let display_info = DisplayInfo {
         host: host.to_string(),
-        helix_port,
+        sparrow_port,
         instance_name: None,
         mode: "Direct".to_string(),
     };
@@ -169,7 +169,7 @@ async fn prepare_env_vars_from_context(
             let env_vars =
                 prepare_environment_vars(&project, &instance_name, &instance_config).await?;
 
-            let (host, helix_port, mode) = if instance_config.is_local() {
+            let (host, sparrow_port, mode) = if instance_config.is_local() {
                 let port = instance_config.port().unwrap_or(DEFAULT_SPARROW_PORT);
                 ("localhost".to_string(), port, "Local".to_string())
             } else {
@@ -178,7 +178,7 @@ async fn prepare_env_vars_from_context(
 
             let display_info = DisplayInfo {
                 host,
-                helix_port,
+                sparrow_port,
                 instance_name: Some(instance_name),
                 mode,
             };

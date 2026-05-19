@@ -8,7 +8,7 @@ authors = ["SparrowDB Team"]
 repository = "https://github.com/YOUR_ORG/SparrowDB"
 
 [dependencies]
-# HelixDB dependencies
+# SparrowDB dependencies
 sparrow-macros = { path = "../sparrow-macros" }
 sparrow-metrics = { path = "../metrics" }
 

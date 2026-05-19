@@ -81,7 +81,7 @@ async fn start_local_instance(project: &ProjectContext, instance_name: &str) -> 
             ("Local URL", &format!("http://localhost:{port}")),
             (
                 "Container",
-                &format!("helix_{project_name}_{instance_name}"),
+                &format!("sparrow_{project_name}_{instance_name}"),
             ),
             (
                 "Data volume",

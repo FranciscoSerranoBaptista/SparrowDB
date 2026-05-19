@@ -104,7 +104,7 @@ impl GitHubIssueBuilder {
         // Environment section
         body.push_str("## Environment\n");
         body.push_str(&format!(
-            "- Helix CLI version: {}\n",
+            "- Sparrow CLI version: {}\n",
             env!("CARGO_PKG_VERSION")
         ));
         body.push_str(&format!("- OS: {}\n\n", std::env::consts::OS));
@@ -118,7 +118,7 @@ impl GitHubIssueBuilder {
         // Schema/Queries section
         if let Some(hx_content) = &self.hx_content {
             body.push_str("## Schema/Queries (.hx files)\n");
-            body.push_str("```helix\n");
+            body.push_str("```sparrow\n");
             body.push_str(hx_content);
             body.push_str("\n```\n\n");
         }
@@ -160,7 +160,7 @@ impl GitHubIssueBuilder {
         // Environment section (always include - small and important)
         body.push_str("## Environment\n");
         body.push_str(&format!(
-            "- Helix CLI version: {}\n",
+            "- Sparrow CLI version: {}\n",
             env!("CARGO_PKG_VERSION")
         ));
         body.push_str(&format!("- OS: {}\n\n", std::env::consts::OS));
@@ -187,7 +187,7 @@ impl GitHubIssueBuilder {
             {
                 // Only include if we have reasonable space
                 body.push_str("## Schema/Queries (.hx files)\n");
-                body.push_str("```helix\n");
+                body.push_str("```sparrow\n");
                 let truncated_hx: String = hx_content.chars().take(actual_max_hx).collect();
                 body.push_str(&truncated_hx);
                 if hx_content.chars().count() > actual_max_hx {
@@ -206,7 +206,7 @@ impl GitHubIssueBuilder {
             let mut minimal = String::new();
             minimal.push_str("## Environment\n");
             minimal.push_str(&format!(
-                "- Helix CLI version: {}\n",
+                "- Sparrow CLI version: {}\n",
                 env!("CARGO_PKG_VERSION")
             ));
             minimal.push_str(&format!("- OS: {}\n\n", std::env::consts::OS));

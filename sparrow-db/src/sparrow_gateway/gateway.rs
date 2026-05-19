@@ -65,7 +65,7 @@ impl SparrowGateway {
     }
 
     pub fn run(self) -> Result<(), Box<dyn std::error::Error>> {
-        trace!("Starting Helix Gateway");
+        trace!("Starting Sparrow Gateway");
 
         let all_core_ids = core_affinity::get_core_ids().expect("unable to get core IDs");
 

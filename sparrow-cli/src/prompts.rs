@@ -1,4 +1,4 @@
-//! Interactive prompts for the Helix CLI using cliclack.
+//! Interactive prompts for the Sparrow CLI using cliclack.
 //!
 //! This module provides a consistent, user-friendly interactive experience
 //! for commands like `init` and `add` when flags are not provided.
@@ -70,7 +70,7 @@ pub fn select_deployment_type() -> Result<DeploymentType> {
         .item(
             DeploymentType::Local,
             "Local",
-            "Run Helix locally in Docker. Best for development.",
+            "Run Sparrow locally in Docker. Best for development.",
         )
         .item(
             DeploymentType::SparrowCloud,

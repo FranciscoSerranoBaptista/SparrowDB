@@ -3,7 +3,7 @@ use crate::config::{BuildMode, CloudConfig, CloudInstanceConfig, DbConfig, Insta
 use crate::output;
 use crate::project::ProjectContext;
 use crate::sse_client::{SseEvent, SseProgressHandler, parse_sse_event};
-use crate::utils::helixc_utils::{collect_hx_files, generate_content};
+use crate::utils::sparrowc_utils::{collect_hx_files, generate_content};
 use crate::utils::print_error;
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use eyre::{Result, eyre};

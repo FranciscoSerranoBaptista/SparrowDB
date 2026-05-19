@@ -21,7 +21,7 @@ impl GitHubConfig {
         let token =
             env::var("GITHUB_TOKEN").context("GITHUB_TOKEN environment variable not set")?;
         let owner = env::var("GITHUB_OWNER").unwrap_or_else(|_| "SparrowDB".to_string());
-        let repo = env::var("GITHUB_REPO").unwrap_or_else(|_| "helix-db".to_string());
+        let repo = env::var("GITHUB_REPO").unwrap_or_else(|_| "sparrow-db".to_string());
 
         Ok(GitHubConfig { token, owner, repo })
     }
@@ -254,46 +254,46 @@ async fn main() -> Result<()> {
 
     // copy source code from project root to temp_repo
     let project_root = match current_dir.parent() {
-        Some(parent) if parent.join("helix-cli").exists() => parent.to_path_buf(),
-        Some(_) if current_dir.join("helix-cli").exists() => current_dir.to_path_buf(),
+        Some(parent) if parent.join("sparrow-cli").exists() => parent.to_path_buf(),
+        Some(_) if current_dir.join("sparrow-cli").exists() => current_dir.to_path_buf(),
         Some(parent) => bail!("Error: Failed to get project root: {}", parent.display()),
         None => bail!("Error: Failed to get project root"),
     };
     copy_dir_recursive(&project_root, &temp_repo).await?;
 
-    // build rust cli from ./helix-db/helix-cli with sh build.sh dev
-    println!("DEBUG: Building rust cli from ./helix-db/helix-cli with sh build.sh dev");
-    let build_script_path = project_root.join("helix-cli/build.sh");
+    // build rust cli from ./sparrow-cli with sh build.sh dev
+    println!("DEBUG: Building rust cli from ./sparrow-cli with sh build.sh dev");
+    let build_script_path = project_root.join("sparrow-cli/build.sh");
     println!("DEBUG: Build script path: {}", build_script_path.display());
     println!("DEBUG: Build script exists: {}", build_script_path.exists());
 
-    let helix_cli_dir = project_root.join("helix-cli");
-    println!("DEBUG: Helix CLI dir: {}", helix_cli_dir.display());
-    println!("DEBUG: Helix CLI dir exists: {}", helix_cli_dir.exists());
+    let sparrow_cli_dir = project_root.join("sparrow-cli");
+    println!("DEBUG: Sparrow CLI dir: {}", sparrow_cli_dir.display());
+    println!("DEBUG: Sparrow CLI dir exists: {}", sparrow_cli_dir.exists());
 
-    // Check if helix is already available
-    let helix_check = Command::new("sparrow").arg("--version").output();
+    // Check if sparrow is already available
+    let sparrow_check = Command::new("sparrow").arg("--version").output();
 
-    match helix_check {
+    match sparrow_check {
         Ok(output) => {
             if output.status.success() {
                 println!(
-                    "DEBUG: Helix already available: {}",
+                    "DEBUG: Sparrow already available: {}",
                     String::from_utf8_lossy(&output.stdout)
                 );
             } else {
-                println!("DEBUG: Helix not available or failed version check");
+                println!("DEBUG: Sparrow not available or failed version check");
             }
         }
         Err(e) => {
-            println!("DEBUG: Helix command not found: {e}");
+            println!("DEBUG: Sparrow command not found: {e}");
         }
     }
 
     let output = Command::new("sh")
         .arg("build.sh")
         .arg("dev")
-        .current_dir(&helix_cli_dir) // Change to helix-cli directory first
+        .current_dir(&sparrow_cli_dir) // Change to sparrow-cli directory first
         .output()
         .context("Failed to execute build.sh")?;
 
@@ -316,26 +316,26 @@ async fn main() -> Result<()> {
     } else {
         println!("DEBUG: build.sh dev succeeded");
 
-        // Check if helix is available after build
-        let helix_check_after = Command::new("sparrow").arg("--version").output();
+        // Check if sparrow is available after build
+        let sparrow_check_after = Command::new("sparrow").arg("--version").output();
 
-        match helix_check_after {
+        match sparrow_check_after {
             Ok(output) => {
                 if output.status.success() {
                     println!(
-                        "DEBUG: Helix available after build: {}",
+                        "DEBUG: Sparrow available after build: {}",
                         String::from_utf8_lossy(&output.stdout)
                     );
                 } else {
-                    println!("DEBUG: Helix still not available after build");
+                    println!("DEBUG: Sparrow still not available after build");
                     println!(
-                        "DEBUG: Helix version check stderr: {}",
+                        "DEBUG: Sparrow version check stderr: {}",
                         String::from_utf8_lossy(&output.stderr)
                     );
                 }
             }
             Err(e) => {
-                println!("DEBUG: Helix command still not found after build: {e}");
+                println!("DEBUG: Sparrow command still not found after build: {e}");
             }
         }
     }
@@ -565,7 +565,7 @@ async fn process_test_directory(
     }
 
     // Create a temporary directory for this test
-    let temp_dir = env::temp_dir().join(format!("helix_temp_{test_name}"));
+    let temp_dir = env::temp_dir().join(format!("sparrow_temp_{test_name}"));
     if temp_dir.exists() {
         fs::remove_dir_all(&temp_dir)
             .await
@@ -578,23 +578,23 @@ async fn process_test_directory(
     // Copy the test files (queries.hx, schema.hx, sparrow.toml, etc.) to temp directory
     copy_dir_recursive(&folder_path, &temp_dir).await?;
 
-    // Copy the entire helix-db project structure for cargo check
+    // Copy the entire sparrow-db project structure for cargo check
     // But skip .sparrow directory to avoid conflicts
-    let helix_db_dir = temp_dir.join("helix-db");
-    fs::create_dir_all(&helix_db_dir).await?;
+    let sparrow_db_dir = temp_dir.join("sparrow-db");
+    fs::create_dir_all(&sparrow_db_dir).await?;
 
     // Copy all project crates and dependencies (excluding hql-tests to avoid conflicts)
     let crates_to_copy = vec![
         "sparrow-container",
-        "helix-db",
-        "helix-macros",
-        "helix-cli",
+        "sparrow-db",
+        "sparrow-macros",
+        "sparrow-cli",
         "metrics",
     ];
 
     for crate_name in crates_to_copy {
         let src = temp_repo.join(crate_name);
-        let dst = helix_db_dir.join(crate_name);
+        let dst = sparrow_db_dir.join(crate_name);
         if src.exists() {
             copy_dir_recursive(&src, &dst).await?;
         }
@@ -602,7 +602,7 @@ async fn process_test_directory(
 
     // Copy root Cargo.toml and Cargo.lock, but remove hql-tests from workspace
     let cargo_toml_src = temp_repo.join("Cargo.toml");
-    let cargo_toml_dst = helix_db_dir.join("Cargo.toml");
+    let cargo_toml_dst = sparrow_db_dir.join("Cargo.toml");
     if cargo_toml_src.exists() {
         // Read the Cargo.toml and remove hql-tests from workspace members
         let cargo_content = fs::read_to_string(&cargo_toml_src).await?;
@@ -611,13 +611,13 @@ async fn process_test_directory(
     }
 
     let cargo_lock_src = temp_repo.join("Cargo.lock");
-    let cargo_lock_dst = helix_db_dir.join("Cargo.lock");
+    let cargo_lock_dst = sparrow_db_dir.join("Cargo.lock");
     if cargo_lock_src.exists() {
         fs::copy(&cargo_lock_src, &cargo_lock_dst).await?;
     }
 
-    // Run helix compile command
-    let compile_output_path = temp_dir.join("helix-db/sparrow-container/src");
+    // Run sparrow compile command
+    let compile_output_path = temp_dir.join("sparrow-db/sparrow-container/src");
     fs::create_dir_all(&compile_output_path)
         .await
         .context("Failed to create compile output directory")?;
@@ -632,25 +632,25 @@ async fn process_test_directory(
         .context("Failed to execute sparrow compile command")?;
 
     println!(
-        "DEBUG: Helix compile output: {}",
+        "DEBUG: Sparrow compile output: {}",
         String::from_utf8_lossy(&output.stdout)
     );
     println!(
-        "DEBUG: Helix compile stderr: {}",
+        "DEBUG: Sparrow compile stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     if !output.status.success() {
         fs::remove_dir_all(&temp_dir).await.ok();
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        // For helix compilation, we'll show the raw output since it's not cargo format
+        // For sparrow compilation, we'll show the raw output since it's not cargo format
         let error_message = format!(
-            "[FAILED] HELIX COMPILE FAILED for {test_name}\nStderr: {stderr}\nStdout: {stdout}"
+            "[FAILED] SPARROW COMPILE FAILED for {test_name}\nStderr: {stderr}\nStdout: {stdout}"
         );
 
         // Create GitHub issue if configuration is available
         if let Some(config) = github_config {
-            println!("DEBUG: Helix compilation failed in parallel mode, creating GitHub issue...");
+            println!("DEBUG: Sparrow compilation failed in parallel mode, creating GitHub issue...");
             let query_content = if let Some(ref query_path) = query_file_path {
                 fs::read_to_string(query_path).await.map_err(|e| {
                     println!("DEBUG: Failed to read query file: {e}");
@@ -668,7 +668,7 @@ async fn process_test_directory(
                 .unwrap_or_else(|_| String::from("Failed to read generated queries.rs"));
             handle_error_with_github(
                 config,
-                "Helix Compilation",
+                "Sparrow Compilation",
                 &error_message,
                 test_name,
                 &query_content,
@@ -683,12 +683,12 @@ async fn process_test_directory(
         bail!("Error: {}", error_message);
     }
 
-    // Run cargo check on the helix container path
-    let helix_container_path = temp_dir.join("helix-db/sparrow-container");
-    if helix_container_path.exists() {
+    // Run cargo check on the sparrow container path
+    let sparrow_container_path = temp_dir.join("sparrow-db/sparrow-container");
+    if sparrow_container_path.exists() {
         let output = Command::new("cargo")
             .arg("check")
-            .current_dir(&helix_container_path)
+            .current_dir(&sparrow_container_path)
             .output()
             .context("Failed to execute cargo check")?;
 

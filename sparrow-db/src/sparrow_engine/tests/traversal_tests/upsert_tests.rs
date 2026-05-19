@@ -2233,7 +2233,7 @@ fn test_upsert_e_persisted_after_commit() {
         source_id,
         target_id,
         &[
-            ("project", Value::from("helix")),
+            ("project", Value::from("sparrow")),
             ("role", Value::from("lead")),
         ],
     )
@@ -2256,7 +2256,7 @@ fn test_upsert_e_persisted_after_commit() {
         assert_eq!(e.label, "works_with");
         assert_eq!(e.from_node, source_id);
         assert_eq!(e.to_node, target_id);
-        assert_eq!(e.get_property("project").unwrap(), &Value::from("helix"));
+        assert_eq!(e.get_property("project").unwrap(), &Value::from("sparrow"));
         assert_eq!(e.get_property("role").unwrap(), &Value::from("lead"));
     } else {
         panic!("Expected edge");
@@ -2514,7 +2514,7 @@ fn test_upsert_e_between_different_node_labels() {
     let company_id = G::new_mut(&storage, &arena, &mut txn)
         .add_n(
             "company",
-            props_option(&arena, props!("name" => "Helix Corp")),
+            props_option(&arena, props!("name" => "Sparrow Corp")),
             None,
         )
         .collect::<Result<Vec<_>, _>>()
@@ -2555,7 +2555,7 @@ fn test_upsert_e_between_different_node_labels() {
     assert_eq!(out_nodes[0].id(), company_id);
     if let TraversalValue::Node(n) = &out_nodes[0] {
         assert_eq!(n.label, "company");
-        assert_eq!(n.get_property("name").unwrap(), &Value::from("Helix Corp"));
+        assert_eq!(n.get_property("name").unwrap(), &Value::from("Sparrow Corp"));
     } else {
         panic!("Expected node");
     }

@@ -8,7 +8,7 @@ pub async fn run() -> Result<()> {
     let project = match ProjectContext::find_and_load(None) {
         Ok(project) => project,
         Err(_) => {
-            print_error("Not in a Helix project directory. Run 'sparrow init' to create one.");
+            print_error("Not in a Sparrow project directory. Run 'sparrow init' to create one.");
             return Ok(());
         }
     };

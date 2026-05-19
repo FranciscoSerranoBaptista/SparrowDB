@@ -13,7 +13,7 @@ use std::fs;
 // ============================================================================
 
 #[tokio::test]
-async fn test_add_fails_without_helix_project() {
+async fn test_add_fails_without_sparrow_project() {
     use crate::commands::add;
 
     let ctx = TestContext::new();
@@ -131,7 +131,7 @@ async fn test_prune_fails_for_specific_instance_outside_project() {
     );
     let error_msg = format!("{:?}", result.err().unwrap());
     assert!(
-        error_msg.contains("not in") || error_msg.contains("Helix project"),
+        error_msg.contains("not in") || error_msg.contains("Sparrow project") || error_msg.contains("sparrow project"),
         "Error should mention not in sparrow project: {error_msg}"
     );
 }
