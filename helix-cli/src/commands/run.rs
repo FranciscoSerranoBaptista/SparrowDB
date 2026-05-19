@@ -1,6 +1,6 @@
 use eyre::{eyre, Result};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 
 use crate::project::ProjectContext;
 
@@ -34,7 +34,7 @@ pub fn resolve_data_dir(
         return proj.instance_volume(inst).to_string_lossy().into_owned();
     }
     dirs::home_dir()
-        .map(|h| h.join(".helix/user").to_string_lossy().into_owned())
+        .map(|h| h.join(".helix").to_string_lossy().into_owned())
         .unwrap_or_else(|| "/tmp/helix-data".to_string())
 }
 
@@ -76,6 +76,7 @@ pub async fn run(
         .env("HELIX_DATA_DIR", &data_dir_val)
         .env("HELIX_PORT", port_val.to_string())
         .status()
+        .await
         .map_err(|e| eyre!("Failed to start {}: {e}", binary_path.display()))?;
 
     if !status.success() {
