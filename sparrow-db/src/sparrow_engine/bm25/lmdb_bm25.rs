@@ -844,14 +844,19 @@ impl BM25 for HBM25Config {
         // this can be negative when df is high relative to N, which is mathematically correct
         let idf = (((total_docs - df + 0.5) / (df + 0.5)) + 1.0).ln();
 
-        // ensure avgdl is not zero
-        let avgdl = if avgdl > 0.0 { avgdl } else { doc_len as f64 };
-
-        // calculate BM25 score
         let tf = tf as f64;
         let doc_len = doc_len as f64;
+
+        // Guard: if both avgdl and doc_len are 0 (empty doc, empty corpus), treat doc_len/avgdl as 1.0.
+        // 0/0 = NaN poisons BinaryHeap score comparisons.
+        let length_ratio = if avgdl > 0.0 {
+            doc_len / avgdl
+        } else {
+            1.0
+        };
+
         let tf_component = (tf * (self.k1 + 1.0))
-            / (tf + self.k1 * (1.0 - self.b + self.b * (doc_len.abs() / avgdl)));
+            / (tf + self.k1 * (1.0 - self.b + self.b * length_ratio));
 
         (idf * tf_component) as f32
     }

@@ -2378,4 +2378,14 @@ mod tests {
         assert!(flattened.contains("count"));
         assert!(flattened.contains("42"));
     }
+
+    #[test]
+    fn test_bm25_score_no_nan_when_avgdl_and_doc_len_are_zero() {
+        let (bm25, _temp_dir) = setup_bm25_config();
+        // Simulate the worst case: empty document is the only document in the index.
+        // avgdl = 0.0, doc_len = 0, tf = 1, df = 1, total_docs = 1
+        // Before fix: 0.0 / 0.0 = NaN poisons the heap.
+        let score = bm25.calculate_bm25_score(1, 0, 1, 1, 0.0);
+        assert!(score.is_finite(), "BM25 score must not be NaN or infinite: got {score}");
+    }
 }
