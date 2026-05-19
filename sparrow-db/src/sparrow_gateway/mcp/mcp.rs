@@ -23,6 +23,8 @@ use std::{
 
 pub type QueryStep = ToolArgs;
 
+const MAX_CACHED_RESULTS: usize = 10_000;
+
 pub struct McpConnections {
     pub connections: HashMap<String, MCPConnection>,
 }
@@ -93,6 +95,9 @@ pub struct MCPConnection {
     pub current_position: usize,
     /// Materialized result cache. None = not yet executed on this query chain.
     /// Populated on first next() call, then indexed directly.
+    /// SAFETY: Assumes serial (non-concurrent) next() calls per connection.
+    /// Concurrent next() on the same connection_id is undefined behavior.
+    /// Currently safe because routing dispatches requests to connections serially.
     pub cached_results: Option<Vec<Vec<u8>>>,
 }
 
@@ -398,6 +403,13 @@ pub fn next(input: &mut MCPToolInput) -> Result<Response, GraphError> {
         })?;
 
     tracing::debug!("[NEXT] Materialized {} results", all_results.len());
+
+    if all_results.len() > MAX_CACHED_RESULTS {
+        return Err(GraphError::StorageError(format!(
+            "query returned {} results; maximum for paginated next() is {}; use collect() for bulk access",
+            all_results.len(), MAX_CACHED_RESULTS
+        )));
+    }
 
     let serialized = all_results.get(current_position).cloned();
 
