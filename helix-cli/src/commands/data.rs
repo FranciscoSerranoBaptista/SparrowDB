@@ -80,9 +80,8 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<u64> {
 /// - For RocksDB (`CURRENT`): falls back to a filesystem copy (requires instance to be stopped).
 /// - Otherwise: returns an error.
 pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
-    fs::create_dir_all(output)?;
-
     if db_dir.join("data.mdb").exists() {
+        fs::create_dir_all(output)?;
         let env = unsafe {
             EnvOpenOptions::new()
                 .flags(EnvFlags::READ_ONLY)
@@ -92,6 +91,7 @@ pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
         };
         env.copy_to_path(output.join("data.mdb"), CompactionOption::Disabled)?;
     } else if db_dir.join("CURRENT").exists() {
+        fs::create_dir_all(output)?;
         crate::output::info(
             "RocksDB detected: filesystem copy. Ensure the instance is stopped for a consistent backup.",
         );
