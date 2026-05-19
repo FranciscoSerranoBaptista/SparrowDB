@@ -80,3 +80,77 @@ fn test_host_data_dir_respects_env_var() {
     let default_dir = docker.data_dir("myinstance");
     assert_eq!(default_dir, "../.volumes/myinstance");
 }
+
+#[test]
+fn test_dockerfile_lmdb_release_uses_release_flag() {
+    use crate::config::BuildMode;
+    let (_temp_dir, mut context) = setup_test_project();
+    context
+        .config
+        .local
+        .get_mut("dev")
+        .unwrap()
+        .build_mode = BuildMode::Release;
+    let docker = DockerManager::new(&context);
+    let instance_config = context.config.get_instance("dev").unwrap();
+    let dockerfile = docker.generate_dockerfile("dev", instance_config).unwrap();
+    assert!(
+        dockerfile.contains("cargo build --release\n") || dockerfile.contains("cargo build --release "),
+        "release lmdb build should pass --release flag, got:\n{dockerfile}"
+    );
+    assert!(
+        !dockerfile.contains("--features rocks"),
+        "lmdb build must not include rocks feature"
+    );
+}
+
+#[test]
+fn test_dockerfile_rocks_release_uses_rocks_no_default_features() {
+    use crate::config::{BuildMode, StorageBackend};
+    let (_temp_dir, mut context) = setup_test_project();
+    let dev = context.config.local.get_mut("dev").unwrap();
+    dev.build_mode = BuildMode::Release;
+    dev.storage_backend = StorageBackend::Rocks;
+    let docker = DockerManager::new(&context);
+    let instance_config = context.config.get_instance("dev").unwrap();
+    let dockerfile = docker.generate_dockerfile("dev", instance_config).unwrap();
+    assert!(
+        dockerfile.contains("--no-default-features --features rocks"),
+        "rocks release build should pass --no-default-features --features rocks, got:\n{dockerfile}"
+    );
+    assert!(
+        dockerfile.contains("--release"),
+        "rocks release build should also pass --release"
+    );
+}
+
+#[test]
+fn test_dockerfile_rocks_dev_uses_rocks_no_default_features() {
+    use crate::config::StorageBackend;
+    let (_temp_dir, mut context) = setup_test_project();
+    context
+        .config
+        .local
+        .get_mut("dev")
+        .unwrap()
+        .storage_backend = StorageBackend::Rocks;
+    // build_mode is Dev by default
+    let docker = DockerManager::new(&context);
+    let instance_config = context.config.get_instance("dev").unwrap();
+    let dockerfile = docker.generate_dockerfile("dev", instance_config).unwrap();
+    assert!(
+        dockerfile.contains("--no-default-features --features rocks,dev"),
+        "rocks dev build should pass --no-default-features --features rocks,dev, got:\n{dockerfile}"
+    );
+}
+
+#[test]
+fn test_image_name_differs_between_lmdb_and_rocks() {
+    use crate::config::{BuildMode, StorageBackend};
+    let (_temp_dir, context) = setup_test_project();
+    let docker = DockerManager::new(&context);
+    let lmdb_name = docker.image_name("dev", BuildMode::Release, StorageBackend::Lmdb);
+    let rocks_name = docker.image_name("dev", BuildMode::Release, StorageBackend::Rocks);
+    assert_ne!(lmdb_name, rocks_name, "rocks and lmdb images must have distinct names");
+    assert!(rocks_name.contains("rocks"), "rocks image name should contain 'rocks'");
+}

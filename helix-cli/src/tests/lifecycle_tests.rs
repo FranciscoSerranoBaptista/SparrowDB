@@ -265,6 +265,7 @@ async fn test_status_with_multiple_instances() {
         crate::config::LocalInstanceConfig {
             port: Some(6970),
             build_mode: crate::config::BuildMode::Dev,
+            storage_backend: crate::config::StorageBackend::Lmdb,
             db_config: crate::config::DbConfig::default(),
         },
     );
@@ -273,6 +274,7 @@ async fn test_status_with_multiple_instances() {
         crate::config::LocalInstanceConfig {
             port: Some(6971),
             build_mode: crate::config::BuildMode::Release,
+            storage_backend: crate::config::StorageBackend::Lmdb,
             db_config: crate::config::DbConfig::default(),
         },
     );

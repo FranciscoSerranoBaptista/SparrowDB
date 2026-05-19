@@ -468,6 +468,7 @@ fn test_config_list_instances() {
         crate::config::LocalInstanceConfig {
             port: Some(6970),
             build_mode: crate::config::BuildMode::Dev,
+            storage_backend: crate::config::StorageBackend::Lmdb,
             db_config: crate::config::DbConfig::default(),
         },
     );

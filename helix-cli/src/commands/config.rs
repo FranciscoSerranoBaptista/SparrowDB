@@ -1127,7 +1127,7 @@ async fn cluster_list(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{CloudConfig, CloudInstanceConfig, LocalInstanceConfig};
+    use crate::config::{CloudConfig, CloudInstanceConfig, LocalInstanceConfig, StorageBackend};
     use std::collections::HashMap;
     use tempfile::TempDir;
 
@@ -1150,6 +1150,7 @@ mod tests {
             LocalInstanceConfig {
                 port: Some(7979),
                 build_mode: BuildMode::Release,
+                storage_backend: StorageBackend::Lmdb,
                 db_config: Default::default(),
             },
         );

@@ -3,7 +3,7 @@
 //! Despite the module name, this works with both Docker and Podman as they
 //! share the same CLI interface and support standard Dockerfile formats.
 
-use crate::config::{BuildMode, ContainerRuntime, InstanceInfo};
+use crate::config::{BuildMode, ContainerRuntime, InstanceInfo, StorageBackend};
 use crate::output::Step;
 use crate::project::ProjectContext;
 use crate::utils::{print_confirm, print_info, print_warning};
@@ -81,11 +81,13 @@ impl<'a> DockerManager<'a> {
     }
 
     /// Get the image name for an instance
-    pub(crate) fn image_name(&self, instance_name: &str, build_mode: BuildMode) -> String {
-        let tag = match build_mode {
-            BuildMode::Debug => "debug",
-            BuildMode::Release => "latest",
-            BuildMode::Dev => "dev",
+    pub(crate) fn image_name(&self, instance_name: &str, build_mode: BuildMode, storage_backend: StorageBackend) -> String {
+        let tag = match (build_mode, storage_backend) {
+            (BuildMode::Debug, _) => "debug".to_string(),
+            (BuildMode::Release, StorageBackend::Lmdb) => "latest".to_string(),
+            (BuildMode::Dev, StorageBackend::Lmdb) => "dev".to_string(),
+            (BuildMode::Release, StorageBackend::Rocks) => "latest-rocks".to_string(),
+            (BuildMode::Dev, StorageBackend::Rocks) => "dev-rocks".to_string(),
         };
         let project_name = self.compose_project_name(instance_name);
         format!("{project_name}:{tag}")
@@ -477,19 +479,20 @@ impl<'a> DockerManager<'a> {
         instance_name: &str,
         instance_config: InstanceInfo<'_>,
     ) -> Result<String> {
-        let build_flag = match instance_config.build_mode() {
-            BuildMode::Debug => unreachable!(
+        let (build_flag, build_mode) = match (instance_config.build_mode(), instance_config.storage_backend()) {
+            (BuildMode::Debug, _) => unreachable!(
                 "Please report as a bug. BuildMode::Debug should have been caught in validation."
             ),
-            BuildMode::Release => "--release",
-            BuildMode::Dev => "--features dev",
-        };
-        let build_mode = match instance_config.build_mode() {
-            BuildMode::Debug => unreachable!(
-                "Please report as a bug. BuildMode::Debug should have been caught in validation."
+            (BuildMode::Release, StorageBackend::Lmdb) => ("--release".to_string(), "release"),
+            (BuildMode::Dev, StorageBackend::Lmdb) => ("--features dev".to_string(), "debug"),
+            (BuildMode::Release, StorageBackend::Rocks) => (
+                "--release --no-default-features --features rocks".to_string(),
+                "release",
             ),
-            BuildMode::Release => "release",
-            BuildMode::Dev => "debug",
+            (BuildMode::Dev, StorageBackend::Rocks) => (
+                "--no-default-features --features rocks,dev".to_string(),
+                "debug",
+            ),
         };
 
         let dockerfile = format!(
@@ -565,7 +568,7 @@ CMD ["helix-container"]
 
         // Use centralized naming methods
         let service_name = Self::service_name();
-        let image_name = self.image_name(instance_name, instance_config.build_mode());
+        let image_name = self.image_name(instance_name, instance_config.build_mode(), instance_config.storage_backend());
         let container_name = self.container_name(instance_name);
         let network_name = self.network_name(instance_name); // Get all environment variables dynamically
         let env_vars = self.environment_variables(instance_name);
@@ -849,13 +852,15 @@ networks:
             self.runtime.label()
         ));
 
-        // Get image names for both debug and release modes
-        let debug_image = self.image_name(instance_name, BuildMode::Debug);
-        let dev_image = self.image_name(instance_name, BuildMode::Dev);
-        let release_image = self.image_name(instance_name, BuildMode::Release);
+        // Get image names for all mode and backend combinations
+        let debug_image = self.image_name(instance_name, BuildMode::Debug, StorageBackend::Lmdb);
+        let dev_image = self.image_name(instance_name, BuildMode::Dev, StorageBackend::Lmdb);
+        let release_image = self.image_name(instance_name, BuildMode::Release, StorageBackend::Lmdb);
+        let dev_rocks_image = self.image_name(instance_name, BuildMode::Dev, StorageBackend::Rocks);
+        let release_rocks_image = self.image_name(instance_name, BuildMode::Release, StorageBackend::Rocks);
 
-        // Try to remove both images (ignore errors if they don't exist)
-        for image in [debug_image, dev_image, release_image] {
+        // Try to remove all images (ignore errors if they don't exist)
+        for image in [debug_image, dev_image, release_image, dev_rocks_image, release_rocks_image] {
             let output = self.run_docker_command(&["rmi", "-f", &image])?;
             if output.status.success() {
                 Step::verbose_substep(&format!("{}: Removed image: {image}", self.runtime.label()));

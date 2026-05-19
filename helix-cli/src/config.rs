@@ -184,6 +184,8 @@ pub struct LocalInstanceConfig {
     pub port: Option<u16>,
     #[serde(default = "default_dev_build_mode")]
     pub build_mode: BuildMode,
+    #[serde(default)]
+    pub storage_backend: StorageBackend,
     #[serde(flatten)]
     pub db_config: DbConfig,
 }
@@ -328,6 +330,14 @@ pub fn default_release_build_mode() -> BuildMode {
     BuildMode::Release
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageBackend {
+    #[default]
+    Lmdb,
+    Rocks,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -410,6 +420,13 @@ impl<'a> InstanceInfo<'a> {
             | InstanceInfo::FlyIo(FlyInstanceConfig { build_mode, .. })
             | InstanceInfo::Ecr(EcrConfig { build_mode, .. }) => *build_mode,
             InstanceInfo::Enterprise(_) => BuildMode::Release,
+        }
+    }
+
+    pub fn storage_backend(&self) -> StorageBackend {
+        match self {
+            InstanceInfo::Local(LocalInstanceConfig { storage_backend, .. }) => *storage_backend,
+            _ => StorageBackend::Lmdb,
         }
     }
 
@@ -680,6 +697,7 @@ impl HelixConfig {
             LocalInstanceConfig {
                 port: Some(6969),
                 build_mode: BuildMode::Dev,
+                storage_backend: StorageBackend::Lmdb,
                 db_config: DbConfig::default(),
             },
         );

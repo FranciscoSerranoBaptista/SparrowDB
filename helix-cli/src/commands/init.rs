@@ -5,7 +5,7 @@ use crate::commands::integrations::fly::{FlyAuthType, FlyManager, VmSize};
 use crate::commands::workspace_flow::{self, ClusterResult};
 use crate::config::{
     CloudConfig, CloudInstanceConfig, DbConfig, EnterpriseInstanceConfig, HelixConfig,
-    LocalInstanceConfig,
+    LocalInstanceConfig, StorageBackend,
 };
 use crate::docker::DockerManager;
 use crate::errors::project_error;
@@ -268,6 +268,7 @@ async fn run_init_inner(
                         let local_cfg = config.local.remove("dev").unwrap_or(LocalInstanceConfig {
                             port: Some(6969),
                             build_mode: crate::config::BuildMode::Dev,
+                            storage_backend: StorageBackend::Lmdb,
                             db_config: DbConfig::default(),
                         });
                         config.local.insert(local_instance_name.clone(), local_cfg);

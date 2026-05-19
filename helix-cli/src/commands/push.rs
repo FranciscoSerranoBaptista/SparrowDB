@@ -3,7 +3,7 @@ use crate::commands::build::MetricsData;
 use crate::commands::integrations::ecr::EcrManager;
 use crate::commands::integrations::fly::FlyManager;
 use crate::commands::integrations::helix::HelixManager;
-use crate::config::{BuildMode, CloudConfig, InstanceInfo};
+use crate::config::{BuildMode, CloudConfig, InstanceInfo, StorageBackend};
 use crate::docker::DockerManager;
 use crate::metrics_sender::MetricsSender;
 use crate::output::{Operation, Step, Verbosity};
@@ -242,7 +242,7 @@ async fn push_cloud_instance(
             let fly = FlyManager::new(project, config.auth_type.clone()).await?;
             let docker = DockerManager::new(project);
             // Get the correct image name from docker compose project name
-            let image_name = docker.image_name(instance_name, config.build_mode);
+            let image_name = docker.image_name(instance_name, config.build_mode, StorageBackend::Lmdb);
 
             fly.deploy_image(&docker, config, instance_name, &image_name)
                 .await?;
@@ -252,7 +252,7 @@ async fn push_cloud_instance(
             let ecr = EcrManager::new(project, config.auth_type.clone()).await?;
             let docker = DockerManager::new(project);
             // Get the correct image name from docker compose project name
-            let image_name = docker.image_name(instance_name, config.build_mode);
+            let image_name = docker.image_name(instance_name, config.build_mode, StorageBackend::Lmdb);
 
             ecr.deploy_image(&docker, config, instance_name, &image_name)
                 .await?;

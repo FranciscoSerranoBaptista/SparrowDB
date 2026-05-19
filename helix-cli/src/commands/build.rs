@@ -1,4 +1,4 @@
-use crate::config::InstanceInfo;
+use crate::config::{BuildMode, InstanceInfo, StorageBackend};
 use crate::docker::{DockerBuildError, DockerManager};
 use crate::github_issue::{GitHubIssueBuilder, filter_errors_only};
 use crate::metrics_sender::MetricsSender;
@@ -168,7 +168,13 @@ pub async fn run_build_steps(
     if let Some(binary_output) = bin {
         let mut cargo_step = Step::with_messages("Building binary", "Binary built");
         cargo_step.start();
-        match build_binary_using_cargo(project, instance_name, binary_output) {
+        match build_binary_using_cargo(
+            project,
+            instance_name,
+            binary_output,
+            instance_config.build_mode(),
+            instance_config.storage_backend(),
+        ) {
             Ok(()) => cargo_step.done(),
             Err(e) => {
                 cargo_step.fail();
@@ -572,6 +578,8 @@ fn build_binary_using_cargo(
     project: &ProjectContext,
     instance_name: &str,
     binary_output: &str,
+    build_mode: BuildMode,
+    storage_backend: StorageBackend,
 ) -> Result<()> {
     let binary_output_path = std::path::Path::new(binary_output);
     std::fs::create_dir_all(binary_output_path)?;
@@ -583,13 +591,36 @@ fn build_binary_using_cargo(
         .join("helix-repo-copy")
         .join("helix-container");
 
-    let status = Command::new("cargo")
-        .arg("build")
+    let mut cmd = Command::new("cargo");
+    cmd.arg("build")
         .arg("--target-dir")
         .arg(binary_output_path.as_os_str())
-        .current_dir(current_dir)
-        .status()?;
+        .current_dir(current_dir);
 
+    match (build_mode, storage_backend) {
+        (BuildMode::Debug, _) => unreachable!(
+            "Please report as a bug. BuildMode::Debug should have been caught in validation."
+        ),
+        (BuildMode::Release, StorageBackend::Lmdb) => {
+            cmd.arg("--release");
+        }
+        (BuildMode::Dev, StorageBackend::Lmdb) => {
+            cmd.arg("--features").arg("dev");
+        }
+        (BuildMode::Release, StorageBackend::Rocks) => {
+            cmd.arg("--release")
+                .arg("--no-default-features")
+                .arg("--features")
+                .arg("rocks");
+        }
+        (BuildMode::Dev, StorageBackend::Rocks) => {
+            cmd.arg("--no-default-features")
+                .arg("--features")
+                .arg("rocks,dev");
+        }
+    }
+
+    let status = cmd.status()?;
     if !status.success() {
         return Err(eyre!(
             "Cargo build failed with exit code: {:?}",

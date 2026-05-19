@@ -5,7 +5,7 @@ use crate::commands::integrations::fly::{FlyAuthType, FlyManager, VmSize};
 use crate::commands::workspace_flow::{self, ClusterResult};
 use crate::config::{
     BuildMode, CloudConfig, CloudInstanceConfig, DbConfig, EnterpriseInstanceConfig,
-    LocalInstanceConfig,
+    LocalInstanceConfig, StorageBackend,
 };
 use crate::docker::DockerManager;
 use crate::errors::project_error;
@@ -232,6 +232,7 @@ async fn run_add_inner(
             let local_config = LocalInstanceConfig {
                 port: None, // Let the system assign a port
                 build_mode: BuildMode::Dev,
+                storage_backend: StorageBackend::Lmdb,
                 db_config: DbConfig::default(),
             };
 

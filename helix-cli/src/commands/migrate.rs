@@ -1,6 +1,6 @@
 use crate::config::{
     BuildMode, ContainerRuntime, DbConfig, GraphConfig, HelixConfig, LocalInstanceConfig,
-    ProjectConfig, VectorConfig,
+    ProjectConfig, StorageBackend, VectorConfig,
 };
 use crate::errors::{CliError, project_error};
 use crate::output;
@@ -474,6 +474,7 @@ fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
     let local_config = LocalInstanceConfig {
         port: Some(ctx.port),
         build_mode: BuildMode::Dev,
+        storage_backend: StorageBackend::Lmdb,
         db_config,
     };
 
