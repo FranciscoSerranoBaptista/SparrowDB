@@ -888,7 +888,9 @@ fn test_insert_with_id_preserves_id() {
 
 #[test]
 fn test_rebuild_preserves_active_and_purges_deleted() {
+    use crate::protocol::value::Value;
     use crate::sparrow_engine::vector_core::HNSW;
+    use std::collections::HashMap;
 
     let (_temp_dir, storage) = setup_test_db();
     let arena = bumpalo::Bump::new();
@@ -901,11 +903,23 @@ fn test_rebuild_preserves_active_and_purges_deleted() {
         .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &d1, None, &arena)
         .unwrap();
 
+    // Build custom properties for v2 so we can verify they survive rebuild.
+    let mut raw_props = HashMap::new();
+    raw_props.insert("source".to_string(), Value::String("rebuild-test".to_string()));
+    raw_props.insert("priority".to_string(), Value::U32(42));
+    let props_map = ImmutablePropertiesMap::new(
+        raw_props.len(),
+        raw_props
+            .iter()
+            .map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
+        &arena,
+    );
+
     let mut d2 = [0.0f64; 3];
     d2[1] = 1.0;
     let v2 = storage
         .vectors
-        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &d2, None, &arena)
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &d2, Some(props_map), &arena)
         .unwrap();
 
     // Soft-delete v1
@@ -922,6 +936,19 @@ fn test_rebuild_preserves_active_and_purges_deleted() {
     // v2 must still be findable with its original id
     let found = storage.vectors.get_full_vector(&txn, v2.id, &arena);
     assert!(found.is_ok(), "active vector must survive rebuild: {:?}", found.err());
+
+    // v2's custom properties must survive rebuild without data loss.
+    let found_v2 = found.unwrap();
+    assert_eq!(
+        found_v2.get_property("source"),
+        Some(&Value::String("rebuild-test".to_string())),
+        "string property must survive rebuild"
+    );
+    assert_eq!(
+        found_v2.get_property("priority"),
+        Some(&Value::U32(42)),
+        "u32 property must survive rebuild"
+    );
 
     // v1 must be gone from properties db
     let props = storage.vectors.vector_properties_db.get(&txn, &v1.id).unwrap();

@@ -609,8 +609,11 @@ impl VectorCore {
         arena: &'db bumpalo::Bump,
     ) -> Result<RebuildStats, VectorError> {
         // Phase 1: Collect all non-deleted vectors as owned data.
-        // We own everything (Vec<f64>, String) so the borrow of `txn` ends here.
-        let mut to_reinsert: Vec<(u128, Vec<f64>, String)> = Vec::new();
+        // We own everything (Vec<f64>, String, Vec<u8>) so the borrow of `txn` ends here.
+        // The raw properties bytes are captured so that per-vector metadata (custom
+        // properties) survives the clear+reinsert cycle without needing to reconstruct
+        // an ImmutablePropertiesMap from scratch.
+        let mut to_reinsert: Vec<(u128, Vec<f64>, String, Vec<u8>)> = Vec::new();
         let mut purged: u64 = 0;
 
         {
@@ -624,6 +627,11 @@ impl VectorCore {
                     purged += 1;
                     continue;
                 }
+                // Capture a snapshot of the raw bytes stored in vector_properties_db.
+                // These bytes encode (label, version, deleted=false, level, properties)
+                // via bincode.  We will restore them verbatim after insert_with_id so
+                // that custom per-vector properties are not silently dropped.
+                let props_bytes_owned: Vec<u8> = bytes.to_vec();
                 let data_key = Self::vector_key(id, 0);
                 let data_bytes = self
                     .vectors_db
@@ -632,7 +640,7 @@ impl VectorCore {
                     .ok_or_else(|| VectorError::VectorNotFound(id.to_string()))?;
                 // Data is stored with bytemuck::cast_slice (native endianness).
                 let data_f64: Vec<f64> = bytemuck::cast_slice::<u8, f64>(&data_bytes).to_vec();
-                to_reinsert.push((id, data_f64, props.label.to_string()));
+                to_reinsert.push((id, data_f64, props.label.to_string(), props_bytes_owned));
             }
         }
 
@@ -665,13 +673,20 @@ impl VectorCore {
         }
 
         // Phase 3: Re-insert each active vector with its original ID.
+        // insert_with_id writes a fresh vector_properties_db entry with no custom
+        // properties.  After the call we overwrite that entry with the snapshot
+        // captured in Phase 1 so that per-vector metadata is fully preserved.
         let kept = to_reinsert.len() as u64;
-        for (id, data, label) in to_reinsert {
+        for (id, data, label, original_props_bytes) in to_reinsert {
             let data_arena: &[f64] = arena.alloc_slice_copy(&data);
             let label_arena: &str = arena.alloc_str(&label);
             self.insert_with_id::<fn(&_, &_) -> bool>(
                 txn, id, label_arena, data_arena, None, arena,
             )?;
+            // Restore the original properties bytes (which include custom metadata
+            // and have deleted=false, the correct state for an active vector).
+            self.vector_properties_db
+                .put(txn, &id, original_props_bytes.as_ref())?;
         }
 
         Ok(RebuildStats {
