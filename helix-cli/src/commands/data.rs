@@ -106,6 +106,24 @@ pub fn snapshot_impl(db_dir: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copy an entire HelixDB database directory to a new location.
+///
+/// Refuses to overwrite a non-empty destination.
+pub fn clone_impl(db_dir: &Path, dest: &Path) -> Result<()> {
+    // Refuse to overwrite a non-empty destination
+    if dest.exists() {
+        let is_empty = fs::read_dir(dest)?.next().is_none();
+        if !is_empty {
+            return Err(eyre!(
+                "Destination {} is not empty. Use 'helix data restore --force' to overwrite.",
+                dest.display()
+            ));
+        }
+    }
+    copy_dir_all(db_dir, dest)?;
+    Ok(())
+}
+
 pub async fn run(action: DataAction) -> Result<()> {
     match action {
         DataAction::Snapshot { source, output } => {
@@ -133,6 +151,29 @@ pub async fn run(action: DataAction) -> Result<()> {
 
             if crate::output::Verbosity::current().show_normal() {
                 Operation::print_details(&[("Snapshot location", &output_dir.display().to_string())]);
+            }
+
+            Ok(())
+        }
+        DataAction::Clone { source, dest } => {
+            let project = ProjectContext::find_and_load(None).ok();
+            let db_dir = resolve_db_dir(&source, project.as_ref())?;
+            let dest_path = PathBuf::from(&dest);
+
+            let op = Operation::new("Cloning", &source);
+            let mut step = Step::with_messages("Copying database", "Database cloned");
+            step.start();
+
+            clone_impl(&db_dir, &dest_path)?;
+
+            step.done();
+            op.success();
+
+            if crate::output::Verbosity::current().show_normal() {
+                Operation::print_details(&[
+                    ("Source",      &db_dir.display().to_string()),
+                    ("Destination", &dest_path.display().to_string()),
+                ]);
             }
 
             Ok(())

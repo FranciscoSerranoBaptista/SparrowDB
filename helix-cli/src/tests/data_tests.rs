@@ -1,4 +1,4 @@
-use crate::commands::data::{copy_dir_all, resolve_db_dir, snapshot_impl};
+use crate::commands::data::{clone_impl, copy_dir_all, resolve_db_dir, snapshot_impl};
 use std::fs;
 use tempfile::tempdir;
 
@@ -139,4 +139,45 @@ fn test_snapshot_errors_if_source_is_not_a_db() {
     let out = dst.path().join("snap");
     let result = snapshot_impl(src.path(), &out);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_clone_copies_entire_lmdb_directory() {
+    let src = tempdir().unwrap();
+    let dst = tempdir().unwrap();
+    fs::write(src.path().join("data.mdb"), b"lmdb data").unwrap();
+    fs::write(src.path().join("lock.mdb"), b"lock").unwrap();
+
+    let dest_path = dst.path().join("cloned");
+    clone_impl(src.path(), &dest_path).unwrap();
+
+    assert_eq!(fs::read(dest_path.join("data.mdb")).unwrap(), b"lmdb data");
+    assert_eq!(fs::read(dest_path.join("lock.mdb")).unwrap(), b"lock");
+}
+
+#[test]
+fn test_clone_copies_rocksdb_directory() {
+    let src = tempdir().unwrap();
+    let dst = tempdir().unwrap();
+    fs::File::create(src.path().join("CURRENT")).unwrap();
+    fs::write(src.path().join("000001.sst"), b"sst").unwrap();
+
+    let dest_path = dst.path().join("cloned");
+    clone_impl(src.path(), &dest_path).unwrap();
+
+    assert!(dest_path.join("CURRENT").exists());
+    assert_eq!(fs::read(dest_path.join("000001.sst")).unwrap(), b"sst");
+}
+
+#[test]
+fn test_clone_errors_if_dest_is_non_empty() {
+    let src = tempdir().unwrap();
+    let dst = tempdir().unwrap();
+    fs::File::create(src.path().join("data.mdb")).unwrap();
+    fs::File::create(dst.path().join("existing.txt")).unwrap();
+
+    let result = clone_impl(src.path(), dst.path());
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("not empty"));
 }
