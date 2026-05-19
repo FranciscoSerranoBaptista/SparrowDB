@@ -896,6 +896,60 @@ impl HNSW for VectorCore {
                     bincode::serialize(&properties)?.as_ref(),
                 )?;
                 debug_println!("vector deleted with id {}", &id);
+
+                if let Ok(Some(ep_bytes)) = self.vectors_db.get(txn, ENTRY_POINT_KEY) {
+                    let ep_bytes_ref: &[u8] = &ep_bytes;
+                    if ep_bytes_ref.len() == 16 {
+                        let ep_id = u128::from_be_bytes(ep_bytes_ref.try_into().unwrap());
+                        if ep_id == id {
+                            let edge_prefix = Self::out_edges_key(id, 0, None);
+                            let neighbor_ids: Vec<u128> = self
+                                .edges_db
+                                .prefix_iter(txn, edge_prefix.as_ref())?
+                                .filter_map(|r| r.ok())
+                                .filter_map(|(key, _)| {
+                                    if key.len() == 40 {
+                                        let mut arr = [0u8; 16];
+                                        arr.copy_from_slice(&key[24..40]);
+                                        Some(u128::from_be_bytes(arr))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+
+                            let label = properties.label;
+                            let mut replacement = None;
+                            for neighbor_id in neighbor_ids {
+                                let props_bytes = self
+                                    .vector_properties_db
+                                    .get(txn, &neighbor_id)
+                                    .ok()
+                                    .flatten();
+                                let is_deleted = props_bytes
+                                    .and_then(|b| {
+                                        VectorWithoutData::from_bincode_bytes(arena, b, neighbor_id).ok()
+                                    })
+                                    .map(|p| p.deleted)
+                                    .unwrap_or(true);
+                                if !is_deleted {
+                                    if let Ok(v) = self.get_raw_vector_data(txn, neighbor_id, label, arena) {
+                                        replacement = Some(v);
+                                        break;
+                                    }
+                                }
+                            }
+
+                            match replacement {
+                                Some(new_ep) => self.set_entry_point(txn, &new_ep)?,
+                                None => {
+                                    self.vectors_db.delete(txn, ENTRY_POINT_KEY)?;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Ok(())
             }
             None => Err(VectorError::VectorNotFound(id.to_string())),

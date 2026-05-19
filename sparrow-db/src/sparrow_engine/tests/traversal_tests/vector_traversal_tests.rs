@@ -1151,3 +1151,32 @@ fn test_drop_vector_that_is_entry_point_clears_entry_point() {
 
     txn.commit().unwrap();
 }
+
+#[test]
+fn test_soft_delete_entry_point_reassigns_or_clears_it() {
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = bumpalo::Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    let v1 = storage
+        .vectors
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &[1.0f64, 0.0, 0.0], None, &arena)
+        .expect("insert v1 failed");
+
+    let _v2 = storage
+        .vectors
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &[0.0f64, 1.0, 0.0], None, &arena)
+        .expect("insert v2 failed");
+
+    storage.vectors.delete(&mut txn, v1.id, &arena).expect("soft delete failed");
+
+    let ep_bytes = storage.vectors.vectors_db.get(&txn, ENTRY_POINT_KEY).unwrap();
+    if let Some(ep_bytes) = ep_bytes {
+        let mut arr = [0u8; 16];
+        arr.copy_from_slice(&ep_bytes[..16]);
+        let ep_id = u128::from_be_bytes(arr);
+        assert_ne!(ep_id, v1.id, "entry point still points to soft-deleted vector");
+    }
+
+    txn.commit().unwrap();
+}

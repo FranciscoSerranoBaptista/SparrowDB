@@ -781,6 +781,53 @@ impl HNSW for VectorCore {
                     &bincode::serialize(&properties)?,
                 )?;
                 debug_println!("vector deleted with id {}", &id);
+
+                let cf_ep = self.cf_ep();
+                if let Some(ep_bytes) = txn.get_pinned_cf(&cf_ep, ENTRY_POINT_KEY)? {
+                    if ep_bytes.len() == 16 {
+                        let ep_id = u128::from_be_bytes(ep_bytes[..16].try_into().unwrap());
+                        if ep_id == id {
+                            let cf_edges = self.cf_edges();
+                            let cf_props = self.cf_vector_properties();
+                            let level0_key = Self::edges_key(id, 0);
+                            let neighbor_ids: Vec<u128> = txn
+                                .get_pinned_cf(&cf_edges, level0_key)?
+                                .map(|v| {
+                                    Self::decode_edges(&v)
+                                        .into_iter()
+                                        .map(|e| u128::from_be_bytes(e[..16].try_into().unwrap()))
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            let label = properties.label;
+                            let mut replacement = None;
+                            for neighbor_id in neighbor_ids {
+                                let is_deleted = txn
+                                    .get_pinned_cf(&cf_props, neighbor_id.to_be_bytes())?
+                                    .and_then(|b| {
+                                        VectorWithoutData::from_bincode_bytes(arena, &b, neighbor_id).ok()
+                                    })
+                                    .map(|p| p.deleted)
+                                    .unwrap_or(true);
+                                if !is_deleted {
+                                    if let Ok(v) = self.get_raw_vector_data(txn, neighbor_id, label, arena) {
+                                        replacement = Some(v);
+                                        break;
+                                    }
+                                }
+                            }
+
+                            match replacement {
+                                Some(new_ep) => self.set_entry_point(txn, &new_ep)?,
+                                None => {
+                                    let _ = txn.delete_cf(&cf_ep, ENTRY_POINT_KEY);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Ok(())
             }
             None => Err(VectorError::VectorNotFound(id.to_string())),
