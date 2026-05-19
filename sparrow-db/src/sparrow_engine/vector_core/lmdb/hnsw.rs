@@ -60,4 +60,6 @@ pub trait HNSW {
     /// * `txn` - The transaction to use
     /// * `id` - The id of the vector
     fn delete(&self, txn: &mut RwTxn, id: u128, arena: &bumpalo::Bump) -> Result<(), VectorError>;
+
+    fn hard_delete(&self, txn: &mut RwTxn, id: u128) -> Result<(), VectorError>;
 }

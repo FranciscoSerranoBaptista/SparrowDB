@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 use crate::{
     sparrow_engine::{
-        storage_core::SparrowGraphStorage,
+        storage_core::{storage_methods::StorageMethods, SparrowGraphStorage},
         traversal_core::ops::{
             g::G,
             in_::to_v::ToVAdapter,
@@ -23,7 +23,7 @@ use crate::{
             },
         },
         types::GraphError,
-        vector_core::vector::HVector,
+        vector_core::{vector::HVector, ENTRY_POINT_KEY, HNSW},
     },
     utils::properties::ImmutablePropertiesMap,
 };
@@ -1093,4 +1093,61 @@ fn test_search_v_filters_by_type() {
         "search_v for type_c should return 1 vector"
     );
     assert_eq!(results_c[0].id(), v1_c.id());
+}
+
+#[test]
+fn test_drop_vector_hard_deletes_hnsw_data() {
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    let inserted = storage
+        .vectors
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &[1.0f64, 2.0, 3.0], None, &arena)
+        .expect("insert failed");
+    let id = inserted.id;
+
+    storage.drop_vector(&mut txn, id).expect("drop failed");
+
+    let data_prefix = [b"v:".as_ref(), &id.to_be_bytes()].concat();
+    let count = storage
+        .vectors
+        .vectors_db
+        .prefix_iter(&txn, &data_prefix)
+        .unwrap()
+        .count();
+    assert_eq!(count, 0, "vectors_db still has data for dropped vector");
+
+    let props = storage.vectors.vector_properties_db.get(&txn, &id).unwrap();
+    assert!(props.is_none(), "vector_properties_db still has entry for dropped vector");
+
+    let edge_count = storage
+        .vectors
+        .edges_db
+        .prefix_iter(&txn, id.to_be_bytes().as_ref())
+        .unwrap()
+        .count();
+    assert_eq!(edge_count, 0, "VectorCore.edges_db still has edges for dropped vector");
+
+    txn.commit().unwrap();
+}
+
+#[test]
+fn test_drop_vector_that_is_entry_point_clears_entry_point() {
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    let inserted = storage
+        .vectors
+        .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &[1.0f64, 0.0, 0.0], None, &arena)
+        .expect("insert failed");
+    let id = inserted.id;
+
+    storage.drop_vector(&mut txn, id).expect("drop failed");
+
+    let ep = storage.vectors.vectors_db.get(&txn, ENTRY_POINT_KEY).unwrap();
+    assert!(ep.is_none(), "entry point still set after dropping entry point vector");
+
+    txn.commit().unwrap();
 }

@@ -901,4 +901,46 @@ impl HNSW for VectorCore {
             None => Err(VectorError::VectorNotFound(id.to_string())),
         }
     }
+
+    fn hard_delete(&self, txn: &mut RwTxn, id: u128) -> Result<(), VectorError> {
+        let data_prefix = [VECTOR_PREFIX, id.to_be_bytes().as_ref()].concat();
+        let data_keys: Vec<Vec<u8>> = self
+            .vectors_db
+            .prefix_iter(txn, data_prefix.as_ref())?
+            .filter_map(|r| r.ok().map(|(k, _)| k.to_vec()))
+            .collect();
+        for key in data_keys {
+            self.vectors_db.delete(txn, key.as_ref())?;
+        }
+
+        let _ = self.vector_properties_db.delete(txn, &id);
+
+        let forward_keys: Vec<Vec<u8>> = self
+            .edges_db
+            .prefix_iter(txn, id.to_be_bytes().as_ref())?
+            .filter_map(|r| r.ok().map(|(k, _)| k.to_vec()))
+            .collect();
+        for fwd in &forward_keys {
+            if fwd.len() == 40 {
+                let mut rev = [0u8; 40];
+                rev[..16].copy_from_slice(&fwd[24..40]);
+                rev[16..24].copy_from_slice(&fwd[16..24]);
+                rev[24..40].copy_from_slice(&fwd[..16]);
+                let _ = self.edges_db.delete(txn, rev.as_ref());
+            }
+            self.edges_db.delete(txn, fwd.as_ref())?;
+        }
+
+        if let Ok(Some(ep_bytes)) = self.vectors_db.get(txn, ENTRY_POINT_KEY) {
+            let ep_bytes_ref: &[u8] = &ep_bytes;
+            if ep_bytes_ref.len() == 16 {
+                let ep_id = u128::from_be_bytes(ep_bytes_ref.try_into().unwrap());
+                if ep_id == id {
+                    self.vectors_db.delete(txn, ENTRY_POINT_KEY)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

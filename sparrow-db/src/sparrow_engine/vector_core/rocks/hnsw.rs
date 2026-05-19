@@ -63,4 +63,10 @@ pub trait HNSW {
         id: u128,
         arena: &bumpalo::Bump,
     ) -> Result<(), VectorError>;
+
+    fn hard_delete<'db>(
+        &self,
+        txn: &rocksdb::Transaction<'db, rocksdb::TransactionDB>,
+        id: u128,
+    ) -> Result<(), VectorError>;
 }

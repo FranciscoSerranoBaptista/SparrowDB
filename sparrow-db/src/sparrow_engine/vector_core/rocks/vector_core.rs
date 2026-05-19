@@ -786,4 +786,49 @@ impl HNSW for VectorCore {
             None => Err(VectorError::VectorNotFound(id.to_string())),
         }
     }
+
+    fn hard_delete<'db>(
+        &self,
+        txn: &Txn<'db>,
+        id: u128,
+    ) -> Result<(), VectorError> {
+        let cf_vectors = self.cf_vectors();
+        let cf_props = self.cf_vector_properties();
+        let cf_edges = self.cf_edges();
+        let cf_ep = self.cf_ep();
+
+        txn.delete_cf(&cf_vectors, Self::vector_key(id))?;
+        let _ = txn.delete_cf(&cf_props, id.to_be_bytes());
+
+        for level in 0u8..=255u8 {
+            let key = Self::edges_key(id, level);
+            if let Some(value) = txn.get_pinned_cf(&cf_edges, key)? {
+                let neighbors = Self::decode_edges(&value);
+                let reciprocal = Self::edge_entry(id, level);
+                for neighbor in &neighbors {
+                    let neighbor_id = u128::from_be_bytes(neighbor[..16].try_into().unwrap());
+                    let neighbor_level = neighbor[16];
+                    let neighbor_key = Self::edges_key(neighbor_id, neighbor_level);
+                    let operand = EdgeOp::encode(EdgeOp::Remove, &reciprocal);
+                    txn.merge_cf(&cf_edges, neighbor_key, operand)?;
+                }
+                let _ = txn.delete_cf(&cf_edges, key);
+            }
+
+            if level == 255 {
+                break;
+            }
+        }
+
+        if let Some(ep_bytes) = txn.get_pinned_cf(&cf_ep, ENTRY_POINT_KEY)? {
+            if ep_bytes.len() == 16 {
+                let ep_id = u128::from_be_bytes(ep_bytes[..16].try_into().unwrap());
+                if ep_id == id {
+                    let _ = txn.delete_cf(&cf_ep, ENTRY_POINT_KEY);
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

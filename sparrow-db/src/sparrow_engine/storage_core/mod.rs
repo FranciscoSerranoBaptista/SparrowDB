@@ -496,7 +496,6 @@ pub mod lmdb {
         }
 
         fn drop_vector(&self, txn: &mut RwTxn, id: u128) -> Result<(), GraphError> {
-            let arena = bumpalo::Bump::new();
             let mut edges = HashSet::new();
             let mut out_edges = HashSet::new();
             let mut in_edges = HashSet::new();
@@ -564,8 +563,8 @@ pub mod lmdb {
                 )?;
             }
 
-            // Delete vector data
-            self.vectors.delete(txn, id, &arena)?;
+            // Hard-delete all HNSW data for this vector
+            self.vectors.hard_delete(txn, id)?;
 
             Ok(())
         }
@@ -1123,7 +1122,6 @@ pub mod rocks {
         fn drop_vector<'db>(&self, txn: &Txn<'db>, id: u128) -> Result<(), GraphError> {
             use crate::sparrow_engine::rocks_utils::RocksUtils;
 
-            let arena = bumpalo::Bump::new();
             let mut edges = HashSet::new();
             let mut out_edges = HashSet::new();
             let mut in_edges = HashSet::new();
@@ -1191,8 +1189,8 @@ pub mod rocks {
                 )?;
             }
 
-            // Delete vector data
-            self.vectors.delete(txn, id, &arena)?;
+            // Hard-delete all HNSW data for this vector
+            self.vectors.hard_delete(txn, id)?;
 
             Ok(())
         }
