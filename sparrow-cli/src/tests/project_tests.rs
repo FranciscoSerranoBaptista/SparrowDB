@@ -1,4 +1,4 @@
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 use crate::project::{ProjectContext, get_helix_cache_dir};
 use std::fs;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ fn setup_test_project() -> (TempDir, PathBuf) {
     let project_path = temp_dir.path().to_path_buf();
 
     // Create helix.toml
-    let config = HelixConfig::default_config("test-project");
+    let config = SparrowConfig::default_config("test-project");
     let config_path = project_path.join("helix.toml");
     config
         .save_to_file(&config_path)
@@ -241,7 +241,7 @@ fn test_project_context_with_custom_queries_path() {
     let project_path = temp_dir.path().to_path_buf();
 
     // Create config with custom queries path
-    let mut config = HelixConfig::default_config("test-project");
+    let mut config = SparrowConfig::default_config("test-project");
     config.project.queries = PathBuf::from("custom/queries");
     let config_path = project_path.join("helix.toml");
     config
@@ -332,7 +332,7 @@ port = 6969
 
     fs::write(&config_path, legacy_config).expect("Failed to write legacy config");
 
-    let loaded = HelixConfig::from_file(&config_path).expect("Legacy config should load");
+    let loaded = SparrowConfig::from_file(&config_path).expect("Legacy config should load");
     assert_eq!(loaded.project.id, None);
     assert_eq!(loaded.project.name, "legacy-project");
 }
@@ -343,13 +343,13 @@ fn test_project_id_persists_round_trip() {
     let project_path = temp_dir.path().to_path_buf();
     let config_path = project_path.join("helix.toml");
 
-    let mut config = HelixConfig::default_config("persisted-project");
+    let mut config = SparrowConfig::default_config("persisted-project");
     config.project.id = Some("proj_12345".to_string());
     config
         .save_to_file(&config_path)
         .expect("Failed to save config with project id");
 
-    let loaded = HelixConfig::from_file(&config_path).expect("Failed to reload saved config");
+    let loaded = SparrowConfig::from_file(&config_path).expect("Failed to reload saved config");
     assert_eq!(loaded.project.id.as_deref(), Some("proj_12345"));
     assert_eq!(loaded.project.name, "persisted-project");
 }

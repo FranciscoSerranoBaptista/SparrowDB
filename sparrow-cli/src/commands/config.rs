@@ -6,8 +6,8 @@ use crate::commands::cloud_api::{
     fetch_workspace_members, fetch_workspaces, find_project_by_name, find_workspace_by_id,
     find_workspace_by_slug, workspace_prompt_items,
 };
-use crate::commands::integrations::helix::cloud_base_url;
-use crate::config::{BuildMode, HelixConfig, WorkspaceConfig};
+use crate::commands::integrations::sparrow_cloud::cloud_base_url;
+use crate::config::{BuildMode, SparrowConfig, WorkspaceConfig};
 use crate::project::ProjectContext;
 use crate::prompts;
 use crate::{
@@ -249,7 +249,7 @@ async fn resolve_projects_for_workspace(
     fetch_projects(client, base_url, api_key, &workspace.id).await
 }
 
-fn save_project_selection(project_root: &Path, config: &HelixConfig) -> Result<()> {
+fn save_project_selection(project_root: &Path, config: &SparrowConfig) -> Result<()> {
     config.save_to_file(&project_root.join("helix.toml"))?;
     Ok(())
 }
@@ -1134,10 +1134,10 @@ mod tests {
     #[test]
     fn local_instance_summaries_ignore_remote_instances() {
         let temp_dir = TempDir::new().unwrap();
-        let mut config = HelixConfig::default_config("demo");
+        let mut config = SparrowConfig::default_config("demo");
         config.cloud.insert(
             "remote".to_string(),
-            CloudConfig::Helix(CloudInstanceConfig {
+            CloudConfig::SparrowCloud(CloudInstanceConfig {
                 cluster_id: "cl_123".to_string(),
                 region: None,
                 build_mode: BuildMode::Release,
@@ -1168,7 +1168,7 @@ mod tests {
     #[test]
     fn save_project_selection_updates_project_id_and_name() {
         let temp_dir = TempDir::new().unwrap();
-        let config = HelixConfig::default_config("demo");
+        let config = SparrowConfig::default_config("demo");
         let config_path = temp_dir.path().join("helix.toml");
         config.save_to_file(&config_path).unwrap();
 
@@ -1178,7 +1178,7 @@ mod tests {
         updated.project.name = "cloud-demo".to_string();
         save_project_selection(&project.root, &updated).unwrap();
 
-        let reloaded = HelixConfig::from_file(&config_path).unwrap();
+        let reloaded = SparrowConfig::from_file(&config_path).unwrap();
         assert_eq!(reloaded.project.id.as_deref(), Some("proj_123"));
         assert_eq!(reloaded.project.name, "cloud-demo");
     }

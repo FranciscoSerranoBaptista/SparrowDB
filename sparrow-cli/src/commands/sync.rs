@@ -5,11 +5,11 @@ use crate::commands::cloud_api::{
     fetch_project_details, fetch_workspace_clusters, resolve_current_workspace,
     resolve_or_create_project,
 };
-use crate::commands::integrations::helix::HelixManager;
-use crate::commands::integrations::helix::cloud_base_url;
+use crate::commands::integrations::sparrow_cloud::SparrowManager;
+use crate::commands::integrations::sparrow_cloud::cloud_base_url;
 use crate::config::{
     AvailabilityMode, BuildMode, CloudConfig, CloudInstanceConfig, DbConfig,
-    EnterpriseInstanceConfig, HelixConfig, InstanceInfo, WorkspaceConfig,
+    EnterpriseInstanceConfig, SparrowConfig, InstanceInfo, WorkspaceConfig,
 };
 use crate::output::{Operation, Step};
 use crate::project::ProjectContext;
@@ -576,8 +576,8 @@ fn safe_join_relative(base_dir: &Path, relative_path: &str) -> Result<PathBuf> {
 fn parse_and_sanitize_remote_config(
     remote_toml: &str,
     source: &str,
-) -> Option<crate::config::HelixConfig> {
-    let mut remote_config = match toml::from_str::<crate::config::HelixConfig>(remote_toml) {
+) -> Option<crate::config::SparrowConfig> {
+    let mut remote_config = match toml::from_str::<crate::config::SparrowConfig>(remote_toml) {
         Ok(config) => config,
         Err(e) => {
             print_warning(&format!(
@@ -609,7 +609,7 @@ fn parse_and_sanitize_remote_config(
 
 fn resolve_remote_queries_dir(
     base_dir: &Path,
-    remote_config: Option<&crate::config::HelixConfig>,
+    remote_config: Option<&crate::config::SparrowConfig>,
 ) -> PathBuf {
     let Some(remote_config) = remote_config else {
         return base_dir.join(DEFAULT_QUERIES_DIR);
@@ -865,7 +865,7 @@ async fn push_local_snapshot_to_cluster(
 ) -> Result<()> {
     let refreshed_project = ProjectContext::find_and_load(Some(&project.root))
         .map_err(|e| eyre!("Failed to reload project context: {}", e))?;
-    let helix = HelixManager::new(&refreshed_project);
+    let helix = SparrowManager::new(&refreshed_project);
 
     helix
         .deploy_by_cluster_id(None, cluster_id, cluster_name, None)
@@ -964,7 +964,7 @@ async fn push_local_enterprise_snapshot_to_cluster(
 ) -> Result<()> {
     let refreshed_project = ProjectContext::find_and_load(Some(&project.root))
         .map_err(|e| eyre!("Failed to reload project context: {}", e))?;
-    let helix = HelixManager::new(&refreshed_project);
+    let helix = SparrowManager::new(&refreshed_project);
 
     helix
         .deploy_enterprise_by_cluster_id(None, cluster_id, cluster_name)
@@ -1473,11 +1473,11 @@ fn insert_unique_enterprise_instance_name(
 }
 
 fn extract_standard_snapshot_config(
-    remote_config: &HelixConfig,
+    remote_config: &SparrowConfig,
     cluster_id: &str,
 ) -> Option<CloudInstanceConfig> {
     if let Some(config) = remote_config.cloud.values().find_map(|entry| match entry {
-        CloudConfig::Helix(config) if config.cluster_id == cluster_id => Some(config.clone()),
+        CloudConfig::SparrowCloud(config) if config.cluster_id == cluster_id => Some(config.clone()),
         _ => None,
     }) {
         return Some(config);
@@ -1487,7 +1487,7 @@ fn extract_standard_snapshot_config(
         .cloud
         .values()
         .filter_map(|entry| match entry {
-            CloudConfig::Helix(config) => Some(config.clone()),
+            CloudConfig::SparrowCloud(config) => Some(config.clone()),
             _ => None,
         });
 
@@ -1500,7 +1500,7 @@ fn extract_standard_snapshot_config(
 }
 
 fn extract_enterprise_snapshot_config(
-    remote_config: &HelixConfig,
+    remote_config: &SparrowConfig,
     cluster_id: &str,
 ) -> Option<EnterpriseInstanceConfig> {
     if let Some(config) = remote_config
@@ -1523,7 +1523,7 @@ fn extract_enterprise_snapshot_config(
 fn snapshot_config_from_remote_toml(
     remote_toml: Option<&str>,
     source: &str,
-) -> Option<HelixConfig> {
+) -> Option<SparrowConfig> {
     remote_toml.and_then(|remote_toml| parse_and_sanitize_remote_config(remote_toml, source))
 }
 
@@ -1532,7 +1532,7 @@ async fn fetch_standard_cluster_snapshot_config(
     api_key: &str,
     cluster_id: &str,
     source: &str,
-) -> Result<Option<HelixConfig>> {
+) -> Result<Option<SparrowConfig>> {
     let sync_response =
         fetch_sync_response_with_remote_empty_fallback(client, api_key, cluster_id).await?;
     Ok(snapshot_config_from_remote_toml(
@@ -1546,7 +1546,7 @@ async fn fetch_enterprise_cluster_snapshot_config(
     api_key: &str,
     cluster_id: &str,
     source: &str,
-) -> Result<Option<HelixConfig>> {
+) -> Result<Option<SparrowConfig>> {
     let sync_response =
         fetch_enterprise_sync_response_with_remote_empty_fallback(client, api_key, cluster_id)
             .await?;
@@ -1560,7 +1560,7 @@ async fn fetch_standard_cluster_snapshot_configs(
     client: &reqwest::Client,
     api_key: &str,
     clusters: &[CliProjectStandardCluster],
-) -> Result<HashMap<String, HelixConfig>> {
+) -> Result<HashMap<String, SparrowConfig>> {
     let mut snapshots = HashMap::new();
 
     for cluster in clusters {
@@ -1583,7 +1583,7 @@ async fn fetch_enterprise_cluster_snapshot_configs(
     client: &reqwest::Client,
     api_key: &str,
     clusters: &[CliProjectEnterpriseCluster],
-) -> Result<HashMap<String, HelixConfig>> {
+) -> Result<HashMap<String, SparrowConfig>> {
     let mut snapshots = HashMap::new();
 
     for cluster in clusters {
@@ -1605,7 +1605,7 @@ async fn fetch_enterprise_cluster_snapshot_configs(
 fn merged_standard_cluster_config(
     cluster: &CliProjectStandardCluster,
     existing_config: Option<&CloudInstanceConfig>,
-    snapshot_config: Option<&HelixConfig>,
+    snapshot_config: Option<&SparrowConfig>,
 ) -> CloudInstanceConfig {
     if let Some(mut snapshot_config) = snapshot_config
         .and_then(|snapshot| extract_standard_snapshot_config(snapshot, &cluster.cluster_id))
@@ -1631,11 +1631,11 @@ fn merged_standard_cluster_config(
     }
 }
 
-fn selected_project_queries_path(selected_snapshot: Option<&HelixConfig>) -> Option<PathBuf> {
+fn selected_project_queries_path(selected_snapshot: Option<&SparrowConfig>) -> Option<PathBuf> {
     selected_snapshot.map(|snapshot| snapshot.project.queries.clone())
 }
 
-fn resolve_selected_project_queries_path(selected_snapshot: Option<&HelixConfig>) -> PathBuf {
+fn resolve_selected_project_queries_path(selected_snapshot: Option<&SparrowConfig>) -> PathBuf {
     selected_project_queries_path(selected_snapshot)
         .unwrap_or_else(|| PathBuf::from(DEFAULT_QUERIES_DIR))
 }
@@ -1645,7 +1645,7 @@ fn update_project_queries_path_in_helix_toml(
     queries_path: &Path,
 ) -> Result<()> {
     let helix_toml_path = project_root.join("helix.toml");
-    let mut config = HelixConfig::from_file(&helix_toml_path)
+    let mut config = SparrowConfig::from_file(&helix_toml_path)
         .map_err(|e| eyre!("Failed to load helix.toml for queries path update: {}", e))?;
 
     config.project.queries = sanitize_relative_path(queries_path)?;
@@ -1659,7 +1659,7 @@ fn update_project_queries_path_in_helix_toml(
 fn merged_enterprise_cluster_config(
     cluster: &CliProjectEnterpriseCluster,
     existing_config: Option<&EnterpriseInstanceConfig>,
-    snapshot_config: Option<&HelixConfig>,
+    snapshot_config: Option<&SparrowConfig>,
 ) -> EnterpriseInstanceConfig {
     let db_config = snapshot_config
         .and_then(|snapshot| extract_enterprise_snapshot_config(snapshot, &cluster.cluster_id))
@@ -1695,10 +1695,10 @@ async fn reconcile_project_config_from_cloud(
 ) -> Result<()> {
     let helix_toml_path = project_root.join("helix.toml");
     let mut config = if helix_toml_path.exists() {
-        HelixConfig::from_file(&helix_toml_path)
+        SparrowConfig::from_file(&helix_toml_path)
             .map_err(|e| eyre!("Failed to load helix.toml: {}", e))?
     } else {
-        HelixConfig {
+        SparrowConfig {
             project: crate::config::ProjectConfig {
                 id: None,
                 name: project_clusters.project_name.clone(),
@@ -1718,7 +1718,7 @@ async fn reconcile_project_config_from_cloud(
         .cloud
         .values()
         .filter_map(|entry| match entry {
-            CloudConfig::Helix(instance) => Some((instance.cluster_id.clone(), instance.clone())),
+            CloudConfig::SparrowCloud(instance) => Some((instance.cluster_id.clone(), instance.clone())),
             _ => None,
         })
         .collect();
@@ -1739,7 +1739,7 @@ async fn reconcile_project_config_from_cloud(
     // Remove only Helix-managed cloud entries; preserve FlyIo, Ecr
     config
         .cloud
-        .retain(|_name, entry| !matches!(entry, CloudConfig::Helix(_)));
+        .retain(|_name, entry| !matches!(entry, CloudConfig::SparrowCloud(_)));
     config.enterprise.clear();
 
     for cluster in &project_clusters.standard {
@@ -1753,7 +1753,7 @@ async fn reconcile_project_config_from_cloud(
             &mut config.cloud,
             &cluster.cluster_name,
             &cluster.cluster_id,
-            CloudConfig::Helix(instance_config),
+            CloudConfig::SparrowCloud(instance_config),
         );
 
         if inserted_name != cluster.cluster_name {
@@ -2403,7 +2403,7 @@ async fn pull_from_cloud_instance(
 
             Ok(())
         }
-        InstanceInfo::Helix(config) => {
+        InstanceInfo::SparrowCloud(config) => {
             Step::verbose_substep(&format!(
                 "Reconciling against cluster: {}",
                 config.cluster_id
@@ -2529,10 +2529,10 @@ mod tests {
         }
     }
 
-    fn sample_snapshot(instance_name: &str, config: CloudInstanceConfig) -> HelixConfig {
+    fn sample_snapshot(instance_name: &str, config: CloudInstanceConfig) -> SparrowConfig {
         let mut cloud = HashMap::new();
-        cloud.insert(instance_name.to_string(), CloudConfig::Helix(config));
-        HelixConfig {
+        cloud.insert(instance_name.to_string(), CloudConfig::SparrowCloud(config));
+        SparrowConfig {
             project: crate::config::ProjectConfig {
                 id: Some("project-123".to_string()),
                 name: "demo".to_string(),
@@ -2670,14 +2670,14 @@ mod tests {
         let mut cloud = HashMap::new();
         cloud.insert(
             "prod".to_string(),
-            CloudConfig::Helix(cloud_db_config(20, "FIRST")),
+            CloudConfig::SparrowCloud(cloud_db_config(20, "FIRST")),
         );
 
         let inserted_name = insert_unique_cloud_instance_name(
             &mut cloud,
             "prod",
             "cluster-abc12345",
-            CloudConfig::Helix(cloud_db_config(30, "SECOND")),
+            CloudConfig::SparrowCloud(cloud_db_config(30, "SECOND")),
         );
 
         assert_eq!(inserted_name, "prod-cluster-");

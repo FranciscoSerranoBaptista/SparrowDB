@@ -1,5 +1,5 @@
 use crate::commands::check::run;
-use crate::config::{DbConfig, HelixConfig, LocalInstanceConfig};
+use crate::config::{DbConfig, SparrowConfig, LocalInstanceConfig};
 use crate::metrics_sender::MetricsSender;
 use crate::tests::test_utils::TestContext;
 use std::fs;
@@ -125,7 +125,7 @@ async fn test_check_with_multiple_instances() {
     let ctx = TestContext::new();
 
     // Create helix.toml with multiple instances
-    let mut config = HelixConfig::default_config("test-project");
+    let mut config = SparrowConfig::default_config("test-project");
     config.local.insert(
         "staging".to_string(),
         LocalInstanceConfig {
@@ -200,7 +200,7 @@ async fn test_check_with_empty_queries_directory() {
     let ctx = TestContext::new();
 
     // Create helix.toml
-    let config = HelixConfig::default_config("test-project");
+    let config = SparrowConfig::default_config("test-project");
     let config_path = ctx.project_path.join("helix.toml");
     config
         .save_to_file(&config_path)
@@ -250,7 +250,7 @@ async fn test_check_with_multiple_hx_files() {
     let ctx = TestContext::new();
 
     // Create helix.toml
-    let config = HelixConfig::default_config("test-project");
+    let config = SparrowConfig::default_config("test-project");
     let config_path = ctx.project_path.join("helix.toml");
     config
         .save_to_file(&config_path)
@@ -312,7 +312,7 @@ async fn test_check_with_custom_queries_path() {
     let ctx = TestContext::new();
 
     // Create helix.toml with custom queries path
-    let mut config = HelixConfig::default_config("test-project");
+    let mut config = SparrowConfig::default_config("test-project");
     config.project.queries = PathBuf::from("custom/helix/queries");
     let config_path = ctx.project_path.join("helix.toml");
     config

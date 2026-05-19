@@ -1,6 +1,6 @@
 use crate::{
     AuthAction,
-    commands::integrations::helix::cloud_base_url,
+    commands::integrations::sparrow_cloud::cloud_base_url,
     metrics_sender::{load_metrics_config, save_metrics_config},
     output,
     sse_client::{SseClient, SseEvent},

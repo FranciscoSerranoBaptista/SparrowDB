@@ -7,9 +7,9 @@ use serde::Serialize;
 use tokio::sync::oneshot;
 use tracing::error;
 
-use crate::protocol::{Format, HelixError, Response};
+use crate::protocol::{Format, SparrowError, Response};
 
-pub type RetChan = oneshot::Sender<Result<Response, HelixError>>;
+pub type RetChan = oneshot::Sender<Result<Response, SparrowError>>;
 
 pub type ReqMsg = (Request, RetChan);
 

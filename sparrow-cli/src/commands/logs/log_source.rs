@@ -1,7 +1,7 @@
 //! Log source abstraction for local Docker and cloud instances.
 
 use crate::commands::auth::Credentials;
-use crate::commands::integrations::helix::cloud_base_url;
+use crate::commands::integrations::sparrow_cloud::cloud_base_url;
 use crate::config::{ContainerRuntime, InstanceInfo};
 use crate::docker::DockerManager;
 use crate::project::ProjectContext;

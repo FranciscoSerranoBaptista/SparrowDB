@@ -13,7 +13,7 @@
 #[cfg(test)]
 mod error_handling_tests {
     use super::super::test_utils::*;
-    use crate::helix_engine::vector_core::vector::HVector;
+    use crate::sparrow_engine::vector_core::vector::HVector;
     use crate::protocol::value::Value;
     use crate::utils::items::{Edge, Node};
     use bumpalo::Bump;

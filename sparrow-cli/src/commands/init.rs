@@ -4,7 +4,7 @@ use crate::commands::integrations::ecr::{EcrAuthType, EcrManager};
 use crate::commands::integrations::fly::{FlyAuthType, FlyManager, VmSize};
 use crate::commands::workspace_flow::{self, ClusterResult};
 use crate::config::{
-    CloudConfig, CloudInstanceConfig, DbConfig, EnterpriseInstanceConfig, HelixConfig,
+    CloudConfig, CloudInstanceConfig, DbConfig, EnterpriseInstanceConfig, SparrowConfig,
     LocalInstanceConfig, StorageBackend,
 };
 use crate::docker::DockerManager;
@@ -90,7 +90,7 @@ async fn run_init_inner(
     let interactive = prompts::is_interactive();
 
     // Create default helix.toml with custom queries path
-    let mut config = HelixConfig::default_config(project_name);
+    let mut config = SparrowConfig::default_config(project_name);
     config.project.queries = std::path::PathBuf::from(&queries_path);
 
     let mut local_instance_name = "dev".to_string();
@@ -122,7 +122,7 @@ async fn run_init_inner(
     match deployment_type.clone() {
         Some(deployment) => {
             match deployment {
-                CloudDeploymentTypeCommand::Helix { name, .. } => {
+                CloudDeploymentTypeCommand::SparrowCloud { name, .. } => {
                     is_remote_init = true;
 
                     // Authenticate and run workspace/project/cluster flow
@@ -153,7 +153,7 @@ async fn run_init_inner(
                             };
                             config
                                 .cloud
-                                .insert(std_result.instance_name, CloudConfig::Helix(cloud_config));
+                                .insert(std_result.instance_name, CloudConfig::SparrowCloud(cloud_config));
                         }
                         ClusterResult::Enterprise(ent_result) => {
                             deployment_instance_name = Some(ent_result.instance_name.clone());

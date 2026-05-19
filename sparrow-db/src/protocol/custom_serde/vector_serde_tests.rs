@@ -13,8 +13,8 @@
 #[cfg(test)]
 mod vector_serialization_tests {
     use super::super::test_utils::*;
-    use crate::helix_engine::vector_core::vector::HVector;
-    use crate::helix_engine::vector_core::vector_without_data::VectorWithoutData;
+    use crate::sparrow_engine::vector_core::vector::HVector;
+    use crate::sparrow_engine::vector_core::vector_without_data::VectorWithoutData;
     use crate::protocol::value::Value;
 
     use bumpalo::Bump;

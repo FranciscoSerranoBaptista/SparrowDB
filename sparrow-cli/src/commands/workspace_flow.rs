@@ -3,7 +3,7 @@ use crate::commands::cloud_api::{
     CliBillingResponse, CliProject, fetch_project_details, fetch_workspace_billing,
     fetch_workspaces, find_workspace_by_id, resolve_current_workspace, resolve_or_create_project,
 };
-use crate::commands::integrations::helix::cloud_base_url;
+use crate::commands::integrations::sparrow_cloud::cloud_base_url;
 use crate::config::{AvailabilityMode, BuildMode, WorkspaceConfig};
 use crate::prompts;
 use eyre::{Result, eyre};

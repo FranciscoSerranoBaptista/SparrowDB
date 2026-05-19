@@ -16,7 +16,7 @@ pub async fn run(instance_name: String) -> Result<()> {
     let instance_config = project.config.get_instance(&instance_name)?;
 
     // Check auth early for Helix Cloud instances
-    if let InstanceInfo::Helix(_) = &instance_config {
+    if let InstanceInfo::SparrowCloud(_) = &instance_config {
         require_auth().await?;
     }
 
@@ -89,7 +89,7 @@ pub async fn run(instance_name: String) -> Result<()> {
             ecr.delete_repository(&instance_name).await?;
             ecr_step.done();
         }
-        InstanceInfo::Helix(_config) => {
+        InstanceInfo::SparrowCloud(_config) => {
             todo!()
         }
         InstanceInfo::Local(_) => {

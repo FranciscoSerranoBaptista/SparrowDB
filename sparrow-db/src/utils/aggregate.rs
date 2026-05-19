@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
-use crate::helix_engine::traversal_core::traversal_value::TraversalValue;
+use crate::sparrow_engine::traversal_core::traversal_value::TraversalValue;
 
 #[derive(Clone, Default, Serialize)]
 pub struct AggregateItem<'arena> {

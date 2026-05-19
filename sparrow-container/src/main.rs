@@ -1,12 +1,12 @@
-use sparrow_db::helix_engine::{
+use sparrow_db::sparrow_engine::{
     storage_core::version_info::{
         ItemInfo, Transition, TransitionFn, TransitionSubmission, VersionInfo,
     },
-    traversal_core::{HelixGraphEngine, HelixGraphEngineOpts},
+    traversal_core::{SparrowGraphEngine, SparrowGraphEngineOpts},
 };
-use sparrow_db::helix_gateway::mcp::mcp::{MCPHandlerFn, MCPHandlerSubmission};
-use sparrow_db::helix_gateway::{
-    gateway::{GatewayOpts, HelixGateway},
+use sparrow_db::sparrow_gateway::mcp::mcp::{MCPHandlerFn, MCPHandlerSubmission};
+use sparrow_db::sparrow_gateway::{
+    gateway::{GatewayOpts, SparrowGateway},
     router::router::{HandlerFn, HandlerSubmission},
 };
 use std::{collections::HashMap, sync::Arc};
@@ -98,14 +98,14 @@ fn main() {
         );
 
     let path_str = path.to_str().expect("Could not convert path to string");
-    let opts = HelixGraphEngineOpts {
+    let opts = SparrowGraphEngineOpts {
         path: path_str.to_string(),
         config,
         version_info: VersionInfo(transition_fns),
     };
 
     let graph = Arc::new(
-        HelixGraphEngine::new(opts.clone())
+        SparrowGraphEngine::new(opts.clone())
             .unwrap_or_else(|e| panic!("Failed to create graph engine: {e}")),
     );
 
@@ -145,7 +145,7 @@ fn main() {
 
     println!("Routes: {:?}", query_routes.keys());
     println!("Write routes: {:?}", write_routes);
-    let gateway = HelixGateway::new(
+    let gateway = SparrowGateway::new(
         &format!("0.0.0.0:{port}"),
         graph,
         GatewayOpts::DEFAULT_WORKERS_PER_CORE,

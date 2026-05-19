@@ -2,7 +2,7 @@
 
 use crate::DashboardAction;
 use crate::commands::auth::require_auth;
-use crate::commands::integrations::helix::cloud_base_url;
+use crate::commands::integrations::sparrow_cloud::cloud_base_url;
 use crate::config::{BuildMode, ContainerRuntime, InstanceInfo};
 use crate::docker::DockerManager;
 use crate::metrics_sender::MetricsSender;
@@ -419,7 +419,7 @@ async fn prepare_environment_vars(
 
 fn get_cloud_url(instance_config: &InstanceInfo) -> Result<String> {
     match instance_config {
-        InstanceInfo::Helix(config) => Ok(format!(
+        InstanceInfo::SparrowCloud(config) => Ok(format!(
             "{}/clusters/{}",
             cloud_base_url(),
             config.cluster_id

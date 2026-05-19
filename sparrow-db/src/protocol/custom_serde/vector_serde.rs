@@ -1,5 +1,5 @@
 use crate::{
-    helix_engine::vector_core::{vector::HVector, vector_without_data::VectorWithoutData},
+    sparrow_engine::vector_core::{vector::HVector, vector_without_data::VectorWithoutData},
     utils::properties::{ImmutablePropertiesMap, ImmutablePropertiesMapDeSeed},
 };
 use serde::de::{DeserializeSeed, Visitor};

@@ -3,7 +3,7 @@
 mod tests {
     use sparrow_db::{
         debug_println,
-        helix_engine::bm25::bm25::{BM25, HBM25Config},
+        sparrow_engine::bm25::bm25::{BM25, HBM25Config},
         utils::{id::v6_uuid, tqdm::tqdm},
     };
 

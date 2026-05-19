@@ -104,11 +104,11 @@ impl TestContext {
     /// - db/schema.hx with sample node and edge definitions
     /// - db/queries.hx with sample queries
     pub fn setup_valid_project(&self) {
-        use crate::config::HelixConfig;
+        use crate::config::SparrowConfig;
         use std::fs;
 
         // Create helix.toml
-        let config = HelixConfig::default_config("test-project");
+        let config = SparrowConfig::default_config("test-project");
         let config_path = self.project_path.join("helix.toml");
         config
             .save_to_file(&config_path)
@@ -164,11 +164,11 @@ QUERY GetUserPosts(user_id: ID) =>
 
     /// Create a helix project with only schema (no queries).
     pub fn setup_schema_only_project(&self) {
-        use crate::config::HelixConfig;
+        use crate::config::SparrowConfig;
         use std::fs;
 
         // Create helix.toml
-        let config = HelixConfig::default_config("test-project");
+        let config = SparrowConfig::default_config("test-project");
         let config_path = self.project_path.join("helix.toml");
         config
             .save_to_file(&config_path)
@@ -198,11 +198,11 @@ E::Follows {
 
     /// Create a helix project without schema definitions (queries only, should fail validation).
     pub fn setup_project_without_schema(&self) {
-        use crate::config::HelixConfig;
+        use crate::config::SparrowConfig;
         use std::fs;
 
         // Create helix.toml
-        let config = HelixConfig::default_config("test-project");
+        let config = SparrowConfig::default_config("test-project");
         let config_path = self.project_path.join("helix.toml");
         config
             .save_to_file(&config_path)
@@ -226,11 +226,11 @@ QUERY GetUser(user_id: ID) =>
 
     /// Create a helix project with invalid syntax in queries.
     pub fn setup_project_with_invalid_syntax(&self) {
-        use crate::config::HelixConfig;
+        use crate::config::SparrowConfig;
         use std::fs;
 
         // Create helix.toml
-        let config = HelixConfig::default_config("test-project");
+        let config = SparrowConfig::default_config("test-project");
         let config_path = self.project_path.join("helix.toml");
         config
             .save_to_file(&config_path)

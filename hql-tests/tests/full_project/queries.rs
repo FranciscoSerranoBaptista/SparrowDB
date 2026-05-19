@@ -1,5 +1,5 @@
 // DEFAULT CODE
-// use sparrow_db::helix_engine::traversal_core::config::Config;
+// use sparrow_db::sparrow_engine::traversal_core::config::Config;
 
 // pub fn config() -> Option<Config> {
 //     None
@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use heed3::RoTxn;
 use sparrow_db::{
     embed, embed_async, field_addition_from_old_field, field_addition_from_value, field_type_cast,
-    helix_engine::{
+    sparrow_engine::{
         reranker::{
             RerankAdapter,
             fusion::{DistanceMethod, MMRReranker, RRFReranker},
@@ -56,7 +56,7 @@ use sparrow_db::{
         types::GraphError,
         vector_core::vector::HVector,
     },
-    helix_gateway::{
+    sparrow_gateway::{
         embedding_providers::{EmbeddingModel, get_embedding_model},
         mcp::mcp::{MCPHandler, MCPHandlerSubmission, MCPToolInput},
         router::router::{HandlerInput, IoContFn},

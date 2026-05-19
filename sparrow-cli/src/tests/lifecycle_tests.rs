@@ -4,7 +4,7 @@
 //! that don't require Docker to be actually running.
 
 use crate::commands::{restart, start, status, stop};
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 use crate::tests::test_utils::TestContext;
 use std::fs;
 
@@ -259,7 +259,7 @@ async fn test_status_with_multiple_instances() {
     let ctx = TestContext::new();
 
     // Create project with multiple instances
-    let mut config = HelixConfig::default_config("multi-instance-project");
+    let mut config = SparrowConfig::default_config("multi-instance-project");
     config.local.insert(
         "staging".to_string(),
         crate::config::LocalInstanceConfig {
@@ -305,7 +305,7 @@ async fn test_delete_fails_with_nonexistent_instance_dev() {
 
     // Create helix.toml but clear all instances - this prevents the test from
     // walking up directories and finding another test's helix.toml
-    let mut config = HelixConfig::default_config("test-project");
+    let mut config = SparrowConfig::default_config("test-project");
     config.local.clear(); // Remove the default "dev" instance
     config
         .save_to_file(&ctx.project_path.join("helix.toml"))
@@ -351,7 +351,7 @@ async fn test_instance_validation_rejects_empty_name() {
     let _ctx = TestContext::new();
 
     // Create config manually with validation
-    let config = HelixConfig::default_config("test-project");
+    let config = SparrowConfig::default_config("test-project");
 
     // The get_instance method should fail for empty string
     let result = config.get_instance("");

@@ -114,7 +114,7 @@ async fn start_cloud_instance(
             let fly = FlyManager::new(project, config.auth_type.clone()).await?;
             fly.start_instance(instance_name).await?;
         }
-        CloudConfig::Helix(_config) => {
+        CloudConfig::SparrowCloud(_config) => {
             todo!()
         }
         CloudConfig::Ecr(_config) => {

@@ -1,5 +1,5 @@
 use crate::errors::ConfigError;
-use sparrow_db::helix_engine::{
+use sparrow_db::sparrow_engine::{
     traversal_core::config::{
         Config as RuntimeConfig, GraphConfig as EngineGraphConfig,
         VectorConfig as EngineVectorConfig,
@@ -67,7 +67,7 @@ impl WorkspaceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HelixConfig {
+pub struct SparrowConfig {
     pub project: ProjectConfig,
     #[serde(default)]
     pub local: HashMap<String, LocalInstanceConfig>,
@@ -207,7 +207,7 @@ pub struct CloudInstanceConfig {
 //lowercase all fields
 #[serde(rename_all = "lowercase")]
 pub enum CloudConfig {
-    Helix(CloudInstanceConfig),
+    SparrowCloud(CloudInstanceConfig),
     #[serde(rename = "fly")]
     FlyIo(FlyInstanceConfig),
     Ecr(EcrConfig),
@@ -234,7 +234,7 @@ fn default_min_instances() -> u64 {
 impl CloudConfig {
     pub fn get_cluster_id(&self) -> Option<&str> {
         match self {
-            CloudConfig::Helix(config) => Some(&config.cluster_id),
+            CloudConfig::SparrowCloud(config) => Some(&config.cluster_id),
             CloudConfig::FlyIo(_) => Some("flyio"),
             CloudConfig::Ecr(_) => Some("ecr"), // ECR doesn't use cluster_id
         }
@@ -242,7 +242,7 @@ impl CloudConfig {
 
     pub fn build_mode(&self) -> BuildMode {
         match self {
-            Self::Helix(CloudInstanceConfig { build_mode, .. })
+            Self::SparrowCloud(CloudInstanceConfig { build_mode, .. })
             | Self::FlyIo(FlyInstanceConfig { build_mode, .. })
             | Self::Ecr(EcrConfig { build_mode, .. }) => *build_mode,
         }
@@ -406,7 +406,7 @@ impl Default for DbConfig {
 #[derive(Debug, Clone)]
 pub enum InstanceInfo<'a> {
     Local(&'a LocalInstanceConfig),
-    Helix(&'a CloudInstanceConfig),
+    SparrowCloud(&'a CloudInstanceConfig),
     FlyIo(&'a FlyInstanceConfig),
     Ecr(&'a EcrConfig),
     Enterprise(&'a EnterpriseInstanceConfig),
@@ -416,7 +416,7 @@ impl<'a> InstanceInfo<'a> {
     pub fn build_mode(&self) -> BuildMode {
         match self {
             InstanceInfo::Local(LocalInstanceConfig { build_mode, .. })
-            | InstanceInfo::Helix(CloudInstanceConfig { build_mode, .. })
+            | InstanceInfo::SparrowCloud(CloudInstanceConfig { build_mode, .. })
             | InstanceInfo::FlyIo(FlyInstanceConfig { build_mode, .. })
             | InstanceInfo::Ecr(EcrConfig { build_mode, .. }) => *build_mode,
             InstanceInfo::Enterprise(_) => BuildMode::Release,
@@ -433,7 +433,7 @@ impl<'a> InstanceInfo<'a> {
     pub fn port(&self) -> Option<u16> {
         match self {
             InstanceInfo::Local(config) => config.port,
-            InstanceInfo::Helix(_)
+            InstanceInfo::SparrowCloud(_)
             | InstanceInfo::FlyIo(_)
             | InstanceInfo::Ecr(_)
             | InstanceInfo::Enterprise(_) => None,
@@ -443,7 +443,7 @@ impl<'a> InstanceInfo<'a> {
     pub fn cluster_id(&self) -> Option<&str> {
         match self {
             InstanceInfo::Local(_) => None,
-            InstanceInfo::Helix(config) => Some(&config.cluster_id),
+            InstanceInfo::SparrowCloud(config) => Some(&config.cluster_id),
             InstanceInfo::FlyIo(_) => Some("flyio"),
             InstanceInfo::Ecr(_) => Some("ecr"),
             InstanceInfo::Enterprise(config) => Some(&config.cluster_id),
@@ -453,7 +453,7 @@ impl<'a> InstanceInfo<'a> {
     pub fn db_config(&self) -> &DbConfig {
         match self {
             InstanceInfo::Local(LocalInstanceConfig { db_config, .. })
-            | InstanceInfo::Helix(CloudInstanceConfig { db_config, .. })
+            | InstanceInfo::SparrowCloud(CloudInstanceConfig { db_config, .. })
             | InstanceInfo::FlyIo(FlyInstanceConfig { db_config, .. })
             | InstanceInfo::Ecr(EcrConfig { db_config, .. })
             | InstanceInfo::Enterprise(EnterpriseInstanceConfig { db_config, .. }) => db_config,
@@ -470,7 +470,7 @@ impl<'a> InstanceInfo<'a> {
 
     pub fn docker_build_target(&self) -> Option<&str> {
         match self {
-            InstanceInfo::Local(_) | InstanceInfo::Helix(_) | InstanceInfo::Enterprise(_) => None,
+            InstanceInfo::Local(_) | InstanceInfo::SparrowCloud(_) | InstanceInfo::Enterprise(_) => None,
             InstanceInfo::FlyIo(_) | InstanceInfo::Ecr(_) => Some("linux/amd64"),
         }
     }
@@ -514,7 +514,7 @@ impl<'a> InstanceInfo<'a> {
 impl From<InstanceInfo<'_>> for CloudConfig {
     fn from(instance_info: InstanceInfo<'_>) -> Self {
         match instance_info {
-            InstanceInfo::Helix(config) => CloudConfig::Helix(config.clone()),
+            InstanceInfo::SparrowCloud(config) => CloudConfig::SparrowCloud(config.clone()),
             InstanceInfo::FlyIo(config) => CloudConfig::FlyIo(config.clone()),
             InstanceInfo::Ecr(config) => CloudConfig::Ecr(config.clone()),
             InstanceInfo::Local(_) | InstanceInfo::Enterprise(_) => unimplemented!(),
@@ -522,15 +522,15 @@ impl From<InstanceInfo<'_>> for CloudConfig {
     }
 }
 
-impl HelixConfig {
+impl SparrowConfig {
     pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
-        let content = fs::read_to_string(path).map_err(|source| ConfigError::ReadHelixConfig {
+        let content = fs::read_to_string(path).map_err(|source| ConfigError::ReadSparrowConfig {
             path: path.to_path_buf(),
             source,
         })?;
 
-        let config: HelixConfig =
-            toml::from_str(&content).map_err(|source| ConfigError::ParseHelixConfig {
+        let config: SparrowConfig =
+            toml::from_str(&content).map_err(|source| ConfigError::ParseSparrowConfig {
                 path: path.to_path_buf(),
                 source,
             })?;
@@ -541,9 +541,9 @@ impl HelixConfig {
 
     pub fn save_to_file(&self, path: &Path) -> Result<(), ConfigError> {
         let content = toml::to_string_pretty(self)
-            .map_err(|source| ConfigError::SerializeHelixConfig { source })?;
+            .map_err(|source| ConfigError::SerializeSparrowConfig { source })?;
 
-        fs::write(path, content).map_err(|source| ConfigError::WriteHelixConfig {
+        fs::write(path, content).map_err(|source| ConfigError::WriteSparrowConfig {
             path: path.to_path_buf(),
             source,
         })?;
@@ -635,8 +635,8 @@ impl HelixConfig {
 
         if let Some(cloud_config) = self.cloud.get(name) {
             match cloud_config {
-                CloudConfig::Helix(config) => {
-                    return Ok(InstanceInfo::Helix(config));
+                CloudConfig::SparrowCloud(config) => {
+                    return Ok(InstanceInfo::SparrowCloud(config));
                 }
                 CloudConfig::FlyIo(config) => {
                     return Ok(InstanceInfo::FlyIo(config));
@@ -675,7 +675,7 @@ impl HelixConfig {
 
         for (name, config) in &self.cloud {
             let type_hint = match config {
-                CloudConfig::Helix(_) => "Helix Cloud",
+                CloudConfig::SparrowCloud(_) => "Helix Cloud",
                 CloudConfig::FlyIo(_) => "Fly.io",
                 CloudConfig::Ecr(_) => "AWS ECR",
             };
@@ -702,7 +702,7 @@ impl HelixConfig {
             },
         );
 
-        HelixConfig {
+        SparrowConfig {
             project: ProjectConfig {
                 id: None,
                 name: project_name.to_string(),

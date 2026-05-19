@@ -22,7 +22,7 @@ use std::time::Duration as StdDuration;
 use tokio::task::JoinHandle;
 
 /// Orange highlight color matching Helix branding
-const HELIX_ORANGE: Color = Color::Rgb(253, 169, 66);
+const SPARROW_ORANGE: Color = Color::Rgb(253, 169, 66);
 
 /// Log viewing mode
 #[derive(Clone, PartialEq)]
@@ -529,7 +529,7 @@ fn ui(f: &mut Frame, app: &App) {
 
     let header_text = format!("Instance: {}  |  Mode: {}", app.instance_name, mode_text);
     let header = Paragraph::new(header_text)
-        .style(Style::default().fg(HELIX_ORANGE))
+        .style(Style::default().fg(SPARROW_ORANGE))
         .block(Block::default().borders(Borders::ALL).title("Helix Logs"));
     f.render_widget(header, chunks[0]);
 
@@ -624,7 +624,7 @@ fn render_preset_menu(f: &mut Frame, app: &App, area: Rect) {
             let style = if i == app.selected_preset {
                 Style::default()
                     .fg(Color::Black)
-                    .bg(HELIX_ORANGE)
+                    .bg(SPARROW_ORANGE)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -689,14 +689,14 @@ fn format_picker_line(
     active_field: PickerField,
 ) -> Line<'static> {
     let base_style = if is_active {
-        Style::default().fg(HELIX_ORANGE)
+        Style::default().fg(SPARROW_ORANGE)
     } else {
         Style::default().fg(Color::DarkGray)
     };
 
     let highlight_style = Style::default()
         .fg(Color::Black)
-        .bg(HELIX_ORANGE)
+        .bg(SPARROW_ORANGE)
         .add_modifier(Modifier::BOLD);
 
     let year_style = if is_active && active_field == PickerField::Year {

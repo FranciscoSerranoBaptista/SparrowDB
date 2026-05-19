@@ -98,7 +98,7 @@ async fn restart_cloud_instance(
             Step::verbose_substep("Starting Fly.io instance...");
             fly.start_instance(instance_name).await?;
         }
-        CloudConfig::Helix(_config) => {
+        CloudConfig::SparrowCloud(_config) => {
             todo!()
         }
         CloudConfig::Ecr(_config) => {

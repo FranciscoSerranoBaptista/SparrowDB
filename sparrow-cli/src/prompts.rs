@@ -14,7 +14,7 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeploymentType {
     Local,
-    HelixCloud,
+    SparrowCloud,
     Ecr,
     Fly,
 }
@@ -73,7 +73,7 @@ pub fn select_deployment_type() -> Result<DeploymentType> {
             "Run Helix locally in Docker. Best for development.",
         )
         .item(
-            DeploymentType::HelixCloud,
+            DeploymentType::SparrowCloud,
             "Helix Cloud",
             "Managed hosting with automatic scaling. One-click deployment.",
         )
@@ -190,7 +190,7 @@ pub async fn build_deployment_command(
     let deployment_type = select_deployment_type()?;
 
     // Check auth early for Helix Cloud instances before prompting for more details
-    if matches!(deployment_type, DeploymentType::HelixCloud) {
+    if matches!(deployment_type, DeploymentType::SparrowCloud) {
         require_auth().await?;
     }
 
@@ -201,10 +201,10 @@ pub async fn build_deployment_command(
         DeploymentType::Local => Ok(Some(CloudDeploymentTypeCommand::Local {
             name: Some(instance_name),
         })),
-        DeploymentType::HelixCloud => {
+        DeploymentType::SparrowCloud => {
             // Check auth early for Helix Cloud instances
             let region = select_region()?;
-            Ok(Some(CloudDeploymentTypeCommand::Helix {
+            Ok(Some(CloudDeploymentTypeCommand::SparrowCloud {
                 region: Some(region),
                 name: Some(instance_name),
             }))
@@ -235,7 +235,7 @@ pub async fn build_init_deployment_command(
 ) -> Result<Option<CloudDeploymentTypeCommand>> {
     let deployment_type = select_deployment_type()?;
 
-    if matches!(deployment_type, DeploymentType::HelixCloud) {
+    if matches!(deployment_type, DeploymentType::SparrowCloud) {
         require_auth().await?;
     }
 
@@ -244,10 +244,10 @@ pub async fn build_init_deployment_command(
             // Local is the default for init, return None to use default behavior
             Ok(None)
         }
-        DeploymentType::HelixCloud => {
+        DeploymentType::SparrowCloud => {
             let region = select_region()?;
             let instance_name = input_instance_name(default_name)?;
-            Ok(Some(CloudDeploymentTypeCommand::Helix {
+            Ok(Some(CloudDeploymentTypeCommand::SparrowCloud {
                 region: Some(region),
                 name: Some(instance_name),
             }))

@@ -1,7 +1,7 @@
-pub mod helix_engine;
-pub mod helix_gateway;
+pub mod sparrow_engine;
+pub mod sparrow_gateway;
 #[cfg(feature = "compiler")]
-pub mod helixc;
+pub mod sparrowc;
 pub mod protocol;
 pub mod utils;
 

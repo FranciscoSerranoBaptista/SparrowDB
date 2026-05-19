@@ -24,7 +24,7 @@ static CONFIG: LazyLock<String> = LazyLock::new(|| {
     fs::read_to_string(config_path).unwrap_or_default()
 });
 
-pub static HELIX_USER_ID: LazyLock<&'static str> = LazyLock::new(|| {
+pub static SPARROW_USER_ID: LazyLock<&'static str> = LazyLock::new(|| {
     // read from credentials file
     for line in CONFIG.lines() {
         if let Some((key, value)) = line.split_once("=")
@@ -205,7 +205,7 @@ fn create_raw_event(
 ) -> events::RawEvent<events::EventData> {
     events::RawEvent {
         os: OS,
-        user_id: Some(&HELIX_USER_ID),
+        user_id: Some(&SPARROW_USER_ID),
         event_type,
         event_data,
         timestamp: std::time::SystemTime::now()

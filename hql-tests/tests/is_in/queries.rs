@@ -1,6 +1,6 @@
 
 // DEFAULT CODE
-// use sparrow_db::helix_engine::traversal_core::config::Config;
+// use sparrow_db::sparrow_engine::traversal_core::config::Config;
 
 // pub fn config() -> Option<Config> {
 //     None
@@ -12,7 +12,7 @@ use bumpalo::Bump;
 use heed3::RoTxn;
 use sparrow_macros::{handler, tool_call, mcp_handler, migration};
 use sparrow_db::{
-    helix_engine::{
+    sparrow_engine::{
         traversal_core::{
             config::{Config, GraphConfig, VectorConfig},
             ops::{
@@ -49,7 +49,7 @@ use sparrow_db::{
         types::GraphError,
         vector_core::vector::HVector,
     },
-    helix_gateway::{
+    sparrow_gateway::{
         embedding_providers::{EmbeddingModel, get_embedding_model},
         router::router::{HandlerInput, IoContFn},
         mcp::mcp::{MCPHandlerSubmission, MCPToolInput, MCPHandler}

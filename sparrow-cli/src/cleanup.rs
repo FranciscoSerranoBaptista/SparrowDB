@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 
 /// Tracks resources created during init/add operations for automatic cleanup on failure
 pub struct CleanupTracker {
@@ -10,7 +10,7 @@ pub struct CleanupTracker {
     /// Directories created during the operation (tracked in creation order)
     created_dirs: Vec<PathBuf>,
     /// In-memory backup of the config before modification
-    original_config: Option<HelixConfig>,
+    original_config: Option<SparrowConfig>,
     /// Path to the config file
     config_path: Option<PathBuf>,
 }
@@ -53,7 +53,7 @@ impl CleanupTracker {
     }
 
     /// Backup the config in memory before modification
-    pub fn backup_config(&mut self, config: &HelixConfig, config_path: PathBuf) {
+    pub fn backup_config(&mut self, config: &SparrowConfig, config_path: PathBuf) {
         self.original_config = Some(config.clone());
         self.config_path = Some(config_path);
     }

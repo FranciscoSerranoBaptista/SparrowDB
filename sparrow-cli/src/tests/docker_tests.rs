@@ -1,4 +1,4 @@
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 use crate::docker::DockerManager;
 use crate::project::ProjectContext;
 use std::fs;
@@ -8,7 +8,7 @@ fn setup_test_project() -> (TempDir, ProjectContext) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let project_path = temp_dir.path().to_path_buf();
 
-    let config = HelixConfig::default_config("test-project");
+    let config = SparrowConfig::default_config("test-project");
     let config_path = project_path.join("helix.toml");
     config
         .save_to_file(&config_path)

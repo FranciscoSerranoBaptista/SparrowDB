@@ -3,7 +3,7 @@
 //! These tests focus on error paths and configuration validation
 //! that don't require external services.
 
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 use crate::tests::test_utils::TestContext;
 use serial_test::serial;
 use std::fs;
@@ -400,7 +400,7 @@ queries = "./db/"
 port = 6969
 "#;
 
-    let result: Result<HelixConfig, _> = toml::from_str(config_content);
+    let result: Result<SparrowConfig, _> = toml::from_str(config_content);
     // The config should parse, but validation should fail
     if let Ok(config) = result {
         // Use a temp path for validation
@@ -413,7 +413,7 @@ port = 6969
 #[test]
 fn test_config_validates_build_mode_debug_is_rejected() {
     // BuildMode::Debug should be rejected when loading from file
-    // (validation happens in HelixConfig::from_file)
+    // (validation happens in SparrowConfig::from_file)
     let config_content = r#"
 [project]
 name = "test"
@@ -425,7 +425,7 @@ build_mode = "debug"
 "#;
 
     // Parse should succeed
-    let config: HelixConfig = toml::from_str(config_content).expect("Should parse");
+    let config: SparrowConfig = toml::from_str(config_content).expect("Should parse");
 
     // But the config contains Debug mode which is deprecated
     assert_eq!(
@@ -436,7 +436,7 @@ build_mode = "debug"
 
 #[test]
 fn test_config_default_has_dev_instance() {
-    let config = HelixConfig::default_config("my-project");
+    let config = SparrowConfig::default_config("my-project");
 
     assert!(config.local.contains_key("dev"));
     let dev_config = config.local.get("dev").unwrap();
@@ -446,7 +446,7 @@ fn test_config_default_has_dev_instance() {
 
 #[test]
 fn test_config_instance_lookup() {
-    let config = HelixConfig::default_config("my-project");
+    let config = SparrowConfig::default_config("my-project");
 
     // Should find local instance
     let result = config.get_instance("dev");
@@ -460,7 +460,7 @@ fn test_config_instance_lookup() {
 
 #[test]
 fn test_config_list_instances() {
-    let mut config = HelixConfig::default_config("my-project");
+    let mut config = SparrowConfig::default_config("my-project");
 
     // Add another instance
     config.local.insert(

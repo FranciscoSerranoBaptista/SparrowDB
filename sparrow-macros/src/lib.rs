@@ -49,8 +49,8 @@ pub fn handler(args: TokenStream, item: TokenStream) -> TokenStream {
         #[used]
         static #static_name: () = {
             inventory::submit! {
-                ::sparrow_db::helix_gateway::router::router::HandlerSubmission(
-                    ::sparrow_db::helix_gateway::router::router::Handler::new(
+                ::sparrow_db::sparrow_gateway::router::router::HandlerSubmission(
+                    ::sparrow_db::sparrow_gateway::router::router::Handler::new(
                         #fn_name_str,
                         #fn_name,
                         #is_write
@@ -109,8 +109,8 @@ pub fn get_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[used]
         static #static_name: () = {
             inventory::submit! {
-                ::sparrow_db::helix_gateway::router::router::HandlerSubmission(
-                    ::sparrow_db::helix_gateway::router::router::Handler::new(
+                ::sparrow_db::sparrow_gateway::router::router::HandlerSubmission(
+                    ::sparrow_db::sparrow_gateway::router::router::Handler::new(
                         #fn_name_str,
                         #fn_name,
                         false
@@ -356,8 +356,8 @@ pub fn migration(args: TokenStream, item: TokenStream) -> TokenStream {
         #[used]
         static #static_name: () = {
             inventory::submit! {
-                ::sparrow_db::helix_engine::graph_core::ops::version_info::TransitionSubmission(
-                    ::sparrow_db::helix_engine::graph_core::ops::version_info::Transition::new(
+                ::sparrow_db::sparrow_engine::graph_core::ops::version_info::TransitionSubmission(
+                    ::sparrow_db::sparrow_engine::graph_core::ops::version_info::Transition::new(
                         stringify!(#item),
                         #from_version,
                         #to_version,
@@ -371,7 +371,7 @@ pub fn migration(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn helix_node(_attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn sparrow_node(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemStruct);
     let name = &input.ident;
     let fields = input.fields.iter();

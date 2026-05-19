@@ -184,24 +184,24 @@ pub enum ConfigError {
         source: std::io::Error,
     },
     #[error("failed to read helix.toml at {path}: {source}")]
-    ReadHelixConfig {
+    ReadSparrowConfig {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
     #[error("failed to parse helix.toml at {path}: {source}")]
-    ParseHelixConfig {
+    ParseSparrowConfig {
         path: PathBuf,
         #[source]
         source: toml::de::Error,
     },
     #[error("failed to serialize helix.toml: {source}")]
-    SerializeHelixConfig {
+    SerializeSparrowConfig {
         #[source]
         source: toml::ser::Error,
     },
     #[error("failed to write helix.toml at {path}: {source}")]
-    WriteHelixConfig {
+    WriteSparrowConfig {
         path: PathBuf,
         #[source]
         source: std::io::Error,
@@ -285,18 +285,18 @@ impl ConfigError {
                 path.display()
             ))
             .with_caused_by(source.to_string()),
-            ConfigError::ReadHelixConfig { path, source } => {
+            ConfigError::ReadSparrowConfig { path, source } => {
                 CliError::new(format!("failed to read helix.toml at {}", path.display()))
                     .with_caused_by(source.to_string())
             }
-            ConfigError::ParseHelixConfig { path, source } => {
+            ConfigError::ParseSparrowConfig { path, source } => {
                 CliError::new(format!("failed to parse helix.toml at {}", path.display()))
                     .with_caused_by(source.to_string())
             }
-            ConfigError::SerializeHelixConfig { source } => {
+            ConfigError::SerializeSparrowConfig { source } => {
                 CliError::new("failed to serialize helix.toml").with_caused_by(source.to_string())
             }
-            ConfigError::WriteHelixConfig { path, source } => {
+            ConfigError::WriteSparrowConfig { path, source } => {
                 CliError::new(format!("failed to write helix.toml at {}", path.display()))
                     .with_caused_by(source.to_string())
             }

@@ -1,7 +1,7 @@
 use crate::errors::CliError;
 use color_eyre::owo_colors::OwoColorize;
 use eyre::{Result, eyre};
-use sparrow_db::helixc::parser::types::HxFile;
+use sparrow_db::sparrowc::parser::types::HxFile;
 use std::io::IsTerminal;
 use std::{borrow::Cow, fs, path::Path};
 use tokio::sync::oneshot;
@@ -303,11 +303,11 @@ impl Template {
 
 pub mod helixc_utils {
     use eyre::Result;
-    use sparrow_db::helixc::{
+    use sparrow_db::sparrowc::{
         analyzer::analyze,
         generator::{Source as GeneratedSource, generate},
         parser::{
-            HelixParser,
+            SparrowParser,
             types::{Content, HxFile, Source},
         },
     };
@@ -382,7 +382,7 @@ pub mod helixc_utils {
     /// Parse content (similar to build.rs)
     pub fn parse_content(content: &Content) -> Result<Source> {
         let source =
-            HelixParser::parse_source(content).map_err(|e| eyre::eyre!("Parse error: {}", e))?;
+            SparrowParser::parse_source(content).map_err(|e| eyre::eyre!("Parse error: {}", e))?;
         Ok(source)
     }
 
@@ -407,7 +407,7 @@ pub mod helixc_utils {
 
     /// Format diagnostics using the helix-db diagnostic renderer
     fn format_diagnostics(
-        diagnostics: &[sparrow_db::helixc::analyzer::diagnostic::Diagnostic],
+        diagnostics: &[sparrow_db::sparrowc::analyzer::diagnostic::Diagnostic],
         src: &str,
         files: &[HxFile],
     ) -> String {

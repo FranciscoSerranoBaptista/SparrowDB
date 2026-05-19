@@ -6,7 +6,7 @@ pub mod request;
 pub mod response;
 pub mod value;
 
-pub use error::HelixError;
+pub use error::SparrowError;
 pub use format::Format;
 pub use request::{ReqMsg, Request};
 pub use response::Response;

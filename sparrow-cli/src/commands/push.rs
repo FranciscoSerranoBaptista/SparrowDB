@@ -2,7 +2,7 @@ use crate::commands::auth::require_auth;
 use crate::commands::build::MetricsData;
 use crate::commands::integrations::ecr::EcrManager;
 use crate::commands::integrations::fly::FlyManager;
-use crate::commands::integrations::helix::HelixManager;
+use crate::commands::integrations::sparrow_cloud::SparrowManager;
 use crate::config::{BuildMode, CloudConfig, InstanceInfo, StorageBackend};
 use crate::docker::DockerManager;
 use crate::metrics_sender::MetricsSender;
@@ -55,7 +55,7 @@ pub async fn run(
     // Check auth early for Helix Cloud / Enterprise instances
     if matches!(
         &instance_config,
-        InstanceInfo::Helix(_) | InstanceInfo::Enterprise(_)
+        InstanceInfo::SparrowCloud(_) | InstanceInfo::Enterprise(_)
     ) {
         require_auth().await?;
     }
@@ -200,7 +200,7 @@ async fn push_cloud_instance(
 
     // Handle enterprise instances separately
     if let InstanceInfo::Enterprise(config) = &instance_config {
-        let helix = HelixManager::new(project);
+        let helix = SparrowManager::new(project);
         helix
             .deploy_enterprise(None, instance_name.to_string(), config)
             .await?;
@@ -257,8 +257,8 @@ async fn push_cloud_instance(
             ecr.deploy_image(&docker, config, instance_name, &image_name)
                 .await?;
         }
-        CloudConfig::Helix(_) => {
-            let helix = HelixManager::new(project);
+        CloudConfig::SparrowCloud(_) => {
+            let helix = SparrowManager::new(project);
             let build_mode_override = if dev {
                 crate::output::warning(
                     "Using one-time dev build override for this deploy; helix.toml build_mode is unchanged.",
@@ -282,8 +282,8 @@ async fn push_cloud_instance(
 
 /// Lightweight parsing for metrics when no compilation happens
 fn parse_queries_for_metrics(project: &ProjectContext) -> Result<MetricsData> {
-    use sparrow_db::helixc::parser::{
-        HelixParser,
+    use sparrow_db::sparrowc::parser::{
+        SparrowParser,
         types::{Content, HxFile, Source},
     };
     use std::fs;
@@ -321,7 +321,7 @@ fn parse_queries_for_metrics(project: &ProjectContext) -> Result<MetricsData> {
 
     // Parse the content
     let source =
-        HelixParser::parse_source(&content).map_err(|e| eyre::eyre!("Parse error: {}", e))?;
+        SparrowParser::parse_source(&content).map_err(|e| eyre::eyre!("Parse error: {}", e))?;
 
     // Extract query names
     let all_queries: Vec<String> = source.queries.iter().map(|q| q.name.clone()).collect();

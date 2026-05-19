@@ -11,7 +11,7 @@
 #[cfg(test)]
 mod integration_tests {
     use super::super::test_utils::*;
-    use crate::helix_engine::vector_core::vector::HVector;
+    use crate::sparrow_engine::vector_core::vector::HVector;
     use crate::protocol::date::Date;
     use crate::protocol::value::Value;
     use crate::utils::items::{Edge, Node};

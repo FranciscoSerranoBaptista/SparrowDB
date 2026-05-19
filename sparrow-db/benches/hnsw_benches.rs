@@ -3,7 +3,7 @@
 mod tests {
     use heed3::{Env, EnvOpenOptions, RoTxn};
     use sparrow_db::{
-        helix_engine::vector_core::{
+        sparrow_engine::vector_core::{
             hnsw::HNSW,
             vector::HVector,
             vector_core::{HNSWConfig, VectorCore},

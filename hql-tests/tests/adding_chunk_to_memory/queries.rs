@@ -3,9 +3,9 @@
 use heed3::RoTxn;
 use get_routes::handler;
 use sparrow_db::{field_remapping, identifier_remapping, traversal_remapping, exclude_field};
-use sparrow_db::helix_engine::vector_core::vector::HVector;
+use sparrow_db::sparrow_engine::vector_core::vector::HVector;
 use sparrow_db::{
-    helix_engine::graph_core::ops::{
+    sparrow_engine::graph_core::ops::{
         g::G,
         in_::{in_::InAdapter, in_e::InEdgesAdapter, to_n::ToNAdapter},
         out::{from_n::FromNAdapter, out::OutAdapter, out_e::OutEdgesAdapter},
@@ -26,8 +26,8 @@ use sparrow_db::{
         },
         vectors::{insert::InsertVAdapter, search::SearchVAdapter},
     },
-    helix_engine::types::GraphError,
-    helix_gateway::router::router::HandlerInput,
+    sparrow_engine::types::GraphError,
+    sparrow_gateway::router::router::HandlerInput,
     node_matches, props,
     protocol::count::Count,
     protocol::remapping::ResponseRemapping,

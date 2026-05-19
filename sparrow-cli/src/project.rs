@@ -1,6 +1,6 @@
 use eyre::{Result, eyre};
 
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 use crate::errors::ProjectError;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 pub struct ProjectContext {
     /// The root directory of the project
     pub root: PathBuf,
-    pub config: HelixConfig,
+    pub config: SparrowConfig,
     /// The path to the .helix directory (including ".helix")
     pub helix_dir: PathBuf,
 }
@@ -23,7 +23,7 @@ impl ProjectContext {
 
         let root = find_project_root(&start)?;
         let config_path = root.join("helix.toml");
-        let config = HelixConfig::from_file(&config_path)?;
+        let config = SparrowConfig::from_file(&config_path)?;
         let helix_dir = root.join(".helix");
 
         Ok(ProjectContext {

@@ -55,7 +55,7 @@ pub async fn run(
     // Check auth early for Helix Cloud and enterprise instances
     let credentials = if matches!(
         &instance_config,
-        InstanceInfo::Helix(_) | InstanceInfo::Enterprise(_)
+        InstanceInfo::SparrowCloud(_) | InstanceInfo::Enterprise(_)
     ) {
         Some(require_auth().await?)
     } else {

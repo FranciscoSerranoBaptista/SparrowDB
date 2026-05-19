@@ -1,5 +1,5 @@
 use crate::commands::compile::run;
-use crate::config::HelixConfig;
+use crate::config::SparrowConfig;
 use crate::tests::test_utils::TestContext;
 use std::fs;
 use std::path::PathBuf;
@@ -134,7 +134,7 @@ async fn test_compile_with_multiple_hx_files() {
     let ctx = TestContext::new();
 
     // Create helix.toml
-    let config = HelixConfig::default_config("test-project");
+    let config = SparrowConfig::default_config("test-project");
     let config_path = ctx.project_path.join("helix.toml");
     config
         .save_to_file(&config_path)
@@ -195,7 +195,7 @@ async fn test_compile_with_custom_queries_path() {
     let ctx = TestContext::new();
 
     // Create helix.toml with custom queries path
-    let mut config = HelixConfig::default_config("test-project");
+    let mut config = SparrowConfig::default_config("test-project");
     config.project.queries = PathBuf::from("custom/helix/queries");
     let config_path = ctx.project_path.join("helix.toml");
     config

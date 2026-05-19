@@ -22,12 +22,12 @@ pub struct MetricsData {
     pub num_of_queries: u32,
 }
 use sparrow_db::{
-    helix_engine::traversal_core::config::Config,
-    helixc::{
+    sparrow_engine::traversal_core::config::Config,
+    sparrowc::{
         analyzer::analyze,
         generator::Source as GeneratedSource,
         parser::{
-            HelixParser,
+            SparrowParser,
             types::{Content, HxFile, Source},
         },
     },
@@ -489,7 +489,7 @@ pub(crate) fn generate_content(files: &[std::fs::DirEntry]) -> Result<Content> {
 
 /// Uses the helix parser to parse the content into a Source object
 fn parse_content(content: &Content) -> Result<Source> {
-    let source = HelixParser::parse_source(content).map_err(|e| eyre::eyre!("Parse error: {e}"))?;
+    let source = SparrowParser::parse_source(content).map_err(|e| eyre::eyre!("Parse error: {e}"))?;
     Ok(source)
 }
 

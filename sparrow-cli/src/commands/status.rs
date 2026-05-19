@@ -34,7 +34,7 @@ pub async fn run() -> Result<()> {
 
     for (name, config) in &project.config.cloud {
         match config {
-            crate::config::CloudConfig::Helix(helix_config) => {
+            crate::config::CloudConfig::SparrowCloud(helix_config) => {
                 helix_cloud_instances.push((name, &helix_config.cluster_id));
             }
             crate::config::CloudConfig::FlyIo(_) => {

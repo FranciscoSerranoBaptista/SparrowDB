@@ -105,10 +105,10 @@ pub enum DataAction {
 
 #[derive(Subcommand, Clone)]
 pub enum CloudDeploymentTypeCommand {
-    /// Initialize Helix Cloud deployment
+    /// Initialize SparrowDB Cloud deployment
     #[command(name = "cloud")]
-    Helix {
-        /// Region for Helix cloud instance (default: us-east-1)
+    SparrowCloud {
+        /// Region for SparrowDB cloud instance (default: us-east-1)
         #[arg(long, default_value = "us-east-1")]
         region: Option<String>,
 
@@ -156,7 +156,7 @@ pub enum CloudDeploymentTypeCommand {
 impl CloudDeploymentTypeCommand {
     pub fn name(&self) -> Option<String> {
         match self {
-            CloudDeploymentTypeCommand::Helix { name, .. } => name.clone(),
+            CloudDeploymentTypeCommand::SparrowCloud { name, .. } => name.clone(),
             CloudDeploymentTypeCommand::Ecr { name } => name.clone(),
             CloudDeploymentTypeCommand::Fly { name, .. } => name.clone(),
             CloudDeploymentTypeCommand::Local { name } => name.clone(),

@@ -1,5 +1,5 @@
 use crate::config::{
-    BuildMode, ContainerRuntime, DbConfig, GraphConfig, HelixConfig, LocalInstanceConfig,
+    BuildMode, ContainerRuntime, DbConfig, GraphConfig, SparrowConfig, LocalInstanceConfig,
     ProjectConfig, StorageBackend, VectorConfig,
 };
 use crate::errors::{CliError, project_error};
@@ -491,7 +491,7 @@ fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
     };
 
     // Create final helix config
-    let helix_config = HelixConfig {
+    let helix_config = SparrowConfig {
         project: project_config,
         local,
         cloud: HashMap::new(),

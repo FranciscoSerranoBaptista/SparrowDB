@@ -102,7 +102,7 @@ async fn run_add_inner(
     // Determine instance type
 
     match deployment_type {
-        CloudDeploymentTypeCommand::Helix { .. } => {
+        CloudDeploymentTypeCommand::SparrowCloud { .. } => {
             // Authenticate and run workspace/project/cluster flow
             let credentials = crate::commands::auth::require_auth().await?;
             let project_name = &project_context.config.project.name;
@@ -140,7 +140,7 @@ async fn run_add_inner(
                     project_context
                         .config
                         .cloud
-                        .insert(std_result.instance_name, CloudConfig::Helix(cloud_config));
+                        .insert(std_result.instance_name, CloudConfig::SparrowCloud(cloud_config));
                 }
                 ClusterResult::Enterprise(ent_result) => {
                     let enterprise_config = EnterpriseInstanceConfig {

@@ -24,8 +24,8 @@ fn test_traversable_derive_exists() {
 // NOTE: Full macro testing with trybuild requires setting up a complete
 // helix-db environment with all the types that the macros depend on:
 // - inventory crate
-// - sparrow_db::helix_gateway::router::router::Handler
-// - sparrow_db::helix_gateway::router::router::HandlerSubmission
+// - sparrow_db::sparrow_gateway::router::router::Handler
+// - sparrow_db::sparrow_gateway::router::router::HandlerSubmission
 // - MCPHandler, MCPToolInput, Response, GraphError types
 // - TraversalValue, ReturnValue types
 //

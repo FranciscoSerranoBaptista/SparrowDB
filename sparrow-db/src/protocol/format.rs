@@ -6,7 +6,7 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
 
-use crate::helix_engine::types::GraphError;
+use crate::sparrow_engine::types::GraphError;
 use crate::protocol::Response;
 
 /// This enum represents the formats that input or output values of HelixDB can be represented as
