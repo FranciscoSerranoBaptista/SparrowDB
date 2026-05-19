@@ -524,6 +524,61 @@ fn test_search_label_filtering() {
 }
 
 // ============================================================================
+// Hub-node degree limit tests
+// ============================================================================
+
+#[test]
+fn test_set_neighbours_respects_m_max_0_degree_limit() {
+    // Use a small m so m_max_0 is easy to exceed
+    let m = 5;
+    let (env, _temp_dir) = setup_env();
+    let mut txn = env.write_txn().unwrap();
+    let index = VectorCore::new(&env, &mut txn, HNSWConfig::new(Some(m), Some(40), Some(40))).unwrap();
+
+    let m_max_0 = index.config.m_max_0;
+
+    let arena = Bump::new();
+
+    // Insert the hub vector
+    let hub_data: Vec<f64> = vec![0.0f64; 4];
+    let hub_slice = arena.alloc_slice_copy(&hub_data);
+    let hub = index
+        .insert::<Filter>(&mut txn, "test", hub_slice, None, &arena)
+        .unwrap();
+
+    // Insert m_max_0 + 5 satellites, all very close to the hub
+    for i in 0..(m_max_0 + 5) {
+        let sat_arena = Bump::new();
+        let mut sat_data = vec![0.0f64; 4];
+        sat_data[0] = 0.001 * (i as f64 + 1.0);
+        let sat_slice = sat_arena.alloc_slice_copy(&sat_data);
+        index
+            .insert::<Filter>(&mut txn, "test", sat_slice, None, &sat_arena)
+            .unwrap();
+    }
+
+    // Count hub's edges at level 0.
+    // Edge key format: [source_id(16 BE) | level_usize(8 BE) | sink_id(16 BE)] = 40 bytes
+    // Prefix for level 0: [hub_id(16) | 0usize(8)] = 24 bytes
+    let mut level0_prefix = [0u8; 24];
+    level0_prefix[..16].copy_from_slice(&hub.id.to_be_bytes());
+    // bytes [16..24] remain zero = level 0 as usize big-endian
+
+    let hub_degree = index
+        .edges_db
+        .prefix_iter(&txn, &level0_prefix)
+        .unwrap()
+        .count();
+
+    assert!(
+        hub_degree <= m_max_0,
+        "hub has {hub_degree} edges at level 0 but m_max_0 = {m_max_0}"
+    );
+
+    txn.commit().unwrap();
+}
+
+// ============================================================================
 // Original Tests (kept for backwards compatibility)
 // ============================================================================
 

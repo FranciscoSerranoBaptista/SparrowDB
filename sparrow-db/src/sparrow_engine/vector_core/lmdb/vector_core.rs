@@ -219,6 +219,7 @@ impl VectorCore {
         id: u128,
         neighbors: &BinaryHeap<'arena, HVector<'arena>>,
         level: usize,
+        arena: &'arena bumpalo::Bump,
     ) -> Result<(), VectorError> {
         let prefix = Self::out_edges_key(id, level, None);
 
@@ -227,6 +228,12 @@ impl VectorCore {
             .prefix_iter(txn, prefix.as_ref())?
             .filter_map(|result| result.ok().map(|(key, _)| key.to_vec()))
             .collect();
+
+        let limit = if level == 0 {
+            self.config.m_max_0
+        } else {
+            self.config.m
+        };
 
         neighbors
             .iter()
@@ -244,11 +251,79 @@ impl VectorCore {
                 keys_to_delete.remove(&in_key);
                 self.edges_db.put(txn, &in_key, &())?;
 
+                self.prune_if_over_degree(txn, neighbor_id, neighbor, level, limit, arena)?;
+
                 Ok(())
             })?;
 
         for key in keys_to_delete {
             self.edges_db.delete(txn, &key)?;
+        }
+
+        Ok(())
+    }
+
+    fn prune_if_over_degree<'db: 'arena, 'arena: 'txn, 'txn>(
+        &'db self,
+        txn: &'txn mut RwTxn<'db>,
+        node_id: u128,
+        node_vec: &HVector<'_>,
+        level: usize,
+        limit: usize,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<(), VectorError> {
+        let edge_prefix = Self::out_edges_key(node_id, level, None);
+
+        // Collect all current neighbor IDs for this node at this level (two-phase: read then write)
+        let neighbor_ids: Vec<u128> = self
+            .edges_db
+            .prefix_iter(txn, edge_prefix.as_ref())?
+            .filter_map(|r| r.ok())
+            .filter_map(|(key, _)| {
+                if key.len() == 40 {
+                    let mut arr = [0u8; 16];
+                    arr.copy_from_slice(&key[24..40]);
+                    Some(u128::from_be_bytes(arr))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if neighbor_ids.len() <= limit {
+            return Ok(());
+        }
+
+        // Compute distance from each neighbor to node_vec, then keep the closest `limit`
+        let mut scored: Vec<(u128, f64)> = neighbor_ids
+            .iter()
+            .filter_map(|&nid| {
+                let v = self.get_raw_vector_data(txn, nid, node_vec.label, arena).ok()?;
+                let dist = v.distance_to(node_vec).ok()?;
+                Some((nid, dist))
+            })
+            .collect();
+
+        // Sort ascending by distance — closest neighbors are kept
+        scored.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let keep_ids: HashSet<u128> = scored.iter().take(limit).map(|(id, _)| *id).collect();
+
+        for (nid, _) in &scored {
+            if !keep_ids.contains(nid) {
+                let mut fwd = [0u8; 40];
+                fwd[..16].copy_from_slice(&node_id.to_be_bytes());
+                fwd[16..24].copy_from_slice(&level.to_be_bytes());
+                fwd[24..40].copy_from_slice(&nid.to_be_bytes());
+
+                let mut rev = [0u8; 40];
+                rev[..16].copy_from_slice(&nid.to_be_bytes());
+                rev[16..24].copy_from_slice(&level.to_be_bytes());
+                rev[24..40].copy_from_slice(&node_id.to_be_bytes());
+
+                let _ = self.edges_db.delete(txn, &fwd);
+                let _ = self.edges_db.delete(txn, &rev);
+            }
         }
 
         Ok(())
@@ -616,7 +691,7 @@ impl HNSW for VectorCore {
 
             let neighbors =
                 self.select_neighbors::<F>(txn, label, &query, nearest, level, true, None, arena)?;
-            self.set_neighbours(txn, query.id, &neighbors, level)?;
+            self.set_neighbours(txn, query.id, &neighbors, level, arena)?;
 
             for e in neighbors {
                 let id = e.id;
@@ -626,7 +701,7 @@ impl HNSW for VectorCore {
                 );
                 let e_new_conn = self
                     .select_neighbors::<F>(txn, label, &query, e_conns, level, true, None, arena)?;
-                self.set_neighbours(txn, id, &e_new_conn, level)?;
+                self.set_neighbours(txn, id, &e_new_conn, level, arena)?;
             }
         }
 
