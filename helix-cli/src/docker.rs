@@ -83,7 +83,8 @@ impl<'a> DockerManager<'a> {
     /// Get the image name for an instance
     pub(crate) fn image_name(&self, instance_name: &str, build_mode: BuildMode, storage_backend: StorageBackend) -> String {
         let tag = match (build_mode, storage_backend) {
-            (BuildMode::Debug, _) => "debug".to_string(),
+            (BuildMode::Debug, StorageBackend::Lmdb) => "debug".to_string(),
+            (BuildMode::Debug, StorageBackend::Rocks) => "debug-rocks".to_string(),
             (BuildMode::Release, StorageBackend::Lmdb) => "latest".to_string(),
             (BuildMode::Dev, StorageBackend::Lmdb) => "dev".to_string(),
             (BuildMode::Release, StorageBackend::Rocks) => "latest-rocks".to_string(),
@@ -854,13 +855,14 @@ networks:
 
         // Get image names for all mode and backend combinations
         let debug_image = self.image_name(instance_name, BuildMode::Debug, StorageBackend::Lmdb);
+        let debug_rocks_image = self.image_name(instance_name, BuildMode::Debug, StorageBackend::Rocks);
         let dev_image = self.image_name(instance_name, BuildMode::Dev, StorageBackend::Lmdb);
         let release_image = self.image_name(instance_name, BuildMode::Release, StorageBackend::Lmdb);
         let dev_rocks_image = self.image_name(instance_name, BuildMode::Dev, StorageBackend::Rocks);
         let release_rocks_image = self.image_name(instance_name, BuildMode::Release, StorageBackend::Rocks);
 
         // Try to remove all images (ignore errors if they don't exist)
-        for image in [debug_image, dev_image, release_image, dev_rocks_image, release_rocks_image] {
+        for image in [debug_image, debug_rocks_image, dev_image, release_image, dev_rocks_image, release_rocks_image] {
             let output = self.run_docker_command(&["rmi", "-f", &image])?;
             if output.status.success() {
                 Step::verbose_substep(&format!("{}: Removed image: {image}", self.runtime.label()));
