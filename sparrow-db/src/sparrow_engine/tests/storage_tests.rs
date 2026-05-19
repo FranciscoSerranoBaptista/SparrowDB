@@ -263,7 +263,7 @@ fn test_storage_config() {
     let graphvis = Some("name".to_string());
     let embedding = Some("openai".to_string());
 
-    let config = StorageConfig::new(schema.clone(), graphvis.clone(), embedding.clone());
+    let config = StorageConfig::new(schema.clone(), graphvis.clone(), embedding.clone(), None);
 
     assert_eq!(config.schema, schema);
     assert_eq!(config.graphvis_node_label, graphvis);

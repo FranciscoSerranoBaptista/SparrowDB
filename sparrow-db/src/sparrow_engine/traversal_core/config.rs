@@ -37,6 +37,8 @@ pub struct Config {
     pub schema: Option<String>,
     pub embedding_model: Option<String>,
     pub graphvis_node_label: Option<String>,
+    #[serde(skip)]
+    pub hql_schema_raw: Option<String>,
 }
 
 impl Config {
@@ -50,6 +52,7 @@ impl Config {
         schema: Option<String>,
         embedding_model: Option<String>,
         graphvis_node_label: Option<String>,
+        hql_schema_raw: Option<String>,
     ) -> Self {
         Self {
             vector_config: Some(VectorConfig {
@@ -66,6 +69,7 @@ impl Config {
             schema,
             embedding_model,
             graphvis_node_label,
+            hql_schema_raw,
         }
     }
 
@@ -160,6 +164,7 @@ impl Config {
         f: &mut fmt::Formatter,
         introspection_data: Option<&IntrospectionData>,
         secondary_indices: &[SecondaryIndex],
+        hql_schema_raw: Option<&str>,
     ) -> fmt::Result {
         writeln!(f, "pub fn config() -> Option<Config> {{")?;
         writeln!(f, "return Some(Config {{")?;
@@ -240,6 +245,10 @@ impl Config {
                 None => "None".to_string(),
             }
         )?;
+        match hql_schema_raw {
+            Some(raw) => writeln!(f, "hql_schema_raw: Some(r#\"{raw}\"#.to_string()),")?,
+            None => writeln!(f, "hql_schema_raw: None,")?,
+        }
         writeln!(f, "}})")?;
         writeln!(f, "}}")?;
         Ok(())
@@ -263,6 +272,7 @@ impl Default for Config {
             schema: None,
             embedding_model: Some("text-embedding-ada-002".to_string()),
             graphvis_node_label: None,
+            hql_schema_raw: None,
         }
     }
 }
@@ -272,6 +282,33 @@ impl fmt::Display for Config {
         // For backward compatibility, delegate to fmt_with_schema with empty values.
         // The actual introspection data and secondary indices should be provided
         // via fmt_with_schema when generating code from Source.
-        self.fmt_with_schema(f, None, &[])
+        self.fmt_with_schema(f, None, &[], None)
+    }
+}
+
+#[cfg(test)]
+mod runtime_schema_tests {
+    use super::*;
+
+    #[test]
+    fn test_config_has_hql_schema_raw_field() {
+        let cfg = Config {
+            hql_schema_raw: Some("N::Foo { x: String }".to_string()),
+            ..Config::default()
+        };
+        assert_eq!(cfg.hql_schema_raw.as_deref(), Some("N::Foo { x: String }"));
+    }
+
+    #[test]
+    fn test_config_default_has_no_hql_schema_raw() {
+        let cfg = Config::default();
+        assert!(cfg.hql_schema_raw.is_none());
+    }
+
+    #[test]
+    fn test_fmt_with_schema_embeds_hql_schema_raw() {
+        let cfg = Config::default();
+        let rendered = format!("{cfg}");
+        assert!(rendered.contains("hql_schema_raw: None"));
     }
 }

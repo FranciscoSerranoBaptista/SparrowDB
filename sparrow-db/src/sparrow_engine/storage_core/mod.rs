@@ -40,6 +40,7 @@ pub struct StorageConfig {
     pub schema: Option<String>,
     pub graphvis_node_label: Option<String>,
     pub embedding_model: Option<String>,
+    pub hql_schema_raw: Option<String>,
 }
 
 impl StorageConfig {
@@ -47,11 +48,13 @@ impl StorageConfig {
         schema: Option<String>,
         graphvis_node_label: Option<String>,
         embedding_model: Option<String>,
+        hql_schema_raw: Option<String>,
     ) -> StorageConfig {
         Self {
             schema,
             graphvis_node_label,
             embedding_model,
+            hql_schema_raw,
         }
     }
 }
@@ -213,6 +216,7 @@ pub mod lmdb {
                 config.schema,
                 config.graphvis_node_label,
                 config.embedding_model,
+                config.hql_schema_raw,
             );
 
             wtxn.commit()?;
@@ -749,6 +753,7 @@ pub mod rocks {
                 config.schema,
                 config.graphvis_node_label,
                 config.embedding_model,
+                config.hql_schema_raw,
             );
 
             let storage = Self {

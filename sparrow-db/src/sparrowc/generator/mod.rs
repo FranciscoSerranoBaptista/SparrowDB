@@ -75,6 +75,7 @@ impl Display for Source {
             f,
             self.introspection_data.as_ref(),
             &self.secondary_indices,
+            Some(&self.src),
         )?;
         write!(
             f,

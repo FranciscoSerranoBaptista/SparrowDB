@@ -277,6 +277,7 @@ impl DbConfig {
             schema: self.schema.clone(),
             embedding_model: self.embedding_model.clone(),
             graphvis_node_label: self.graphvis_node_label.clone(),
+            hql_schema_raw: None,
         }
     }
 }
