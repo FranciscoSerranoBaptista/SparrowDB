@@ -114,6 +114,18 @@ pub fn restore_impl(backup: &Path, dest: &Path, force: bool) -> Result<()> {
     if dest.exists() {
         let is_empty = fs::read_dir(dest)?.next().is_none();
         if !is_empty {
+            // Guard against wiping the source: backup must not be equal to or inside dest
+            let canonical_backup = fs::canonicalize(backup)
+                .unwrap_or_else(|_| backup.to_path_buf());
+            let canonical_dest = fs::canonicalize(dest)
+                .unwrap_or_else(|_| dest.to_path_buf());
+            if canonical_backup == canonical_dest || canonical_backup.starts_with(&canonical_dest) {
+                return Err(eyre!(
+                    "Backup path {} is inside or equal to destination {}. Refusing to restore.",
+                    backup.display(),
+                    dest.display()
+                ));
+            }
             if !force {
                 return Err(eyre!(
                     "Destination {} already contains data. Use --force to overwrite.",

@@ -239,3 +239,14 @@ fn test_restore_preserves_nested_structure() {
         b"sst"
     );
 }
+
+#[test]
+fn test_restore_errors_when_backup_equals_dest() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("data.mdb"), b"data").unwrap();
+
+    let result = restore_impl(dir.path(), dir.path(), true);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("Refusing to restore"));
+}
