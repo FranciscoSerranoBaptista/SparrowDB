@@ -2,10 +2,10 @@
 name = "sparrow-metrics"
 version = "0.1.1"
 edition = "2024"
-authors = ["HelixDB Team"]
+authors = ["SparrowDB Team"]
 repository = "https://github.com/YOUR_ORG/SparrowDB"
 license = "AGPL-3.0"
-description = "Metrics for HelixDB"
+description = "Metrics for SparrowDB"
 
 [dependencies]
 reqwest = "0.12.11"

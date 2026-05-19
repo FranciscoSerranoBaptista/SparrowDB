@@ -2,10 +2,10 @@
 name = "sparrow-macros"
 version = "0.1.7"
 edition = "2024"
-authors = ["HelixDB Team"]
+authors = ["SparrowDB Team"]
 repository = "https://github.com/YOUR_ORG/SparrowDB"
 license = "AGPL-3.0"
-description = "Proc macros for HelixDB"
+description = "Proc macros for SparrowDB"
 
 [lib]
 proc-macro = true
