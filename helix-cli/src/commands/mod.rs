@@ -1,4 +1,5 @@
 pub mod add;
+pub mod data;
 pub mod auth;
 pub mod backup;
 pub mod build;

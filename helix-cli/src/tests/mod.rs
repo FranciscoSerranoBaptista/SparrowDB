@@ -23,3 +23,5 @@ pub mod utility_tests;
 pub mod project_tests;
 #[cfg(test)]
 pub mod run_tests;
+#[cfg(test)]
+pub mod data_tests;

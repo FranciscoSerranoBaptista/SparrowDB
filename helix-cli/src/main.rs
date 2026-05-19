@@ -3,7 +3,7 @@ use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
 pub use helix_cli::{
     AuthAction, CloudDeploymentTypeCommand, ClusterConfigAction, ConfigAction, ConfigOutputFormat,
-    DashboardAction, MetricsAction, ProjectConfigAction, WorkspaceConfigAction,
+    DashboardAction, DataAction, MetricsAction, ProjectConfigAction, WorkspaceConfigAction,
 };
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -208,6 +208,12 @@ enum Commands {
     Dashboard {
         #[command(subcommand)]
         action: DashboardAction,
+    },
+
+    /// Manage database data (snapshot, clone, restore)
+    Data {
+        #[command(subcommand)]
+        action: DataAction,
     },
 
     /// Update to the latest version
@@ -464,6 +470,7 @@ async fn main() -> Result<()> {
             Commands::Delete { instance } => commands::delete::run(instance).await,
             Commands::Metrics { action } => commands::metrics::run(action).await,
             Commands::Dashboard { action } => commands::dashboard::run(action).await,
+            Commands::Data { action } => commands::data::run(action).await,
             Commands::Update { force } => commands::update::run(force).await,
             Commands::Migrate {
                 path,
