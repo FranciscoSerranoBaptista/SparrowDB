@@ -91,6 +91,9 @@ pub struct MCPConnection {
     pub connection_id: String,
     pub query_chain: Vec<QueryStep>,
     pub current_position: usize,
+    /// Materialized result cache. None = not yet executed on this query chain.
+    /// Populated on first next() call, then indexed directly.
+    pub cached_results: Option<Vec<Vec<u8>>>,
 }
 
 impl MCPConnection {
@@ -99,20 +102,24 @@ impl MCPConnection {
             connection_id,
             query_chain: Vec::new(),
             current_position: 0,
+            cached_results: None,
         }
     }
 
     pub fn add_query_step(&mut self, step: QueryStep) {
         self.query_chain.push(step);
         self.current_position = 0;
+        self.cached_results = None;
     }
 
     pub fn reset_position(&mut self) {
         self.current_position = 0;
+        self.cached_results = None;
     }
 
     pub fn clear_chain(&mut self) {
         self.query_chain.clear();
+        self.cached_results = None;
         self.reset_position();
     }
 
@@ -304,8 +311,8 @@ pub fn next(input: &mut MCPToolInput) -> Result<Response, GraphError> {
 
     tracing::debug!("[NEXT] Processing for connection: {}", data.connection_id);
 
-    // Clone necessary data while holding the lock
-    let (query_chain, current_position) = {
+    // Read current state; if cache is populated, serve from it directly.
+    let (query_chain_opt, current_position) = {
         let connections = input.mcp_connections.lock().unwrap();
         tracing::debug!(
             "[NEXT] Available connections: {:?}",
@@ -318,16 +325,48 @@ pub fn next(input: &mut MCPToolInput) -> Result<Response, GraphError> {
                 tracing::error!("[NEXT] Connection not found: {}", data.connection_id);
                 GraphError::StorageError(format!("Connection not found: {}", data.connection_id))
             })?;
-        (connection.query_chain.clone(), connection.current_position)
+
+        if let Some(cached) = &connection.cached_results {
+            let pos = connection.current_position;
+            tracing::debug!("[NEXT] Cache hit at position {}", pos);
+            // Return the cached serialized bytes; None signals end-of-results.
+            (None, pos.min(cached.len()))
+        } else {
+            tracing::debug!(
+                "[NEXT] Cache miss — current position: {}, chain length: {}",
+                connection.current_position,
+                connection.query_chain.len()
+            );
+            (Some(connection.query_chain.clone()), connection.current_position)
+        }
     };
 
-    tracing::debug!(
-        "[NEXT] Current position: {}, chain length: {}",
-        current_position,
-        query_chain.len()
-    );
+    if query_chain_opt.is_none() {
+        // Cache hit path: read byte slice from cache and advance position.
+        let mut connections = input.mcp_connections.lock().unwrap();
+        let connection = connections
+            .get_connection_mut(&data.connection_id)
+            .ok_or_else(|| {
+                GraphError::StorageError(format!("Connection not found: {}", data.connection_id))
+            })?;
 
-    // Execute long-running operation without holding the lock
+        let cached = connection.cached_results.as_ref().unwrap();
+        if current_position < cached.len() {
+            let serialized = cached[current_position].clone();
+            connection.current_position += 1;
+            tracing::debug!("[NEXT] Updated position to: {}", connection.current_position);
+            return Ok(Response {
+                body: serialized,
+                fmt: Format::Json,
+            });
+        } else {
+            tracing::debug!("[NEXT] No more values in cache, returning Empty");
+            return Ok(Format::Json.create_response(&TraversalValue::Empty));
+        }
+    }
+
+    // Cache miss path: execute the full query chain and materialize all results.
+    let query_chain = query_chain_opt.unwrap();
     let arena = Bump::new();
     let storage = input.mcp_backend.db.as_ref();
     let txn = storage.graph_env.read_txn().map_err(|e| {
@@ -340,43 +379,51 @@ pub fn next(input: &mut MCPToolInput) -> Result<Response, GraphError> {
         e
     })?;
 
-    let next_value = match stream.nth(current_position).map_err(|e| {
-        tracing::error!(
-            "[NEXT] Error iterating to position {}: {:?}",
-            current_position,
+    let all_results: Vec<Vec<u8>> = stream
+        .into_inner_iter()
+        .map(|item| {
+            item.map(|v| {
+                sonic_rs::to_vec(&v)
+                    .unwrap_or_else(|_| sonic_rs::to_vec(&TraversalValue::Empty).unwrap())
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| {
+            tracing::error!("[NEXT] Error collecting results: {:?}", e);
             e
-        );
-        e
-    })? {
-        Some(value) => {
-            // Update current_position
-            let mut connections = input.mcp_connections.lock().unwrap();
-            let connection = connections
-                .get_connection_mut(&data.connection_id)
-                .ok_or_else(|| {
-                    tracing::error!(
-                        "[NEXT] Connection not found when updating position: {}",
-                        data.connection_id
-                    );
-                    GraphError::StorageError(format!(
-                        "Connection not found: {}",
-                        data.connection_id
-                    ))
-                })?;
-            connection.current_position += 1;
-            tracing::debug!(
-                "[NEXT] Updated position to: {}",
-                connection.current_position
-            );
-            value
-        }
-        None => {
-            tracing::debug!("[NEXT] No more values, returning Empty");
-            TraversalValue::Empty
-        }
-    };
+        })?;
 
-    Ok(Format::Json.create_response(&next_value))
+    tracing::debug!("[NEXT] Materialized {} results", all_results.len());
+
+    let serialized = all_results.get(current_position).cloned();
+
+    {
+        let mut connections = input.mcp_connections.lock().unwrap();
+        let connection = connections
+            .get_connection_mut(&data.connection_id)
+            .ok_or_else(|| {
+                tracing::error!(
+                    "[NEXT] Connection not found when storing cache: {}",
+                    data.connection_id
+                );
+                GraphError::StorageError(format!("Connection not found: {}", data.connection_id))
+            })?;
+        connection.cached_results = Some(all_results);
+        if serialized.is_some() {
+            connection.current_position += 1;
+            tracing::debug!("[NEXT] Updated position to: {}", connection.current_position);
+        }
+    }
+
+    if let Some(bytes) = serialized {
+        Ok(Response {
+            body: bytes,
+            fmt: Format::Json,
+        })
+    } else {
+        tracing::debug!("[NEXT] No more values, returning Empty");
+        Ok(Format::Json.create_response(&TraversalValue::Empty))
+    }
 }
 
 #[derive(Deserialize)]

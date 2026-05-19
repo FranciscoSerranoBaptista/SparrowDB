@@ -1618,4 +1618,112 @@ mod mcp_tests {
         let response = search_vector_text(&mut input);
         assert!(response.is_err());
     }
+
+    // ============================================================================
+    // Pagination Cache Tests
+    // ============================================================================
+
+    #[test]
+    fn test_next_handler_returns_distinct_results_without_repetition() {
+        use crate::sparrow_gateway::mcp::mcp::next;
+
+        let (engine, _temp_dir) = setup_engine();
+        let mut txn = engine.storage.graph_env.write_txn().unwrap();
+        let arena = Bump::new();
+
+        for i in 0..5 {
+            G::new_mut(engine.storage.as_ref(), &arena, &mut txn)
+                .add_n(
+                    "person",
+                    Some(ImmutablePropertiesMap::new(
+                        1,
+                        [("index", Value::from(i as i64))].into_iter(),
+                        &arena,
+                    )),
+                    None,
+                )
+                .collect_to_obj()
+                .unwrap();
+        }
+        txn.commit().unwrap();
+
+        let backend = Arc::new(McpBackend::new(Arc::clone(&engine.storage)));
+        let connections = Arc::new(Mutex::new(McpConnections::new()));
+
+        let mut connection = MCPConnection::new("conn_next_cache".to_string());
+        connection.add_query_step(ToolArgs::NFromType {
+            node_type: "person".to_string(),
+        });
+        connections.lock().unwrap().add_connection(connection);
+
+        let make_next_request = |connections: &Arc<Mutex<McpConnections>>, backend: &Arc<McpBackend>| {
+            let request_body =
+                Bytes::from(r#"{"connection_id":"conn_next_cache"}"#.to_string());
+            let request = Request {
+                name: "next".to_string(),
+                req_type: RequestType::MCP,
+                body: request_body,
+                api_key: None,
+                in_fmt: Format::Json,
+                out_fmt: Format::Json,
+            };
+            MCPToolInput {
+                request,
+                mcp_backend: Arc::clone(backend),
+                mcp_connections: Arc::clone(connections),
+                schema: None,
+            }
+        };
+
+        let mut seen_ids: Vec<String> = Vec::new();
+
+        for call_num in 0..5 {
+            let mut input = make_next_request(&connections, &backend);
+            let response = next(&mut input).unwrap();
+            let body = String::from_utf8(response.body.clone()).unwrap();
+
+            assert!(
+                !body.contains("\"Empty\"") && body != "null",
+                "call {} returned Empty unexpectedly: {}",
+                call_num,
+                body
+            );
+
+            let id_start = body.find("\"id\"").expect("response missing id field");
+            seen_ids.push(body[id_start..id_start + 50].to_string());
+        }
+
+        // All 5 results must be distinct (no repeats due to O(N²) re-execution skipping).
+        let unique_count = seen_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        assert_eq!(
+            unique_count,
+            5,
+            "expected 5 distinct results, got duplicates: {:?}",
+            seen_ids
+        );
+
+        assert_eq!(
+            connections
+                .lock()
+                .unwrap()
+                .get_connection("conn_next_cache")
+                .unwrap()
+                .current_position,
+            5
+        );
+
+        // 6th call must return Empty.
+        let mut input = make_next_request(&connections, &backend);
+        let response = next(&mut input).unwrap();
+        let body = String::from_utf8(response.body.clone()).unwrap();
+        assert!(
+            body.contains("Empty") || body == "null" || body.is_empty() || body == "\"Empty\"",
+            "expected Empty on 6th call, got: {}",
+            body
+        );
+    }
 }
+
