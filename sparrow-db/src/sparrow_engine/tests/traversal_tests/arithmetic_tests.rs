@@ -1,21 +1,30 @@
 use super::test_utils::props_option;
 use std::sync::Arc;
 
+use heed3::RoTxn;
+
 use crate::sparrow_engine::{
     storage_core::SparrowGraphStorage,
     traversal_core::{
         ops::{
             g::G,
-            source::{add_n::AddNAdapter, n_from_type::NFromTypeAdapter},
+            source::{
+                add_n::AddNAdapter, n_from_type::NFromTypeAdapter,
+                v_from_type::VFromTypeAdapter,
+            },
             util::map::MapAdapter,
+            vectors::insert::InsertVAdapter,
         },
         traversal_value::TraversalValue,
     },
     types::GraphError,
+    vector_core::vector::HVector,
 };
 use crate::{props, protocol::value::Value};
 use bumpalo::Bump;
 use tempfile::TempDir;
+
+type Filter = fn(&HVector, &RoTxn) -> bool;
 
 fn setup_test_db() -> (TempDir, Arc<SparrowGraphStorage>) {
     let temp_dir = TempDir::new().unwrap();
@@ -322,5 +331,48 @@ fn test_max_cross_type_integer_via_traversal() {
         TraversalValue::Value(Value::F64(_)) => panic!("cross-type integer max must not produce F64"),
         TraversalValue::Value(v) => assert_eq!(*v, Value::I64(10)),
         other => panic!("expected Value, got {other:?}"),
+    }
+}
+
+// ── Realistic I64 property case (vector count metadata) ─────────────────────
+
+#[test]
+fn test_i64_count_property_arithmetic_on_vector_node() {
+    // Vector nodes commonly carry integer metadata (counts, sizes, ranks) stored as
+    // Value::I64 — the type JSON integers deserialize to. Before the cross-type
+    // signed fix, I64(count) + I32(delta) silently truncated to I64 via to_i64().
+    // Now it returns I128. This test exercises that path on a real vector node.
+    let (_dir, storage) = setup_test_db();
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    use crate::utils::properties::ImmutablePropertiesMap;
+    let props_map = ImmutablePropertiesMap::new(
+        1,
+        [("count", Value::I64(42))].iter().map(|(k, v)| {
+            (arena.alloc_str(k) as &str, v.clone())
+        }),
+        &arena,
+    );
+    G::new_mut(&storage, &arena, &mut txn)
+        .insert_v::<Filter>(&[1.0, 0.0, 0.0], "doc", Some(props_map))
+        .collect_to_obj()
+        .unwrap();
+    txn.commit().unwrap();
+
+    let txn = storage.graph_env.read_txn().unwrap();
+    let results = G::new(&storage, &txn, &arena)
+        .v_from_type("doc", true)
+        .map_traversal(|tv, _| {
+            let count = tv.get_property("count").ok_or(GraphError::NodeNotFound)?;
+            Ok(TraversalValue::Value(count.clone() + Value::I32(1)))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    match &results[0] {
+        TraversalValue::Value(Value::I128(v)) => assert_eq!(*v, 43),
+        other => panic!("expected I128(43), got {other:?}"),
     }
 }
