@@ -651,6 +651,44 @@ impl VectorCore {
         Ok(active_reachable)
     }
 
+    /// Scans all HNSW edges and returns (total_directed_edges, asymmetric_count).
+    /// An asymmetric edge is one where A→B exists but B→A does not.
+    /// A healthy graph has asymmetric_count == 0.
+    pub fn count_asymmetric_edges<'db>(
+        &self,
+        txn: &RoTxn<'db>,
+    ) -> Result<(usize, usize), VectorError> {
+        let mut total = 0usize;
+        let mut asymmetric = 0usize;
+
+        for result in self.edges_db.iter(txn)? {
+            let (key, _) = result?;
+            if key.len() < 40 {
+                continue;
+            }
+            total += 1;
+
+            let mut src_arr = [0u8; 16];
+            src_arr.copy_from_slice(&key[0..16]);
+            let src_id = u128::from_be_bytes(src_arr);
+
+            let mut level_arr = [0u8; 8];
+            level_arr.copy_from_slice(&key[16..24]);
+            let level = usize::from_be_bytes(level_arr);
+
+            let mut dst_arr = [0u8; 16];
+            dst_arr.copy_from_slice(&key[24..40]);
+            let dst_id = u128::from_be_bytes(dst_arr);
+
+            let reverse_key = Self::out_edges_key(dst_id, level, Some(src_id));
+            if self.edges_db.get(txn, &reverse_key)?.is_none() {
+                asymmetric += 1;
+            }
+        }
+
+        Ok((total, asymmetric))
+    }
+
     /// Returns count of non-deleted vectors for a specific label.
     pub fn count_active_vectors<'db: 'arena, 'arena>(
         &self,
