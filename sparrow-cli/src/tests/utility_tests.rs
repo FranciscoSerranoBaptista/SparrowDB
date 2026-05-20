@@ -205,9 +205,10 @@ async fn test_metrics_basic_enables_collection() {
         result.err()
     );
 
-    // Verify config was updated by reading directly from the expected path
-    // (avoids race conditions with SPARROW_HOME env var in parallel tests)
-    let config_path = ctx.sparrow_home.join("metrics.toml");
+    // Derive config path from the same env var the command uses, not from ctx,
+    // to avoid stale-path races with concurrent non-serial tests.
+    let config_path = crate::metrics_sender::get_metrics_config_path()
+        .expect("Should resolve metrics config path");
     assert!(
         config_path.exists(),
         "Metrics config file should exist at {:?}",
@@ -219,6 +220,7 @@ async fn test_metrics_basic_enables_collection() {
         "Metrics level should be Basic, got: {}",
         content
     );
+    let _ = &ctx; // keep TestContext alive until after the assertion
 
     // Cleanup: disable metrics to not affect other tests
     let _ = metrics::run(MetricsAction::Off).await;

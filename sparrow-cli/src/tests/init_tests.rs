@@ -583,5 +583,12 @@ async fn test_init_preserves_existing_scaffold_files_non_interactive() {
 
     assert_eq!(schema, "// custom schema\n");
     assert_eq!(queries, "// custom queries\n");
-    assert_eq!(gitignore, "custom-ignore\n");
+    assert!(
+        gitignore.starts_with("custom-ignore\n"),
+        "init should preserve existing .gitignore content"
+    );
+    assert!(
+        gitignore.contains(".sparrow/") && gitignore.contains("target/") && gitignore.contains("*.log"),
+        "init should append sparrow entries to existing .gitignore"
+    );
 }

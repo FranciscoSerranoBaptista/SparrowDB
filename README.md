@@ -1,135 +1,197 @@
 <div align="center">
 
 <picture>
-  <img src="/assets/full_logo.png" alt="HelixDB Logo">
+  <img src="/assets/full_logo.png" alt="SparrowDB Logo" width="300">
 </picture>
 
-<b>HelixDB</b>: an open-source graph-vector database built from scratch in Rust.
+**SparrowDB** — an open-source graph-vector database built from scratch in Rust.
 
 <h3>
-  <a href="https://helix-db.com">Website</a> |
-  <a href="https://docs.helix-db.com">Docs</a> |
-  <a href="https://discord.gg/2stgMPr5BD">Discord</a> |
-  <a href="https://x.com/helixdb">X/Twitter</a>
+  <a href="https://discord.gg/2stgMPr5BD">Discord</a>
 </h3>
 
-[![Docs](https://img.shields.io/badge/docs-latest-blue)](https://docs.helix-db.com)
-[![Change Log](https://img.shields.io/badge/changelog-latest-blue)](https://docs.helix-db.com/change-log/helixdb)
-[![GitHub Repo stars](https://img.shields.io/github/stars/HelixDB/helix-db)](https://github.com/HelixDB/helix-db/stargazers)
-[![Discord](https://img.shields.io/discord/1354148209005559819?logo=discord)](https://discord.gg/2stgMPr5BD)
-[![LOC](https://img.shields.io/endpoint?url=https://ghloc.vercel.app/api/HelixDB/helix-db/badge?filter=.rs$,.sh$&style=flat&logoColor=white&label=Lines%20of%20Code)](https://github.com/HelixDB/helix-db)
-[![Manta Graph](https://getmanta.ai/api/badges?text=Manta%20Graph&link=helixdb)](https://getmanta.ai/helixdb)
-
-<a href="https://www.ycombinator.com/launches/Naz-helixdb-the-database-for-rag-ai" target="_blank"><img src="https://www.ycombinator.com/launches/Naz-helixdb-the-database-for-rag-ai/upvote_embed.svg" alt="Launch YC: HelixDB - The Database for Intelligence" style="margin-left: 12px;"/></a>
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
 </div>
 
-<hr>
+---
 
+SparrowDB is a database that makes it easy to build all the components needed for an AI application in a single platform.
 
-HelixDB is a database that makes it easy to build all the components needed for an AI application in a single platform.
+You no longer need a separate application DB, vector DB, graph DB, or application layers to manage multiple storage locations. SparrowDB combines graph traversal, vector similarity search, BM25 keyword search, and an MCP server into a single embeddable database written in Rust.
 
-You no longer need a separate application DB, vector DB, graph DB, or application layers to manage the multiple storage locations to build the backend of any application that uses AI, agents or RAG. Just use Helix.
-
-HelixDB primarily operates with a graph + vector data model, but it can also support KV, documents, and relational data.
-
-### Get started with HelixDB
-
-<div align="center">                                                                                                                                                                                                                                                                                                                                                                                   
-    <img src="/assets/readmeinit.gif" alt="Helix CLI Demo" width="100%">                                                                                                                                                                                                                                                                                                                                              
-</div>  
-
---- 
-
-## Key Features
-
-|                         |                                                                                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Built-in MCP tools**  | Helix has built-in MCP support to allow your agents to discover data and walk the graph rather than generating human readable queries. |
-| **Built-in Embeddings** | No need to embed your data before sending it to Helix, just use the `Embed` function to vectorize text.                                |
-| **Tooling for RAG**     | HelixDB has a built-in vector search, keyword search, and graph traversals that can be used to power any type of RAG applications.     |
-| **Secure by Default**   | HelixDB is private by default. You can only access your data through your compiled HelixQL queries.                                    |
-| **Ultra-Low Latency**   | Helix is built in Rust and uses LMDB as its storage engine to provide extremely low latencies.                                         |
-| **Type-Safe Queries**   | HelixQL is 100% type-safe, which lets you develop and deploy with the confidence that your queries will execute in production          |
-
-## Getting Started
-
-#### Helix CLI
-
-Start by installing the Helix CLI tool to deploy Helix locally.
-
-1. Install CLI
-
-   ```bash
-   curl -sSL "https://install.helix-db.com" | bash
-   ```
-
-2. Initialize a project
-
-   ```bash
-   mkdir <path-to-project> && cd <path-to-project>
-   helix init
-   ```
-
-3. Write queries
-
-   Open your newly created `.hx` files and start writing your schema and queries.
-   Head over to [our docs](https://docs.helix-db.com/documentation/hql/hql) for more information about writing queries.
-
-   ```js
-   N::User {
-      INDEX name: String,
-      age: U32
-   }
-
-   QUERY getUser(user_name: String) =>
-      user <- N<User>({name: user_name})
-      RETURN user
-   ```
-
-4. (Optional) Check your queries compile
-
-   ```bash
-   helix check
-   ```
-
-5. Deploy your queries to their API endpoints
-
-   ```bash
-   helix push dev
-   ```
-
-6. Start calling them using our [TypeScript SDK](https://github.com/HelixDB/helix-ts) or [Python SDK](https://github.com/HelixDB/helix-py). For example:
-
-   ```typescript
-   import HelixDB from "helix-ts";
-
-   // Create a new HelixDB client
-   // The default port is 6969
-   const client = new HelixDB();
-
-   // Query the database
-   await client.query("addUser", {
-     name: "John",
-     age: 20,
-   });
-
-   // Get the created user
-   const user = await client.query("getUser", {
-     user_name: "John",
-   });
-
-   console.log(user);
-   ```
-
-## License
-
-HelixDB is licensed under the The AGPL (Affero General Public License).
-
-## Commercial Support
-
-HelixDB is available as a managed service for selected users, if you're interested in using Helix's managed service or want enterprise support, [contact](mailto:founders@helix-db.com) us for more information and deployment options.
+SparrowDB primarily operates with a **graph + vector** data model, but it also supports KV, document, and relational-style data.
 
 ---
 
-Just Use Helix
+## Key Features
+
+| Feature | Description |
+|---|---|
+| **Graph + Vector in one** | Define nodes and edges with HQL, then attach embeddings to any node — no separate vector store needed. |
+| **Built-in MCP tools** | Native Model Context Protocol support so AI agents can discover data and walk the graph without writing raw queries. |
+| **Built-in embeddings** | Use `Embed()` in HQL to vectorize text at write time — no pre-processing pipeline required. |
+| **Dual storage backends** | Choose LMDB (default, zero-copy reads) or RocksDB (high-throughput writes) at startup via a feature flag. |
+| **Runtime HQL interpreter** | POST raw HQL to `/__hql_runtime_eval` for dynamic query execution without a recompile. |
+| **BM25 + vector hybrid search** | Combine keyword and semantic search in a single traversal step. |
+| **Diagnostics endpoint** | `GET /diagnostics` returns node/edge/vector counts and entry point health at a glance. |
+| **Data management CLI** | `snapshot`, `clone`, and `restore` commands for live database backups without downtime. |
+
+---
+
+## Getting Started
+
+### Install
+
+```bash
+cargo install sparrow-cli
+```
+
+### Initialize a project
+
+```bash
+sparrow init my-project
+cd my-project
+```
+
+This creates:
+```
+my-project/
+  sparrow.toml        # instance configuration
+  queries/
+    schema.hx         # node and edge type definitions
+    queries.hx        # query definitions
+  .sparrow/           # local instance state (git-ignored)
+```
+
+### Define a schema (`queries/schema.hx`)
+
+```
+N::User {
+    name: String,
+    bio:  String,
+}
+
+E::Follows {
+    From: User,
+    To:   User,
+}
+```
+
+### Write a query (`queries/queries.hx`)
+
+```
+QUERY GetUser(id: ID) =>
+    user <- N<User>(id)
+    RETURN user
+
+QUERY SimilarUsers(id: ID, limit: Int) =>
+    user     <- N<User>(id)
+    similar  <- SearchVector<User>(user.bio, limit)
+    RETURN similar
+```
+
+### Start a local instance
+
+```bash
+sparrow push dev     # compile and launch the dev instance
+```
+
+### Check your schema compiles
+
+```bash
+sparrow check
+```
+
+---
+
+## CLI Reference
+
+| Command | Description |
+|---|---|
+| `sparrow init [path]` | Scaffold a new SparrowDB project |
+| `sparrow push [instance]` | Compile and deploy to a local instance |
+| `sparrow check` | Validate schema and queries without deploying |
+| `sparrow run` | Start the database server directly (no container) |
+| `sparrow data snapshot` | Hot-copy the live database to a directory |
+| `sparrow data clone` | Copy an existing snapshot |
+| `sparrow data restore [--force]` | Restore from a snapshot |
+| `sparrow metrics [basic\|full\|off\|status]` | Configure anonymous telemetry |
+
+---
+
+## Configuration (`sparrow.toml`)
+
+```toml
+[project]
+name    = "my-project"
+queries = "queries"
+
+[local.dev]
+port             = 6969
+build_mode       = "dev"
+storage_backend  = "lmdb"   # or "rocks"
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `SPARROW_DATA_DIR` | `~/.sparrow/` | Override the data directory |
+| `SPARROW_HOME` | `~/.sparrow/` | Override the config/cache home |
+| `SPARROW_CACHE_DIR` | `~/.sparrow/repo` | Override the build cache |
+| `SPARROW_RUNTIME_EVAL` | unset | Enable `/__hql_runtime_eval` endpoint when set |
+
+---
+
+## Architecture
+
+```
+sparrow-cli         → CLI (push, check, data, run, metrics …)
+sparrow-db          → Core engine
+  sparrow_engine    → Graph/vector traversal ops (lmdb + rocks backends)
+  sparrow_gateway   → HTTP API, MCP server, runtime HQL eval
+  sparrowc          → HQL compiler (parser → IR → codegen)
+sparrow-container   → Docker build pipeline
+sparrow-macros      → Derive macros
+metrics             → Anonymous telemetry
+```
+
+---
+
+## Storage Backends
+
+SparrowDB ships with two storage backends selectable at compile time:
+
+| Backend | Feature flag | Strengths |
+|---|---|---|
+| **LMDB** (default) | `lmdb` | Zero-copy reads, crash-safe, low latency |
+| **RocksDB** | `rocks` | High write throughput, compaction, column families |
+
+Switch backends by setting `storage_backend` in `sparrow.toml`.
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/YOUR_ORG/SparrowDB
+cd SparrowDB
+cargo build
+cargo test
+```
+
+Run only the fast unit tests:
+
+```bash
+cargo test -p sparrow-cli
+cargo test -p sparrow-db
+```
+
+---
+
+## License
+
+SparrowDB is released under the [AGPL-3.0 License](LICENSE).

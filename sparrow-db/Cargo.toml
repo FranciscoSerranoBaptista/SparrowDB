@@ -1,6 +1,6 @@
 [package]
 name = "sparrow-db"
-version = "1.3.3"
+version = "3.0.0"
 edition = "2024"
 description = "SparrowDB is a powerful, open-source, graph-vector database built in Rust for intelligent data storage for RAG and AI."
 license = "AGPL-3.0"

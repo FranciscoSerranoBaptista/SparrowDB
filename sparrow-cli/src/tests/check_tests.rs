@@ -2,6 +2,7 @@ use crate::commands::check::run;
 use crate::config::{DbConfig, SparrowConfig, LocalInstanceConfig};
 use crate::metrics_sender::MetricsSender;
 use crate::tests::test_utils::TestContext;
+use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
 
@@ -49,6 +50,7 @@ async fn test_check_specific_instance_success() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_check_nonexistent_instance_fails() {
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -69,6 +71,7 @@ async fn test_check_nonexistent_instance_fails() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_check_fails_without_schema() {
     let ctx = TestContext::new();
     ctx.setup_project_without_schema();
@@ -86,6 +89,7 @@ async fn test_check_fails_without_schema() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_check_fails_with_invalid_syntax() {
     let ctx = TestContext::new();
     ctx.setup_project_with_invalid_syntax();
@@ -98,6 +102,7 @@ async fn test_check_fails_with_invalid_syntax() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_check_fails_without_sparrow_toml() {
     let ctx = TestContext::new();
     // Don't set up any project - leave directory empty
@@ -196,6 +201,7 @@ async fn test_check_validates_each_instance_individually() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_check_with_empty_queries_directory() {
     let ctx = TestContext::new();
 
