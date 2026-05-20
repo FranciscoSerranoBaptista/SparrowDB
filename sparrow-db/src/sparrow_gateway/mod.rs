@@ -7,6 +7,7 @@ pub mod introspect_schema;
 pub mod key_verification;
 pub mod mcp;
 pub mod router;
+pub mod runtime_eval;
 #[cfg(test)]
 pub mod tests;
 pub mod worker_pool;

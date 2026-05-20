@@ -98,6 +98,7 @@ fn main() {
         );
 
     let path_str = path.to_str().expect("Could not convert path to string");
+    let hql_schema_raw = config.hql_schema_raw.clone();
     let opts = SparrowGraphEngineOpts {
         path: path_str.to_string(),
         config,
@@ -113,7 +114,7 @@ fn main() {
     let submissions: Vec<_> = inventory::iter::<HandlerSubmission>.into_iter().collect();
     println!("Found {} route submissions", submissions.len());
 
-    let (query_routes, write_routes): (
+    let (mut query_routes, mut write_routes): (
         HashMap<String, HandlerFn>,
         std::collections::HashSet<String>,
     ) = inventory::iter::<HandlerSubmission>.into_iter().fold(
@@ -132,6 +133,17 @@ fn main() {
             (routes, writes)
         },
     );
+
+    // Runtime HQL eval — opt-in via SPARROW_RUNTIME_HQL=true
+    if std::env::var("SPARROW_RUNTIME_HQL").as_deref() == Ok("true") {
+        use sparrow_db::sparrow_gateway::runtime_eval::handler as runtime_handler;
+        let rt_handler: HandlerFn = Arc::new(move |input| {
+            runtime_handler::handle(input, hql_schema_raw.clone())
+        });
+        query_routes.insert("__hql_runtime_eval".to_string(), rt_handler);
+        write_routes.insert("__hql_runtime_eval".to_string());
+        println!("Runtime HQL eval enabled at POST /__hql_runtime_eval");
+    }
 
     let mcp_routes = inventory::iter::<MCPHandlerSubmission>
         .into_iter()
