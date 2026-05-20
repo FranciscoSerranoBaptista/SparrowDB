@@ -12,7 +12,8 @@ All notable changes to SparrowDB are documented here.
 - Enable PREFILTER mode during HNSW traversal for more accurate filtered vector search
 
 **Diagnostics**
-- `GET /hnsw-health` — BFS reachability check across the HNSW graph; reports unreachable node count and entry point validity
+- `GET /hnsw-health` — BFS reachability check across the HNSW graph; reports unreachable node count and entry point validity; now covers all labels (not just `"default"`)
+- `GET /hnsw-integrity` — scans every HNSW edge and verifies bidirectional symmetry; reports `asymmetric_edges` count and overall `symmetric` flag
 
 **Memory (sparrow-memory crate)**
 - New `sparrow-memory` crate scaffolded: episodic memory store with opaque ID fields, `TryFrom<&str>` for `Priority`, and `PartialEq` on stored types
@@ -23,6 +24,7 @@ All notable changes to SparrowDB are documented here.
 **Vector / HNSW**
 - Return `ZeroMagnitudeVector` error instead of dividing by zero on zero-magnitude input vectors
 - Propagate non-`EntryPointNotFound` errors in `insert` instead of swallowing them
+- `insert()` now rejects non-empty zero-magnitude vectors at the API boundary (both lmdb and rocks backends); empty placeholder vectors are still allowed
 
 ### Internal
 
