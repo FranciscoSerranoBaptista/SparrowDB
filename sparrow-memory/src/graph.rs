@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bumpalo::Bump;
 use heed3::PutFlags;
 use sparrow_db::{
@@ -65,13 +63,13 @@ pub fn write_node(
     Ok(node.id)
 }
 
-/// Write a new node AND register secondary index entries — single write transaction.
-/// `index_entries` is a slice of `(index_name, key_value)` pairs.
+/// Write a new node AND register a single secondary index entry — single write transaction.
 pub fn write_node_indexed(
     storage: &SparrowGraphStorage,
     label: &str,
     props: NodeProps<'_>,
-    index_entries: &[(&str, Value)],
+    index_name: &str,
+    index_value: Value,
 ) -> Result<u128, MemoryError> {
     let arena = Bump::new();
     let label_ref: &str = arena.alloc_str(label);
@@ -108,18 +106,15 @@ pub fn write_node_indexed(
         .put_with_flags(&mut wtxn, PutFlags::empty(), &node.id, &bytes)
         .map_err(MemoryError::Heed)?;
 
-    for (index_name, key_value) in index_entries {
-        let (idx_db, _) = storage
-            .secondary_indices
-            .get(*index_name)
-            .ok_or_else(|| MemoryError::IndexNotFound(index_name.to_string()))?;
+    let (idx_db, _) = storage
+        .secondary_indices
+        .get(index_name)
+        .ok_or_else(|| MemoryError::IndexNotFound(index_name.to_string()))?;
 
-        let key_bytes =
-            bincode::serialize(key_value).map_err(MemoryError::Serialization)?;
-        idx_db
-            .put(&mut wtxn, &key_bytes, &node.id)
-            .map_err(MemoryError::Heed)?;
-    }
+    let key_bytes = bincode::serialize(&index_value).map_err(MemoryError::Serialization)?;
+    idx_db
+        .put_with_flags(&mut wtxn, PutFlags::empty(), &key_bytes, &node.id)
+        .map_err(MemoryError::Heed)?;
 
     wtxn.commit().map_err(MemoryError::Heed)?;
 
@@ -141,46 +136,45 @@ pub fn ids_from_index(
 
     let rtxn = storage.graph_env.read_txn().map_err(MemoryError::Heed)?;
     let mut ids = Vec::new();
-    for item in idx_db
-        .prefix_iter(&rtxn, &key_bytes)
+    if let Some(iter) = idx_db
+        .get_duplicates(&rtxn, key_bytes.as_slice())
         .map_err(MemoryError::Heed)?
     {
-        let (_, node_id) = item.map_err(MemoryError::Heed)?;
-        ids.push(node_id);
+        for item in iter {
+            let (_, node_id) = item.map_err(MemoryError::Heed)?;
+            ids.push(node_id);
+        }
     }
 
     Ok(ids)
 }
 
-/// Read a node, returning `(label, properties HashMap)`. Arena is internal.
+/// Read a node's properties as `Vec<(String, Value)>`. Returns empty vec if no properties.
 pub fn read_node_props(
     storage: &SparrowGraphStorage,
     id: u128,
-) -> Result<(String, HashMap<String, Value>), MemoryError> {
+) -> Result<Vec<(String, Value)>, MemoryError> {
     let arena = Bump::new();
     let rtxn = storage.graph_env.read_txn().map_err(MemoryError::Heed)?;
     let node = storage
         .get_node(&rtxn, id, &arena)
         .map_err(MemoryError::Storage)?;
 
-    let label = node.label.to_string();
-    let mut props = HashMap::new();
-    if let Some(prop_map) = node.properties {
-        for (k, v) in prop_map.iter() {
-            props.insert(k.to_string(), v.clone());
-        }
-    }
+    let props = match node.properties {
+        Some(prop_map) => prop_map.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+        None => vec![],
+    };
 
-    Ok((label, props))
+    Ok(props)
 }
 
 /// Write a directed edge (no properties) — out and in adjacency entries.
 /// Returns the new edge's u128 ID.
 pub fn write_edge(
     storage: &SparrowGraphStorage,
-    label: &str,
     from_id: u128,
     to_id: u128,
+    label: &str,
 ) -> Result<u128, MemoryError> {
     let arena = Bump::new();
     let label_ref: &str = arena.alloc_str(label);
