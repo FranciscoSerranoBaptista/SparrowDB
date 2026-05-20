@@ -1,3 +1,4 @@
+pub mod arithmetic_tests;
 pub mod count_tests;
 pub mod drop_tests;
 pub mod edge_traversal_tests;
