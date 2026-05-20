@@ -362,18 +362,6 @@ impl Value {
         matches!(self, Value::F32(_) | Value::F64(_))
     }
 
-    /// Convert any signed integer Value to i64
-    fn to_i64(&self) -> Option<i64> {
-        match self {
-            Value::I8(v) => Some(*v as i64),
-            Value::I16(v) => Some(*v as i64),
-            Value::I32(v) => Some(*v as i64),
-            Value::I64(v) => Some(*v),
-            Value::I128(v) => Some(*v as i64),
-            _ => None,
-        }
-    }
-
     fn to_i128(&self) -> Option<i128> {
         match self {
             Value::I8(v) => Some(*v as i128),
