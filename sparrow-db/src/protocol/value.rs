@@ -463,11 +463,11 @@ impl std::ops::Add for Value {
                 Value::F64(a_f64 + b_f64)
             }
 
-            // Cross-type signed integer additions → I64
+            // Cross-type signed integer additions → I128 (avoids truncating I128 values)
             (a, b) if a.is_signed_int() && b.is_signed_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_add(b_i64))
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_add(b_i128))
             }
 
             // Cross-type unsigned integer additions → U128 (safest)
@@ -608,11 +608,11 @@ impl std::ops::Sub for Value {
                 Value::F64(a_f64 - b_f64)
             }
 
-            // Cross-type signed integer subtractions → I64
+            // Cross-type signed integer subtractions → I128 (avoids truncating I128 values)
             (a, b) if a.is_signed_int() && b.is_signed_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_sub(b_i64))
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_sub(b_i128))
             }
 
             // Cross-type unsigned integer subtractions → U128
@@ -741,11 +741,11 @@ impl std::ops::Mul for Value {
                 Value::F64(a_f64 * b_f64)
             }
 
-            // Cross-type signed integer multiplications → I64
+            // Cross-type signed integer multiplications → I128 (avoids truncating I128 values)
             (a, b) if a.is_signed_int() && b.is_signed_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_mul(b_i64))
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_mul(b_i128))
             }
 
             // Cross-type unsigned integer multiplications → U128
@@ -897,11 +897,11 @@ impl std::ops::Div for Value {
                 Value::F64(a_f64 / b_f64)
             }
 
-            // Cross-type signed integer divisions → I64
+            // Cross-type signed integer divisions → I128 (avoids truncating I128 values)
             (a, b) if a.is_signed_int() && b.is_signed_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_div(b_i64))
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_div(b_i128))
             }
 
             // Cross-type unsigned integer divisions → U128
@@ -1060,11 +1060,11 @@ impl std::ops::Rem for Value {
                 Value::F64(a_f64 % b_f64)
             }
 
-            // Cross-type signed integer modulo → I64
+            // Cross-type signed integer modulo → I128 (avoids truncating I128 values)
             (a, b) if a.is_signed_int() && b.is_signed_int() => {
-                let a_i64 = a.to_i64().unwrap();
-                let b_i64 = b.to_i64().unwrap();
-                Value::I64(a_i64.wrapping_rem(b_i64))
+                let a_i128 = a.to_i128().unwrap();
+                let b_i128 = b.to_i128().unwrap();
+                Value::I128(a_i128.wrapping_rem(b_i128))
             }
 
             // Cross-type unsigned integer modulo → U128
@@ -3494,7 +3494,7 @@ mod tests {
 
     #[test]
     fn test_add_cross_type_signed_integers() {
-        // Cross-type signed integers → I64
+        // Cross-type signed integers → I128
         let result = Value::I8(10) + Value::I32(100);
         assert_eq!(result, Value::I64(110));
 
@@ -3656,7 +3656,7 @@ mod tests {
 
     #[test]
     fn test_sub_cross_type_signed_integers() {
-        // Cross-type signed integers → I64
+        // Cross-type signed integers → I128
         let result = Value::I8(100) - Value::I32(10);
         assert_eq!(result, Value::I64(90));
 
@@ -3774,7 +3774,7 @@ mod tests {
 
     #[test]
     fn test_mul_cross_type_signed_integers() {
-        // Cross-type signed integers → I64
+        // Cross-type signed integers → I128
         let result = Value::I8(10) * Value::I32(10);
         assert_eq!(result, Value::I64(100));
 
@@ -3892,7 +3892,7 @@ mod tests {
 
     #[test]
     fn test_div_cross_type_signed_integers() {
-        // Cross-type signed integers → I64
+        // Cross-type signed integers → I128
         let result = Value::I8(100) / Value::I32(10);
         assert_eq!(result, Value::I64(10));
 
@@ -4007,6 +4007,58 @@ mod tests {
         let result = Value::I128(10) % Value::I128(3);
         match result {
             Value::I128(v) => assert_eq!(v, 1),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_add_cross_type_signed_preserves_i128() {
+        // i128::MAX + I8(0) — used to truncate to i64::MAX
+        let result = Value::I128(i128::MAX) + Value::I8(0);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MAX),
+            other => panic!("expected I128, got {other:?}"),
+        }
+        // I8 + I32 still works, just returns I128 now
+        let result = Value::I8(10) + Value::I32(20);
+        match result {
+            Value::I128(v) => assert_eq!(v, 30),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_sub_cross_type_signed_preserves_i128() {
+        let result = Value::I128(i128::MIN) - Value::I8(0);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MIN),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_mul_cross_type_signed_preserves_i128() {
+        let result = Value::I128(i128::MAX) * Value::I8(1);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MAX),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_div_cross_type_signed_preserves_i128() {
+        let result = Value::I128(i128::MAX) / Value::I32(2);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MAX / 2),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_rem_cross_type_signed_preserves_i128() {
+        let result = Value::I128(i128::MAX) % Value::I32(3);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MAX % 3),
             other => panic!("expected I128, got {other:?}"),
         }
     }
