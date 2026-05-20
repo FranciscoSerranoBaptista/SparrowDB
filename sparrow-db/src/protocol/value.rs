@@ -442,6 +442,7 @@ impl std::ops::Add for Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(a.wrapping_add(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(a.wrapping_add(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(a.wrapping_add(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(a.wrapping_add(b)),
 
             // Same-type unsigned integer additions
             (Value::U8(a), Value::U8(b)) => Value::U8(a.wrapping_add(b)),
@@ -586,6 +587,7 @@ impl std::ops::Sub for Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(a.wrapping_sub(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(a.wrapping_sub(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(a.wrapping_sub(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(a.wrapping_sub(b)),
 
             // Same-type unsigned integer subtractions
             (Value::U8(a), Value::U8(b)) => Value::U8(a.wrapping_sub(b)),
@@ -718,6 +720,7 @@ impl std::ops::Mul for Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(a.wrapping_mul(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(a.wrapping_mul(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(a.wrapping_mul(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(a.wrapping_mul(b)),
 
             // Same-type unsigned integer multiplications
             (Value::U8(a), Value::U8(b)) => Value::U8(a.wrapping_mul(b)),
@@ -873,6 +876,7 @@ impl std::ops::Div for Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(a.wrapping_div(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(a.wrapping_div(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(a.wrapping_div(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(a.wrapping_div(b)),
 
             // Same-type unsigned integer divisions
             (Value::U8(a), Value::U8(b)) => Value::U8(a.wrapping_div(b)),
@@ -1035,6 +1039,7 @@ impl std::ops::Rem for Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(a.wrapping_rem(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(a.wrapping_rem(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(a.wrapping_rem(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(a.wrapping_rem(b)),
 
             // Same-type unsigned integer modulo
             (Value::U8(a), Value::U8(b)) => Value::U8(a.wrapping_rem(b)),
@@ -3958,6 +3963,51 @@ mod tests {
         match result {
             Value::I128(v) => assert_eq!(v, -18446744073709551615_i128),
             other => panic!("unexpected result type: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_add_i128_same_type() {
+        let result = Value::I128(i128::MAX) + Value::I128(1);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MAX.wrapping_add(1)),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_sub_i128_same_type() {
+        let result = Value::I128(i128::MIN) - Value::I128(1);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MIN.wrapping_sub(1)),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_mul_i128_same_type() {
+        let result = Value::I128(i128::MAX) * Value::I128(2);
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MAX.wrapping_mul(2)),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_div_i128_same_type() {
+        let result = Value::I128(100) / Value::I128(4);
+        match result {
+            Value::I128(v) => assert_eq!(v, 25),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_rem_i128_same_type() {
+        let result = Value::I128(10) % Value::I128(3);
+        match result {
+            Value::I128(v) => assert_eq!(v, 1),
+            other => panic!("expected I128, got {other:?}"),
         }
     }
 }
