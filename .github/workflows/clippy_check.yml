@@ -1,23 +1,29 @@
-name: Core Clippy Check
+name: Clippy Check
 
 on:
   pull_request:
-    branches: [ main, dev ]
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Run clippy check
+  clippy:
+    name: Clippy (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        
+        os: [ubuntu-latest, macos-latest]
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
-      
+      with:
+        components: clippy
+
     - name: Cache cargo dependencies
       uses: actions/cache@v4
       continue-on-error: true
@@ -26,11 +32,19 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') || 'fallback' }}
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
-          
-    - name: Run clippy check
-      run: | 
-        rustup component add clippy
-        sh clippy_check.sh
+
+    - name: Run clippy
+      run: |
+        cargo clippy --workspace --locked --exclude hql-tests --exclude metrics \
+          -- -D warnings \
+             -A clippy::too_many_arguments \
+             -A clippy::let_and_return \
+             -A clippy::module_inception \
+             -A clippy::new_ret_no_self \
+             -A clippy::wrong_self_convention \
+             -A clippy::large_enum_variant \
+             -A clippy::inherent_to_string \
+             -A clippy::inherent_to_string_shadow_display

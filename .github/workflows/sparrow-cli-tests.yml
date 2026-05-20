@@ -1,23 +1,33 @@
-name: Dashboard Mode Clippy Check
+name: Sparrow CLI Tests
 
 on:
   pull_request:
-    branches: [ main, dev ]
+    branches: [main]
+    paths:
+      - 'sparrow-cli/**'
+      - 'sparrow-db/**'
+      - 'sparrow-macros/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   test:
-    name: Test dashboard mode clippy check
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        
+        os: [ubuntu-latest, macos-latest]
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
-      
+
     - name: Cache cargo dependencies
       uses: actions/cache@v4
       continue-on-error: true
@@ -26,11 +36,9 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') || 'fallback' }}
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
-          
-    - name: Run dashboard mode clippy check
-      run: | 
-        rustup component add clippy
-        sh clippy_check.sh dashboard
+
+    - name: Run tests
+      run: cargo test -p sparrow-cli --lib

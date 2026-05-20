@@ -2,15 +2,23 @@ name: HQL Tests
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main]
     paths:
-      - 'helix-macros/**'
-      - 'helix-db/**'
+      - 'hql-tests/**'
+      - 'sparrow-db/**'
+      - 'sparrow-macros/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   hql-tests:
-    runs-on: ubuntu-latest # 8 vCPUs, 32 GB RAM
+    name: HQL Tests (batch ${{ matrix.batch }})
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         batch: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -19,36 +27,33 @@ jobs:
       issues: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: x86_64-unknown-linux-gnu
-          override: true
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') || 'fallback' }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+    - name: Cache cargo dependencies
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-hql-${{ matrix.batch }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-hql-
+          ${{ runner.os }}-cargo-
 
-      - name: Make run.sh executable
-        run: chmod +x ./hql-tests/run.sh
+    - name: Make run.sh executable
+      run: chmod +x ./hql-tests/run.sh
 
-      - name: Run HQL tests
-        working-directory: ./hql-tests
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_OWNER: ${{ github.repository_owner }}
-          GITHUB_REPO: ${{ github.event.repository.name }}
-        run: ./run.sh batch 10 ${{ matrix.batch }}
+    - name: Run HQL tests
+      working-directory: ./hql-tests
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_OWNER: ${{ github.repository_owner }}
+        GITHUB_REPO: ${{ github.event.repository.name }}
+        BATCH: ${{ matrix.batch }}
+      run: ./run.sh batch 10 "$BATCH"

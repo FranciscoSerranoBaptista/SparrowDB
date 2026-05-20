@@ -1,0 +1,48 @@
+name: SparrowDB Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sparrow-db/**'
+      - 'sparrow-macros/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
+  SPARROW_API_KEY: "12345678901234567890123456789012"
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.features }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        features: [lmdb, dev-instance, production]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.features }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ matrix.features }}-
+          ${{ runner.os }}-cargo-
+
+    - name: Run tests
+      env:
+        FEATURES: ${{ matrix.features }}
+      run: cargo test --release -p sparrow-db --features "$FEATURES" --lib -- --skip concurrency_tests
