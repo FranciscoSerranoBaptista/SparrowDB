@@ -27,6 +27,13 @@ All notable changes to SparrowDB are documented here.
 - `insert()` now rejects non-empty zero-magnitude vectors at the API boundary (both lmdb and rocks backends); empty placeholder vectors are still allowed
 - `search_v` and `brute_force_search_v` now return a `GraphError` on negative `k` instead of panicking via `TryInto<usize>::unwrap()`; `brute_force_search_v` also replaces a `cosine_similarity().unwrap()` with a silent skip (`.ok()?`) for any zero-magnitude stored vector
 
+**Value Arithmetic**
+- Fix `I128 op I128` arithmetic: missing same-type arms caused `I128 + I128` to fall through to the cross-type signed arm and truncate to `I64`
+- Promote cross-type signed integer arithmetic from `I64` to `I128` — `Value::I128(x) op Value::I8(y)` no longer silently truncates
+- `abs()` now handles `Value::I128` (previously panicked)
+- `is_zero()` guards in `Div` and `Rem` now detect `Value::I128(0)` (previously fell through to a `wrapping_div(0)` panic with no guard message)
+- `min()` and `max()` cross-type integer pairs now use `Ord` comparison instead of `f64` promotion, preserving precision for values outside `f64`'s 53-bit mantissa
+
 ### Internal
 
 **Tests**
