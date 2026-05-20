@@ -82,17 +82,17 @@ pub fn hnsw_health_inner(input: HandlerInput) -> Result<protocol::Response, Grap
     #[cfg(feature = "lmdb")]
     {
         let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
-        let arena = bumpalo::Bump::new();
 
-        let total_active = db
+        let vector_stats = db
             .vectors
-            .count_active_vectors(&txn, "default", &arena)
+            .stats(&txn)
             .map_err(|e| GraphError::New(e.to_string()))?;
+        let total_active = vector_stats.active as usize;
 
-        let reachable = match db.vectors.bfs_reachable_count(&txn, "default", &arena) {
-            Ok(n) => n,
-            Err(e) => return Err(GraphError::New(e.to_string())),
-        };
+        let reachable = db
+            .vectors
+            .bfs_reachable_count_global(&txn)
+            .map_err(|e| GraphError::New(e.to_string()))?;
 
         let unreachable = total_active.saturating_sub(reachable);
 

@@ -595,6 +595,62 @@ impl VectorCore {
         Ok(visited.len())
     }
 
+    /// Returns the count of active (non-deleted) vectors reachable by BFS from the global
+    /// entry point at level 0, traversing edges directly without requiring a label.
+    /// This covers all labels in a single pass.
+    pub fn bfs_reachable_count_global<'db>(
+        &self,
+        txn: &RoTxn<'db>,
+    ) -> Result<usize, VectorError> {
+        let ep_bytes = match self.vectors_db.get(txn, ENTRY_POINT_KEY)? {
+            None => return Ok(0),
+            Some(b) => b,
+        };
+        let mut arr = [0u8; 16];
+        let len = ep_bytes.len().min(16);
+        arr[..len].copy_from_slice(&ep_bytes[..len]);
+        let ep_id = u128::from_be_bytes(arr);
+
+        let arena = bumpalo::Bump::new();
+        let mut visited: HashSet<u128> = HashSet::new();
+        let mut queue: std::collections::VecDeque<u128> = std::collections::VecDeque::new();
+        let mut active_reachable = 0usize;
+
+        visited.insert(ep_id);
+        queue.push_back(ep_id);
+
+        while let Some(id) = queue.pop_front() {
+            let is_deleted = self
+                .vector_properties_db
+                .get(txn, &id)
+                .ok()
+                .flatten()
+                .and_then(|bytes| VectorWithoutData::from_bincode_bytes(&arena, bytes, id).ok())
+                .map(|p| p.deleted)
+                .unwrap_or(true);
+
+            if !is_deleted {
+                active_reachable += 1;
+            }
+
+            let prefix = Self::out_edges_key(id, 0, None);
+            for result in self.edges_db.prefix_iter(txn, &prefix)? {
+                let (key, _) = result?;
+                if key.len() < 40 {
+                    continue;
+                }
+                let mut narr = [0u8; 16];
+                narr.copy_from_slice(&key[24..40]);
+                let neighbor_id = u128::from_be_bytes(narr);
+                if visited.insert(neighbor_id) {
+                    queue.push_back(neighbor_id);
+                }
+            }
+        }
+
+        Ok(active_reachable)
+    }
+
     /// Returns count of non-deleted vectors for a specific label.
     pub fn count_active_vectors<'db: 'arena, 'arena>(
         &self,
@@ -1026,7 +1082,7 @@ impl HNSW for VectorCore {
         'db: 'arena,
         'arena: 'txn,
     {
-        if data.iter().map(|x| x * x).sum::<f64>() == 0.0 {
+        if !data.is_empty() && data.iter().map(|x| x * x).sum::<f64>() == 0.0 {
             return Err(VectorError::ZeroMagnitudeVector);
         }
 

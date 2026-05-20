@@ -752,7 +752,7 @@ impl HNSW for VectorCore {
         'db: 'arena,
         'arena: 'txn,
     {
-        if data.iter().map(|x| x * x).sum::<f64>() == 0.0 {
+        if !data.is_empty() && data.iter().map(|x| x * x).sum::<f64>() == 0.0 {
             return Err(VectorError::ZeroMagnitudeVector);
         }
 
