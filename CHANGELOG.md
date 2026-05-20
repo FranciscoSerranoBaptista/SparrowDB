@@ -26,6 +26,11 @@ All notable changes to SparrowDB are documented here.
 
 ### Internal
 
+**Tests**
+- Reduced oversized LMDB map sizes in test helpers: `hnsw_tests` 512 MB → 64 MB, `bm25_tests` 4 GB → 128 MB; tests now run on any machine without requiring excessive free disk space
+- Updated three tests that asserted the old buggy zero-magnitude cosine behavior; `test_hvector_distance_max` now uses anti-parallel vectors, and a new `test_hvector_distance_zero_magnitude_returns_error` documents the correct contract
+- Fixed two prune unit tests that used zero-magnitude hub vectors, which became invalid once the zero-magnitude guard was in place
+
 **CI**
 - Rewrote all GitHub Actions workflows for the `sparrow-*` crate structure
 - Replaced three separate feature-flag test files with a single `sparrow-db-tests.yml` matrix (`lmdb` / `dev-instance` / `production` × `ubuntu` / `macos`)
