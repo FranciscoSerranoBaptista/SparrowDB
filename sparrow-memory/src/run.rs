@@ -7,7 +7,7 @@ use sparrow_db::{
 
 use crate::{
     error::MemoryError,
-    graph::{add_to_index, ids_from_index, out_neighbors, read_node_props, write_edge, write_node_indexed},
+    graph::{add_to_index, ids_from_index, out_neighbors, read_node_props, remove_from_index, write_edge, write_node_indexed},
     indices::{FINDING_ENTITY_ID, FINDING_THREAD_ID, QUESTION_STATUS, QUESTION_THREAD_ID, RUN_THREAD_ID, SUMMARY_THREAD_ID},
     types::{Finding, FindingId, Priority, QuestionId},
 };
@@ -132,6 +132,9 @@ impl RunHandle {
         let mut map: std::collections::HashMap<String, Value> = props.into_iter().collect();
         map.insert("status".to_string(), Value::String("resolved".to_string()));
         overwrite_node(&self.storage, qid, "open_question", map)?;
+        // Remove the now-stale "open" entry from the status index so callers of QUESTION_STATUS
+        // don't see resolved questions as open.
+        remove_from_index(&self.storage, QUESTION_STATUS, &Value::String("open".to_string()), qid)?;
         write_edge(&self.storage, fid, qid, "ANSWERS")?;
         Ok(())
     }

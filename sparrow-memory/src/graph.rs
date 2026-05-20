@@ -211,12 +211,12 @@ pub fn write_edge(
 
     storage
         .out_edges_db
-        .put(&mut wtxn, &out_key[..], &packed_out[..])
+        .put_with_flags(&mut wtxn, PutFlags::empty(), &out_key[..], &packed_out[..])
         .map_err(MemoryError::Heed)?;
 
     storage
         .in_edges_db
-        .put(&mut wtxn, &in_key[..], &packed_in[..])
+        .put_with_flags(&mut wtxn, PutFlags::empty(), &in_key[..], &packed_in[..])
         .map_err(MemoryError::Heed)?;
 
     wtxn.commit().map_err(MemoryError::Heed)?;
@@ -239,6 +239,26 @@ pub fn add_to_index(
     let mut wtxn = storage.graph_env.write_txn().map_err(MemoryError::Heed)?;
     idx_db
         .put_with_flags(&mut wtxn, PutFlags::empty(), &key_bytes, &node_id)
+        .map_err(MemoryError::Heed)?;
+    wtxn.commit().map_err(MemoryError::Heed)?;
+    Ok(())
+}
+
+/// Remove a specific (key → node_id) entry from a secondary index.
+pub fn remove_from_index(
+    storage: &SparrowGraphStorage,
+    index_name: &str,
+    key: &Value,
+    node_id: u128,
+) -> Result<(), MemoryError> {
+    let (idx_db, _) = storage
+        .secondary_indices
+        .get(index_name)
+        .ok_or_else(|| MemoryError::IndexNotFound(index_name.to_string()))?;
+    let key_bytes = bincode::serialize(key).map_err(MemoryError::Serialization)?;
+    let mut wtxn = storage.graph_env.write_txn().map_err(MemoryError::Heed)?;
+    idx_db
+        .delete_one_duplicate(&mut wtxn, key_bytes.as_slice(), &node_id)
         .map_err(MemoryError::Heed)?;
     wtxn.commit().map_err(MemoryError::Heed)?;
     Ok(())
