@@ -848,6 +848,7 @@ impl std::ops::Div for Value {
                 Value::I16(n) => *n == 0,
                 Value::I32(n) => *n == 0,
                 Value::I64(n) => *n == 0,
+                Value::I128(n) => *n == 0,
                 Value::U8(n) => *n == 0,
                 Value::U16(n) => *n == 0,
                 Value::U32(n) => *n == 0,
@@ -1011,6 +1012,7 @@ impl std::ops::Rem for Value {
                 Value::I16(n) => *n == 0,
                 Value::I32(n) => *n == 0,
                 Value::I64(n) => *n == 0,
+                Value::I128(n) => *n == 0,
                 Value::U8(n) => *n == 0,
                 Value::U16(n) => *n == 0,
                 Value::U32(n) => *n == 0,
@@ -1172,6 +1174,7 @@ impl Value {
             Value::I16(v) => Value::I16(v.wrapping_abs()),
             Value::I32(v) => Value::I32(v.wrapping_abs()),
             Value::I64(v) => Value::I64(v.wrapping_abs()),
+            Value::I128(v) => Value::I128(v.wrapping_abs()),
             // Unsigned integers are already non-negative
             Value::U8(v) => Value::U8(*v),
             Value::U16(v) => Value::U16(*v),
@@ -1199,6 +1202,7 @@ impl Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(*a.min(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(*a.min(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(*a.min(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(*a.min(b)),
             (Value::U8(a), Value::U8(b)) => Value::U8(*a.min(b)),
             (Value::U16(a), Value::U16(b)) => Value::U16(*a.min(b)),
             (Value::U32(a), Value::U32(b)) => Value::U32(*a.min(b)),
@@ -1206,7 +1210,17 @@ impl Value {
             (Value::U128(a), Value::U128(b)) => Value::U128(*a.min(b)),
             (Value::F32(a), Value::F32(b)) => Value::F32(a.min(*b)),
             (Value::F64(a), Value::F64(b)) => Value::F64(a.min(*b)),
-            // Cross-type: promote to f64 and compare
+            // Cross-type integers: use Ord (i128-safe, no f64 precision loss)
+            _ if (self.is_signed_int() || self.is_unsigned_int())
+                && (other.is_signed_int() || other.is_unsigned_int()) =>
+            {
+                if self.cmp(other) != Ordering::Greater {
+                    self.clone()
+                } else {
+                    other.clone()
+                }
+            }
+            // Float cross-type: promote to f64
             _ => {
                 let a_f64 = self.to_f64().expect("min requires numeric value");
                 let b_f64 = other.to_f64().expect("min requires numeric value");
@@ -1223,6 +1237,7 @@ impl Value {
             (Value::I16(a), Value::I16(b)) => Value::I16(*a.max(b)),
             (Value::I32(a), Value::I32(b)) => Value::I32(*a.max(b)),
             (Value::I64(a), Value::I64(b)) => Value::I64(*a.max(b)),
+            (Value::I128(a), Value::I128(b)) => Value::I128(*a.max(b)),
             (Value::U8(a), Value::U8(b)) => Value::U8(*a.max(b)),
             (Value::U16(a), Value::U16(b)) => Value::U16(*a.max(b)),
             (Value::U32(a), Value::U32(b)) => Value::U32(*a.max(b)),
@@ -1230,7 +1245,17 @@ impl Value {
             (Value::U128(a), Value::U128(b)) => Value::U128(*a.max(b)),
             (Value::F32(a), Value::F32(b)) => Value::F32(a.max(*b)),
             (Value::F64(a), Value::F64(b)) => Value::F64(a.max(*b)),
-            // Cross-type: promote to f64 and compare
+            // Cross-type integers: use Ord (i128-safe, no f64 precision loss)
+            _ if (self.is_signed_int() || self.is_unsigned_int())
+                && (other.is_signed_int() || other.is_unsigned_int()) =>
+            {
+                if self.cmp(other) != Ordering::Less {
+                    self.clone()
+                } else {
+                    other.clone()
+                }
+            }
+            // Float cross-type: promote to f64
             _ => {
                 let a_f64 = self.to_f64().expect("max requires numeric value");
                 let b_f64 = other.to_f64().expect("max requires numeric value");
@@ -4061,5 +4086,65 @@ mod tests {
             Value::I128(v) => assert_eq!(v, i128::MAX % 3),
             other => panic!("expected I128, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_abs_i128() {
+        let result = Value::I128(-99).abs();
+        match result {
+            Value::I128(v) => assert_eq!(v, 99),
+            other => panic!("expected I128, got {other:?}"),
+        }
+        // Edge case: wrapping abs of MIN
+        let result = Value::I128(i128::MIN).abs();
+        match result {
+            Value::I128(v) => assert_eq!(v, i128::MIN.wrapping_abs()),
+            other => panic!("expected I128, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_div_by_i128_zero_panics() {
+        let result = std::panic::catch_unwind(|| {
+            let _ = Value::I128(10) / Value::I128(0);
+        });
+        assert!(result.is_err(), "division by I128(0) should panic");
+    }
+
+    #[test]
+    fn test_rem_by_i128_zero_panics() {
+        let result = std::panic::catch_unwind(|| {
+            let _ = Value::I128(10) % Value::I128(0);
+        });
+        assert!(result.is_err(), "modulo by I128(0) should panic");
+    }
+
+    #[test]
+    fn test_min_cross_type_integer_preserves_type() {
+        // I32 min U64 — must not produce F64
+        let a = Value::I32(5);
+        let b = Value::U64(10);
+        let result = Value::min(&a, &b);
+        match result {
+            Value::F64(_) => panic!("cross-type integer min should not produce F64"),
+            v => assert_eq!(v, Value::I32(5)),
+        }
+        // Negative signed vs unsigned — critical case for cmp-based branch
+        let result = Value::min(&Value::I32(-1), &Value::U64(0));
+        assert_eq!(result, Value::I32(-1), "negative signed must be min");
+    }
+
+    #[test]
+    fn test_max_cross_type_integer_preserves_type() {
+        let a = Value::I32(5);
+        let b = Value::U64(10);
+        let result = Value::max(&a, &b);
+        match result {
+            Value::F64(_) => panic!("cross-type integer max should not produce F64"),
+            v => assert_eq!(v, Value::U64(10)),
+        }
+        // Negative signed vs unsigned — critical case
+        let result = Value::max(&Value::I32(-1), &Value::U64(0));
+        assert_eq!(result, Value::U64(0), "unsigned zero must be max over negative");
     }
 }
