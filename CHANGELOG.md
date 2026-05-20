@@ -25,6 +25,7 @@ All notable changes to SparrowDB are documented here.
 - Return `ZeroMagnitudeVector` error instead of dividing by zero on zero-magnitude input vectors
 - Propagate non-`EntryPointNotFound` errors in `insert` instead of swallowing them
 - `insert()` now rejects non-empty zero-magnitude vectors at the API boundary (both lmdb and rocks backends); empty placeholder vectors are still allowed
+- `search_v` and `brute_force_search_v` now return a `GraphError` on negative `k` instead of panicking via `TryInto<usize>::unwrap()`; `brute_force_search_v` also replaces a `cosine_similarity().unwrap()` with a silent skip (`.ok()?`) for any zero-magnitude stored vector
 
 ### Internal
 
