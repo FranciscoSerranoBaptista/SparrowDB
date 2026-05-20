@@ -16,7 +16,7 @@ fn setup_env() -> (Env, TempDir) {
 
     let env = unsafe {
         EnvOpenOptions::new()
-            .map_size(512 * 1024 * 1024)
+            .map_size(64 * 1024 * 1024)
             .max_dbs(32)
             .open(path)
             .unwrap()
