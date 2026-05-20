@@ -4634,6 +4634,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sparrow-memory"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bumpalo",
+ "heed3",
+ "serde",
+ "sparrow-db",
+ "tempfile",
+ "thiserror 2.0.12",
+ "uuid",
+]
+
+[[package]]
 name = "sparrow-metrics"
 version = "0.1.1"
 dependencies = [
