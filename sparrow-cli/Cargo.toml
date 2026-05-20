@@ -38,6 +38,8 @@ crossterm = "0.28"
 tui-banner = "0.2.3"
 base64 = "0.22"
 helix-enterprise-ql = "0.1.1"
+fake = { version = "2.10", features = ["derive"] }
+rand = "0.8"
 
 
 [dev-dependencies]

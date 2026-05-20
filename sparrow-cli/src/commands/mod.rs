@@ -24,4 +24,5 @@ pub mod status;
 pub mod stop;
 pub mod sync;
 pub mod update;
+pub mod stress;
 pub mod workspace_flow;

@@ -4,6 +4,7 @@ pub mod handler;
 pub mod parse;
 pub mod lower;
 pub mod executor;
+pub mod mutations;
 
 #[derive(Debug, Deserialize)]
 pub struct RuntimeEvalRequest {

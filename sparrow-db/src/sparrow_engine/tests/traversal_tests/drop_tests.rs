@@ -414,21 +414,23 @@ fn test_vector_deletion_in_existing_graph() {
         other => panic!("unexpected value: {other:?}"),
     };
 
+    // Create one edge per vector in vector_ids (unique from_node each time).
     for &other in &vector_ids {
         let random = vector_ids[rand::rng().random_range(0..vector_ids.len())];
         G::new_mut(&storage, &arena, &mut txn)
             .add_edge("knows", None, other, random, false)
             .collect_to_obj()
             .unwrap();
-        G::new_mut(&storage, &arena, &mut txn)
-            .add_edge("knows", None, node_id, target_vector_id, false)
-            .collect_to_obj()
-            .unwrap();
-        G::new_mut(&storage, &arena, &mut txn)
-            .add_edge("knows", None, target_vector_id, node_id, false)
-            .collect_to_obj()
-            .unwrap();
     }
+    // Connect node_id ↔ target_vector_id once (adding them inside a loop would create duplicate edges).
+    G::new_mut(&storage, &arena, &mut txn)
+        .add_edge("knows", None, node_id, target_vector_id, false)
+        .collect_to_obj()
+        .unwrap();
+    G::new_mut(&storage, &arena, &mut txn)
+        .add_edge("knows", None, target_vector_id, node_id, false)
+        .collect_to_obj()
+        .unwrap();
     txn.commit().unwrap();
 
     let arena = Bump::new();
@@ -437,7 +439,8 @@ fn test_vector_deletion_in_existing_graph() {
         .e_from_type("knows")
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_eq!(edges.len(), 30);
+    // 10 (other→random) + 1 (node_id→target_vector_id) + 1 (target_vector_id→node_id)
+    assert_eq!(edges.len(), 12);
     drop(txn);
 
     let arena = Bump::new();

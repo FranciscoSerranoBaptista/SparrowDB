@@ -265,6 +265,43 @@ enum Commands {
         /// Feedback message (opens interactive prompt if not provided)
         message: Option<String>,
     },
+
+    /// Run a pre-production stress test against a running SparrowDB instance
+    ///
+    /// Requires the instance to be compiled with the People/Company/Jobs schema and queries.
+    Stress {
+        /// SparrowDB endpoint (with or without http://)
+        #[arg(long, default_value = "localhost")]
+        endpoint: String,
+
+        /// SparrowDB port
+        #[arg(long, default_value_t = 6969)]
+        port: u16,
+
+        /// Number of people to generate
+        #[arg(long, default_value_t = 1000)]
+        num_people: usize,
+
+        /// Number of companies to generate
+        #[arg(long, default_value_t = 50)]
+        num_companies: usize,
+
+        /// Number of job titles to generate
+        #[arg(long, default_value_t = 30)]
+        num_jobs: usize,
+
+        /// Number of parallel workers
+        #[arg(long, default_value_t = 10)]
+        workers: usize,
+
+        /// Progress print interval (every N people inserted)
+        #[arg(long, default_value_t = 100)]
+        progress_interval: usize,
+
+        /// Skip write phases and only verify persisted data (use after a restart)
+        #[arg(long, default_value_t = false)]
+        verify_only: bool,
+    },
 }
 
 /// Display the welcome banner and getting started guide
@@ -485,6 +522,28 @@ async fn main() -> Result<()> {
             }
             Commands::Backup { instance, output } => commands::backup::run(output, instance).await,
             Commands::Feedback { message } => commands::feedback::run(message).await,
+            Commands::Stress {
+                endpoint,
+                port,
+                num_people,
+                num_companies,
+                num_jobs,
+                workers,
+                progress_interval,
+                verify_only,
+            } => {
+                commands::stress::run(
+                    endpoint,
+                    port,
+                    num_people,
+                    num_companies,
+                    num_jobs,
+                    workers,
+                    progress_interval,
+                    verify_only,
+                )
+                .await
+            }
         },
     };
 

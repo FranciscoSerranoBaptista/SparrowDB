@@ -255,8 +255,9 @@ impl VectorCore {
                 keys_to_delete.remove(&out_key);
                 self.edges_db.put(txn, &out_key, &())?;
 
+                // Back-link: neighbor_id → id.  Stored under neighbor_id's prefix so it is
+                // never in keys_to_delete (which only contains id's own outgoing edges).
                 let in_key = Self::out_edges_key(neighbor_id, level, Some(id));
-                keys_to_delete.remove(&in_key);
                 self.edges_db.put(txn, &in_key, &())?;
 
                 self.prune_if_over_degree(txn, neighbor_id, neighbor, level, limit, arena)?;

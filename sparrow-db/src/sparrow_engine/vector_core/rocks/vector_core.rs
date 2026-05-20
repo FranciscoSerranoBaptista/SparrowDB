@@ -340,6 +340,7 @@ impl VectorCore {
         neighbors: &BinaryHeap<'arena, HVector<'arena>>,
         level: u8,
     ) -> Result<(), VectorError> {
+        let limit = if level == 0 { self.config.m_max_0 } else { self.config.m };
         let key = Self::edges_key(id, level);
         let mut desired = Vec::with_capacity(neighbors.len());
 
@@ -405,6 +406,63 @@ impl VectorCore {
             let neighbor_key = Self::edges_key(neighbor_id, entry[16]);
             let reciprocal_operand = EdgeOp::encode(EdgeOp::Add, &reciprocal);
             txn.merge_cf(&cf_edges, neighbor_key, reciprocal_operand)?;
+
+            // Prune the neighbor's edge list if the new back-link pushed it over the degree limit.
+            // This mirrors the LMDB backend's prune_if_over_degree call and makes set_neighbours
+            // safe to call without a subsequent select_neighbors + set_neighbours round-trip.
+            let arena = bumpalo::Bump::new();
+            if let Ok(neighbor_vec) = self.get_raw_vector_data(txn, neighbor_id, "", &arena) {
+                let _ = self.prune_if_over_degree(txn, neighbor_id, &neighbor_vec, entry[16], limit);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn prune_if_over_degree<'db>(
+        &self,
+        txn: &Txn<'db>,
+        node_id: u128,
+        node_vec: &HVector<'_>,
+        level: u8,
+        limit: usize,
+    ) -> Result<(), VectorError> {
+        let cf_edges = self.cf_edges();
+        let key = Self::edges_key(node_id, level);
+
+        let current_edges: Vec<[u8; EDGE_LENGTH]> = txn
+            .get_pinned_cf(&cf_edges, key)?
+            .map(|buf| Self::decode_edges(buf.as_ref()))
+            .unwrap_or_default();
+
+        if current_edges.len() <= limit {
+            return Ok(());
+        }
+
+        // Score each current neighbor by distance to node_vec, keep the closest `limit`.
+        let arena = bumpalo::Bump::new();
+        let mut scored: Vec<([u8; EDGE_LENGTH], f64)> = current_edges
+            .into_iter()
+            .filter_map(|entry| {
+                let nid = u128::from_be_bytes(entry[..16].try_into().ok()?);
+                let v = self.get_raw_vector_data(txn, nid, node_vec.label, &arena).ok()?;
+                let dist = v.distance_to(node_vec).ok()?;
+                Some((entry, dist))
+            })
+            .collect();
+
+        scored.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Remove every edge beyond the limit (both directions).
+        let reciprocal_entry = Self::edge_entry(node_id, level);
+        for (entry, _) in &scored[limit..] {
+            let remove_fwd = EdgeOp::encode(EdgeOp::Remove, entry.as_ref());
+            txn.merge_cf(&cf_edges, key, remove_fwd)?;
+
+            let nid = u128::from_be_bytes(entry[..16].try_into().unwrap());
+            let neighbor_key = Self::edges_key(nid, entry[16]);
+            let remove_rev = EdgeOp::encode(EdgeOp::Remove, &reciprocal_entry);
+            txn.merge_cf(&cf_edges, neighbor_key, remove_rev)?;
         }
 
         Ok(())

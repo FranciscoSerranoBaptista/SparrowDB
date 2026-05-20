@@ -41,6 +41,29 @@ pub struct Config {
     pub hql_schema_raw: Option<String>,
 }
 
+/// Compute the minimum number of `#` guards needed for a Rust raw string literal
+/// that contains `s`. Returns at least 1.
+fn required_raw_str_hashes(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut max_hashes = 0usize;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let mut count = 0;
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] == b'#' {
+                count += 1;
+                j += 1;
+            }
+            if count > max_hashes {
+                max_hashes = count;
+            }
+        }
+        i += 1;
+    }
+    max_hashes + 1
+}
+
 impl Config {
     pub fn new(
         m: usize,
@@ -246,7 +269,11 @@ impl Config {
             }
         )?;
         match hql_schema_raw {
-            Some(raw) => writeln!(f, "hql_schema_raw: Some(r#\"{raw}\"#.to_string()),")?,
+            Some(raw) => {
+                let n = required_raw_str_hashes(raw);
+                let hashes = "#".repeat(n);
+                writeln!(f, "hql_schema_raw: Some(r{hashes}\"{raw}\"{hashes}.to_string()),")?;
+            }
             None => writeln!(f, "hql_schema_raw: None,")?,
         }
         writeln!(f, "}})")?;
@@ -310,5 +337,29 @@ mod runtime_schema_tests {
         let cfg = Config::default();
         let rendered = format!("{cfg}");
         assert!(rendered.contains("hql_schema_raw: None"));
+    }
+
+    #[test]
+    fn test_fmt_with_schema_embeds_hql_schema_raw_some() {
+        // A raw string that contains "# to exercise the dynamic hash guard
+        let tricky = "N::Foo { x: String } // test \"# edge case";
+        let cfg = Config::default();
+
+        struct Wrapper<'a>(&'a Config, &'a str);
+        impl<'a> std::fmt::Display for Wrapper<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt_with_schema(f, None, &[], Some(self.1))
+            }
+        }
+        let rendered = format!("{}", Wrapper(&cfg, tricky));
+        // The rendered output should contain the raw string with at least 2 hashes
+        assert!(
+            rendered.contains("hql_schema_raw: Some(r##\""),
+            "expected r## guard for content with \"#, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("##.to_string())"),
+            "closing hashes not found in: {rendered}"
+        );
     }
 }

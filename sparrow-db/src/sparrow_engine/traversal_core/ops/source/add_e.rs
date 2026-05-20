@@ -48,6 +48,55 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         'txn,
         impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
     > {
+        // Compute label_hash early so we can use it for the duplicate check below.
+        let label_hash = hash_label(label, None);
+        let out_key = SparrowGraphStorage::out_edge_key(&from_node, &label_hash);
+        let to_node_bytes: [u8; 16] = to_node.to_be_bytes();
+
+        // Check for a duplicate edge (same from_node + label + to_node) before writing.
+        let dup_check: Result<bool, GraphError> = {
+            match self.storage.out_edges_db.get_duplicates(self.txn, &out_key[..]) {
+                Err(e) => Err(GraphError::from(e)),
+                Ok(None) => Ok(false),
+                Ok(Some(mut iter)) => {
+                    let mut found = false;
+                    while let Some(item) = iter.next() {
+                        match item {
+                            Ok((_, v)) if v.len() >= 32 && v[16..32] == to_node_bytes => {
+                                found = true;
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                    // iter dropped here, borrow on self.txn released
+                    Ok(found)
+                }
+            }
+        };
+
+        match dup_check {
+            Err(e) => {
+                return RwTraversalIterator {
+                    arena: self.arena,
+                    storage: self.storage,
+                    txn: self.txn,
+                    inner: std::iter::once(Err(e)),
+                };
+            }
+            Ok(true) => {
+                return RwTraversalIterator {
+                    arena: self.arena,
+                    storage: self.storage,
+                    txn: self.txn,
+                    inner: std::iter::once(Err(GraphError::DuplicateKey(format!(
+                        "Edge '{label}' already exists from {from_node} to {to_node}"
+                    )))),
+                };
+            }
+            Ok(false) => {}
+        }
+
         let version = self.storage.version_info.get_latest(label);
         let edge = Edge {
             id: v6_uuid(),
@@ -73,8 +122,6 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             }
             Err(e) => result = Err(GraphError::from(e)),
         }
-
-        let label_hash = hash_label(edge.label, None);
 
         match self.storage.out_edges_db.put_with_flags(
             self.txn,

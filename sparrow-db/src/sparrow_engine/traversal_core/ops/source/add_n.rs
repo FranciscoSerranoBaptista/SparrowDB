@@ -79,7 +79,22 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
                     // look into if there is a way to serialize to a slice
                     match bincode::serialize(&key) {
                         Ok(serialized) => {
-                            // possibly append dup
+                            // For unique indices, reject duplicate values before writing.
+                            if matches!(db.1, crate::sparrow_engine::types::SecondaryIndex::Unique(_)) {
+                                match db.0.get(self.txn, &serialized) {
+                                    Ok(Some(_)) => {
+                                        result = Err(GraphError::DuplicateKey(format!(
+                                            "Unique index '{index}' already contains this value"
+                                        )));
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        result = Err(GraphError::from(e));
+                                        continue;
+                                    }
+                                    Ok(None) => {}
+                                }
+                            }
 
                             if let Err(e) = db.0.put(self.txn, &serialized, &node.id) {
                                 println!(
@@ -113,11 +128,8 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
 
         if result.is_ok() {
             result = Ok(TraversalValue::Node(node));
-        } else {
-            result = Err(GraphError::New(
-                "Failed to add node to secondary indices".to_string(),
-            ));
         }
+        // Preserve the specific error (e.g. DuplicateKey) rather than replacing it.
 
         RwTraversalIterator {
             storage: self.storage,

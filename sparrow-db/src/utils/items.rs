@@ -177,16 +177,21 @@ impl<'arena> serde::Serialize for Edge<'arena> {
 
         // Check if this is a human-readable format (like JSON)
         if serializer.is_human_readable() {
-            // Include id for JSON serialization
-            let mut buffer = [0u8; 36];
+            // Include id for JSON serialization.
+            // from_node / to_node are also serialised as UUID strings so that
+            // JSON-only serialisers (e.g. sonic_rs) which do not support u128
+            // can round-trip edge values without error.
+            let mut id_buf = [0u8; 36];
+            let mut from_buf = [0u8; 36];
+            let mut to_buf = [0u8; 36];
             let mut state = serializer.serialize_map(Some(
                 5 + self.properties.as_ref().map(|p| p.len()).unwrap_or(0),
             ))?;
-            state.serialize_entry("id", uuid_str_from_buf(self.id, &mut buffer))?;
+            state.serialize_entry("id", uuid_str_from_buf(self.id, &mut id_buf))?;
             state.serialize_entry("label", self.label)?;
             state.serialize_entry("version", &self.version)?;
-            state.serialize_entry("from_node", &self.from_node)?;
-            state.serialize_entry("to_node", &self.to_node)?;
+            state.serialize_entry("from_node", uuid_str_from_buf(self.from_node, &mut from_buf))?;
+            state.serialize_entry("to_node", uuid_str_from_buf(self.to_node, &mut to_buf))?;
             if let Some(properties) = &self.properties {
                 for (key, value) in properties.iter() {
                     state.serialize_entry(key, value)?;

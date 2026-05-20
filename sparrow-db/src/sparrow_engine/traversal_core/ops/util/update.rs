@@ -9,6 +9,11 @@ use crate::{
     utils::properties::ImmutablePropertiesMap,
 };
 #[cfg(feature = "lmdb")]
+use crate::sparrow_engine::{
+    bm25::lmdb_bm25::{BM25, BM25Flatten},
+    types::SecondaryIndex,
+};
+#[cfg(feature = "lmdb")]
 use heed3::PutFlags;
 use itertools::Itertools;
 
@@ -60,6 +65,8 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
             match item {
                 Ok(value) => match value {
                     TraversalValue::Node(mut node) => {
+                        let mut update_ok = true;
+
                         match node.properties {
                             None => {
                                 // Insert secondary indices
@@ -93,92 +100,151 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                 node.properties = Some(map);
                             }
                             Some(old) => {
-                                for (k, v) in props.iter() {
+                                // Phase 1: Check unique constraints (read-only) before any writes.
+                                'unique_check: for (k, v) in props.iter() {
                                     let Some(db) = self.storage.secondary_indices.get(*k) else {
                                         continue;
                                     };
-
-                                    // delete secondary indexes for the props changed
+                                    if !matches!(db.1, SecondaryIndex::Unique(_)) {
+                                        continue;
+                                    }
                                     let Some(old_value) = old.get(k) else {
                                         continue;
                                     };
-
-                                    match bincode::serialize(old_value) {
-                                        Ok(old_serialized) => {
-                                            if let Err(e) = db.0.delete_one_duplicate(
-                                                self.txn,
-                                                &old_serialized,
-                                                &node.id,
-                                            ) {
-                                                results.push(Err(GraphError::from(e)));
-                                                continue;
+                                    // Same value → no conflict possible.
+                                    if old_value == v {
+                                        continue;
+                                    }
+                                    match bincode::serialize(v) {
+                                        Ok(new_ser) => {
+                                            match db.0.get(self.txn, &new_ser) {
+                                                Ok(Some(existing)) if existing != node.id => {
+                                                    results.push(Err(GraphError::DuplicateKey(
+                                                        format!("Unique constraint violation on field '{k}'"),
+                                                    )));
+                                                    update_ok = false;
+                                                    break 'unique_check;
+                                                }
+                                                Err(e) => {
+                                                    results.push(Err(GraphError::from(e)));
+                                                    update_ok = false;
+                                                    break 'unique_check;
+                                                }
+                                                _ => {}
                                             }
                                         }
                                         Err(e) => {
                                             results.push(Err(GraphError::from(e)));
-                                            continue;
+                                            update_ok = false;
+                                            break 'unique_check;
                                         }
-                                    }
-
-                                    // create new secondary indexes for the props changed
-                                    match bincode::serialize(v) {
-                                        Ok(v_serialized) => {
-                                            if let Err(e) = db.0.put_with_flags(
-                                                self.txn,
-                                                PutFlags::APPEND_DUP,
-                                                &v_serialized,
-                                                &node.id,
-                                            ) {
-                                                results.push(Err(GraphError::from(e)));
-                                            }
-                                        }
-                                        Err(e) => results.push(Err(GraphError::from(e))),
                                     }
                                 }
 
-                                let diff = props.iter().filter(|(k, _)| {
-                                    !old.iter().map(|(old_k, _)| old_k).contains(k)
-                                });
+                                if update_ok {
+                                    // Phase 2: Apply secondary index updates.
+                                    for (k, v) in props.iter() {
+                                        let Some(db) = self.storage.secondary_indices.get(*k)
+                                        else {
+                                            continue;
+                                        };
 
-                                // find out how many new properties we'll need space for
-                                let len_diff = diff.clone().count();
+                                        // delete secondary indexes for the props changed
+                                        let Some(old_value) = old.get(k) else {
+                                            continue;
+                                        };
 
-                                let merged = old
-                                    .iter()
-                                    .map(|(old_k, old_v)| {
-                                        props
-                                            .iter()
-                                            .find_map(|(k, v)| old_k.eq(*k).then_some(v))
-                                            .map_or_else(
-                                                || (old_k, old_v.clone()),
-                                                |v| (old_k, v.clone()),
-                                            )
-                                    })
-                                    .chain(diff.cloned());
+                                        match bincode::serialize(old_value) {
+                                            Ok(old_serialized) => {
+                                                if let Err(e) = db.0.delete_one_duplicate(
+                                                    self.txn,
+                                                    &old_serialized,
+                                                    &node.id,
+                                                ) {
+                                                    results.push(Err(GraphError::from(e)));
+                                                    continue;
+                                                }
+                                            }
+                                            Err(e) => {
+                                                results.push(Err(GraphError::from(e)));
+                                                continue;
+                                            }
+                                        }
 
-                                // make new props, updated by current props
-                                let new_map = ImmutablePropertiesMap::new(
-                                    old.len() + len_diff,
-                                    merged,
-                                    self.arena,
-                                );
+                                        // create new secondary indexes for the props changed
+                                        match bincode::serialize(v) {
+                                            Ok(v_serialized) => {
+                                                if let Err(e) = db.0.put_with_flags(
+                                                    self.txn,
+                                                    PutFlags::APPEND_DUP,
+                                                    &v_serialized,
+                                                    &node.id,
+                                                ) {
+                                                    results.push(Err(GraphError::from(e)));
+                                                }
+                                            }
+                                            Err(e) => results.push(Err(GraphError::from(e))),
+                                        }
+                                    }
 
-                                node.properties = Some(new_map);
+                                    let diff = props.iter().filter(|(k, _)| {
+                                        !old.iter().map(|(old_k, _)| old_k).contains(k)
+                                    });
+
+                                    // find out how many new properties we'll need space for
+                                    let len_diff = diff.clone().count();
+
+                                    let merged = old
+                                        .iter()
+                                        .map(|(old_k, old_v)| {
+                                            props
+                                                .iter()
+                                                .find_map(|(k, v)| old_k.eq(*k).then_some(v))
+                                                .map_or_else(
+                                                    || (old_k, old_v.clone()),
+                                                    |v| (old_k, v.clone()),
+                                                )
+                                        })
+                                        .chain(diff.cloned());
+
+                                    // make new props, updated by current props
+                                    let new_map = ImmutablePropertiesMap::new(
+                                        old.len() + len_diff,
+                                        merged,
+                                        self.arena,
+                                    );
+
+                                    node.properties = Some(new_map);
+                                }
                             }
                         }
 
-                        match bincode::serialize(&node) {
-                            Ok(serialized_node) => {
-                                match self.storage.nodes_db.put(
-                                    self.txn,
-                                    &node.id,
-                                    &serialized_node,
-                                ) {
-                                    Ok(_) => results.push(Ok(TraversalValue::Node(node))),
-                                    Err(e) => results.push(Err(GraphError::from(e))),
+                        if update_ok {
+                            // Update BM25 index to reflect new properties.
+                            if let Some(bm25) = &self.storage.bm25 {
+                                if let Some(props_ref) = node.properties.as_ref() {
+                                    let mut data = props_ref.flatten_bm25();
+                                    data.push_str(node.label);
+                                    if let Err(e) = bm25.update_doc(self.txn, node.id, &data) {
+                                        results.push(Err(e));
+                                        continue;
+                                    }
                                 }
                             }
-                            Err(e) => results.push(Err(GraphError::from(e))),
+
+                            match bincode::serialize(&node) {
+                                Ok(serialized_node) => {
+                                    match self.storage.nodes_db.put(
+                                        self.txn,
+                                        &node.id,
+                                        &serialized_node,
+                                    ) {
+                                        Ok(_) => results.push(Ok(TraversalValue::Node(node))),
+                                        Err(e) => results.push(Err(GraphError::from(e))),
+                                    }
+                                }
+                                Err(e) => results.push(Err(GraphError::from(e))),
+                            }
                         }
                     }
                     TraversalValue::Edge(mut edge) => {

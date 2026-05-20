@@ -606,3 +606,80 @@ fn test_unique_index_add_n_no_partial_state_on_failure() {
         "Expected exactly one John node after failed add"
     );
 }
+
+// ============================================================================
+// Non-Unique Index: Multiple Nodes at Same Value (Merge Operator Safeguard)
+// ============================================================================
+
+#[test]
+fn test_multiple_nodes_same_index_value() {
+    // This test verifies that non-unique indices work correctly with multiple nodes
+    // at the same index value. The merge operator is a defensive safeguard in this
+    // scenario, since the write path uses composite keys (value|node_id) which are
+    // naturally unique and prevent the "last write wins" problem.
+    let (_temp_dir, storage) = setup_indexed_db();
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    // Create first node with name="John"
+    let node1 = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "John" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+    let node1_id = node1.id();
+
+    // Create second node with the same name="John" (allowed for non-unique index)
+    let node2 = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "John" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+    let node2_id = node2.id();
+
+    // Create third node with different name
+    let node3 = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "person",
+            props_option(&arena, props! { "name" => "Jane" }),
+            Some(&["name"]),
+        )
+        .collect_to_obj()
+        .unwrap();
+    let node3_id = node3.id();
+
+    txn.commit().unwrap();
+
+    // Verify both "John" nodes are retrievable via index
+    let arena = Bump::new();
+    let txn = storage.graph_env.read_txn().unwrap();
+    let john_nodes = G::new(&storage, &txn, &arena)
+        .n_from_index("person", "name", &"John".to_string())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert_eq!(
+        john_nodes.len(),
+        2,
+        "Expected 2 nodes with name=John, got {}",
+        john_nodes.len()
+    );
+    let john_ids: Vec<_> = john_nodes.iter().map(|n| n.id()).collect();
+    assert!(john_ids.contains(&node1_id), "Node 1 not in John index");
+    assert!(john_ids.contains(&node2_id), "Node 2 not in John index");
+
+    // Verify Jane node
+    let jane_nodes = G::new(&storage, &txn, &arena)
+        .n_from_index("person", "name", &"Jane".to_string())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert_eq!(jane_nodes.len(), 1, "Expected 1 node with name=Jane");
+    assert_eq!(jane_nodes[0].id(), node3_id);
+}
