@@ -40,43 +40,52 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
         K: TryInto<usize>,
         K::Error: std::fmt::Debug,
     {
-        let iter = self
-            .inner
-            .filter_map(|v| match v {
-                Ok(TraversalValue::Vector(mut v)) => {
-                    let d = cosine_similarity(v.data, query).unwrap();
-                    v.set_distance(d);
-                    Some(v)
-                }
-                _ => None,
-            })
-            .sorted_by(|v1, v2| v1.partial_cmp(v2).unwrap())
-            .take(k.try_into().unwrap())
-            .filter_map(move |mut item| {
-                match self
-                    .storage
-                    .vectors
-                    .get_vector_properties(self.txn, *item.id(), self.arena)
-                {
-                    Ok(Some(vector_without_data)) => {
-                        item.expand_from_vector_without_data(vector_without_data);
-                        Some(item)
-                    }
+        // Destructure upfront so each field can be used independently.
+        // storage/txn/arena are references (Copy), so they survive the move closure below.
+        let RoTraversalIterator { storage, arena, txn, inner } = self;
 
-                    Ok(None) => None, // TODO: maybe should be an error?
-                    Err(e) => {
-                        println!("error getting vector data: {e:?}");
-                        None
+        let k_res: Result<usize, _> = k.try_into();
+
+        // sorted_by() is already eager; collect to Vec to unify the concrete iterator type
+        // across the error and success branches.
+        let results: Vec<Result<TraversalValue<'arena>, GraphError>> = match k_res {
+            Err(_) => vec![Err(GraphError::New(
+                "vector search k must be a non-negative integer".to_string(),
+            ))],
+            Ok(k_usize) => inner
+                .filter_map(|v| match v {
+                    Ok(TraversalValue::Vector(mut v)) => {
+                        // .ok()? silently skips zero-magnitude stored vectors
+                        let d = cosine_similarity(v.data, query).ok()?;
+                        v.set_distance(d);
+                        Some(v)
                     }
-                }
-            })
-            .map(|v| Ok(TraversalValue::Vector(v)));
+                    _ => None,
+                })
+                .sorted_by(|v1, v2| v1.partial_cmp(v2).unwrap())
+                .take(k_usize)
+                .filter_map(move |mut item| {
+                    match storage.vectors.get_vector_properties(txn, *item.id(), arena) {
+                        Ok(Some(vector_without_data)) => {
+                            item.expand_from_vector_without_data(vector_without_data);
+                            Some(item)
+                        }
+                        Ok(None) => None,
+                        Err(e) => {
+                            println!("error getting vector data: {e:?}");
+                            None
+                        }
+                    }
+                })
+                .map(|v| Ok(TraversalValue::Vector(v)))
+                .collect(),
+        };
 
         RoTraversalIterator {
-            storage: self.storage,
-            arena: self.arena,
-            txn: self.txn,
-            inner: iter.into_iter(),
+            storage,
+            arena,
+            txn,
+            inner: results.into_iter(),
         }
     }
 }

@@ -1274,3 +1274,59 @@ fn test_soft_delete_entry_point_reassigns_or_clears_it() {
 
     txn.commit().unwrap();
 }
+
+#[test]
+fn test_search_v_negative_k_returns_error() {
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    G::new_mut(&storage, &arena, &mut txn)
+        .insert_v::<Filter>(&[1.0, 0.0, 0.0], "test", None)
+        .collect_to_obj()
+        .unwrap();
+    txn.commit().unwrap();
+
+    let arena = Bump::new();
+    let txn = storage.graph_env.read_txn().unwrap();
+
+    let result = G::new(&storage, &txn, &arena)
+        .search_v::<Filter, i64>(&[1.0, 0.0, 0.0], -1i64, "test", None)
+        .collect::<Result<Vec<_>, _>>();
+
+    assert!(result.is_err(), "negative k should return an error");
+    let err_str = format!("{:?}", result.unwrap_err());
+    assert!(
+        err_str.contains("non-negative"),
+        "error should mention non-negative, got: {err_str}"
+    );
+}
+
+#[test]
+fn test_brute_force_search_v_negative_k_returns_error() {
+    let (_temp_dir, storage) = setup_test_db();
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+
+    let v = G::new_mut(&storage, &arena, &mut txn)
+        .insert_v::<Filter>(&[1.0, 0.0, 0.0], "test", None)
+        .collect_to_obj()
+        .unwrap();
+    txn.commit().unwrap();
+
+    let arena = Bump::new();
+    let txn = storage.graph_env.read_txn().unwrap();
+
+    let v_id = v.id();
+    let result = G::new(&storage, &txn, &arena)
+        .v_from_id(&v_id, true)
+        .brute_force_search_v::<i64>(&[1.0, 0.0, 0.0], -1i64)
+        .collect::<Result<Vec<_>, _>>();
+
+    assert!(result.is_err(), "negative k should return an error");
+    let err_str = format!("{:?}", result.unwrap_err());
+    assert!(
+        err_str.contains("non-negative"),
+        "error should mention non-negative, got: {err_str}"
+    );
+}
