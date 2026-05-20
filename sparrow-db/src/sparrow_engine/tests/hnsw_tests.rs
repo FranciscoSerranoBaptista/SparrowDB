@@ -539,8 +539,8 @@ fn test_set_neighbours_respects_m_max_0_degree_limit() {
 
     let arena = Bump::new();
 
-    // Insert the hub vector
-    let hub_data: Vec<f64> = vec![0.0f64; 4];
+    // Insert the hub vector (must be non-zero; zero-magnitude vectors are invalid for cosine)
+    let hub_data: Vec<f64> = vec![1.0f64, 0.0, 0.0, 0.0];
     let hub_slice = arena.alloc_slice_copy(&hub_data);
     let hub = index
         .insert::<Filter>(&mut txn, "test", hub_slice, None, &arena)
@@ -650,4 +650,75 @@ fn test_hnsw_search_returns_results() {
         .search::<Filter>(&txn, &query, 5, "vector", None, false, &arena)
         .unwrap();
     assert!(!results.is_empty());
+}
+
+#[cfg(test)]
+mod cosine_tests {
+    use crate::sparrow_engine::{
+        types::VectorError,
+        vector_core::vector_distance::cosine_similarity,
+    };
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_zero_magnitude_a_returns_error() {
+        let a = vec![0.0f64, 0.0, 0.0, 0.0];
+        let b = vec![1.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_zero_magnitude_b_returns_error() {
+        let a = vec![1.0f64, 0.0, 0.0, 0.0];
+        let b = vec![0.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_both_zero_magnitude_returns_error() {
+        let a = vec![0.0f64, 0.0, 0.0, 0.0];
+        let b = vec![0.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_identical_unit_vectors() {
+        let a = vec![1.0f64, 0.0, 0.0, 0.0];
+        let b = vec![1.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b).unwrap();
+        assert!((result - 1.0).abs() < 1e-10, "identical vectors should have cosine 1.0, got {result}");
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_orthogonal_vectors() {
+        let a = vec![1.0f64, 0.0, 0.0, 0.0];
+        let b = vec![0.0f64, 1.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b).unwrap();
+        assert!(result.abs() < 1e-10, "orthogonal vectors should have cosine ~0.0, got {result}");
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_result_is_finite() {
+        let a = vec![0.5f64; 128];
+        let b = vec![0.5f64; 128];
+        let result = cosine_similarity(&a, &b).unwrap();
+        assert!(result.is_finite(), "cosine result must be finite, got {result}");
+    }
 }

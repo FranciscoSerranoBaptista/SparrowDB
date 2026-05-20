@@ -29,10 +29,8 @@ pub fn cosine_similarity(from: &[f64], to: &[f64]) -> Result<f64, VectorError> {
     let other_len = to.len();
 
     if len != other_len {
-        println!("mis-match in vector dimensions!\n{len} != {other_len}");
         return Err(VectorError::InvalidVectorLength);
     }
-    //debug_assert_eq!(len, other.data.len(), "Vectors must have the same length");
 
     #[cfg(target_feature = "avx2")]
     {
@@ -78,8 +76,8 @@ pub fn cosine_similarity(from: &[f64], to: &[f64]) -> Result<f64, VectorError> {
         magnitude_b += b_val * b_val;
     }
 
-    if magnitude_a.abs() == 0.0 || magnitude_b.abs() == 0.0 {
-        return Ok(-1.0);
+    if magnitude_a == 0.0 || magnitude_b == 0.0 {
+        return Err(VectorError::ZeroMagnitudeVector);
     }
 
     Ok(dot_product / (magnitude_a.sqrt() * magnitude_b.sqrt()))
@@ -88,13 +86,13 @@ pub fn cosine_similarity(from: &[f64], to: &[f64]) -> Result<f64, VectorError> {
 // SIMD implementation using AVX2 (256-bit vectors)
 #[cfg(target_feature = "avx2")]
 #[inline(always)]
-pub fn cosine_similarity_avx2(a: &[f64], b: &[f64]) -> f64 {
+pub fn cosine_similarity_avx2(a: &[f64], b: &[f64]) -> Result<f64, VectorError> {
     use std::arch::x86_64::*;
 
     let len = a.len();
     let chunks = len / 4; // AVX2 processes 4 f64 values at once
 
-    unsafe {
+    let (dot_product_total, magnitude_a_total, magnitude_b_total) = unsafe {
         let mut dot_product = _mm256_setzero_pd();
         let mut magnitude_a = _mm256_setzero_pd();
         let mut magnitude_b = _mm256_setzero_pd();
@@ -102,22 +100,18 @@ pub fn cosine_similarity_avx2(a: &[f64], b: &[f64]) -> f64 {
         for i in 0..chunks {
             let offset = i * 4;
 
-            // Load data - handle unaligned data
             let a_chunk = _mm256_loadu_pd(&a[offset]);
             let b_chunk = _mm256_loadu_pd(&b[offset]);
 
-            // Calculate dot product and magnitudes in parallel
             dot_product = _mm256_add_pd(dot_product, _mm256_mul_pd(a_chunk, b_chunk));
             magnitude_a = _mm256_add_pd(magnitude_a, _mm256_mul_pd(a_chunk, a_chunk));
             magnitude_b = _mm256_add_pd(magnitude_b, _mm256_mul_pd(b_chunk, b_chunk));
         }
 
-        // Horizontal sum of 4 doubles in each vector
         let dot_sum = horizontal_sum_pd(dot_product);
         let mag_a_sum = horizontal_sum_pd(magnitude_a);
         let mag_b_sum = horizontal_sum_pd(magnitude_b);
 
-        // Handle remainder elements
         let mut dot_remainder = 0.0;
         let mut mag_a_remainder = 0.0;
         let mut mag_b_remainder = 0.0;
@@ -131,13 +125,18 @@ pub fn cosine_similarity_avx2(a: &[f64], b: &[f64]) -> f64 {
             mag_b_remainder += b_val * b_val;
         }
 
-        // Combine SIMD and scalar results
-        let dot_product_total = dot_sum + dot_remainder;
-        let magnitude_a_total = (mag_a_sum + mag_a_remainder).sqrt();
-        let magnitude_b_total = (mag_b_sum + mag_b_remainder).sqrt();
+        (
+            dot_sum + dot_remainder,
+            (mag_a_sum + mag_a_remainder).sqrt(),
+            (mag_b_sum + mag_b_remainder).sqrt(),
+        )
+    };
 
-        dot_product_total / (magnitude_a_total * magnitude_b_total)
+    if magnitude_a_total == 0.0 || magnitude_b_total == 0.0 {
+        return Err(VectorError::ZeroMagnitudeVector);
     }
+
+    Ok(dot_product_total / (magnitude_a_total * magnitude_b_total))
 }
 
 // Helper function to sum the 4 doubles in an AVX2 vector
@@ -146,12 +145,7 @@ pub fn cosine_similarity_avx2(a: &[f64], b: &[f64]) -> f64 {
 unsafe fn horizontal_sum_pd(__v: __m256d) -> f64 {
     use std::arch::x86_64::*;
 
-    // Extract the high 128 bits and add to the low 128 bits
     let sum_hi_lo = _mm_add_pd(_mm256_castpd256_pd128(__v), _mm256_extractf128_pd(__v, 1));
-
-    // Add the high 64 bits to the low 64 bits
     let sum = _mm_add_sd(sum_hi_lo, _mm_unpackhi_pd(sum_hi_lo, sum_hi_lo));
-
-    // Extract the low 64 bits as a scalar
     _mm_cvtsd_f64(sum)
 }

@@ -175,6 +175,7 @@ pub enum VectorError {
     ConversionError(String),
     VectorCoreError(String),
     VectorAlreadyDeleted(String),
+    ZeroMagnitudeVector,
 }
 
 impl std::error::Error for VectorError {}
@@ -190,6 +191,7 @@ impl fmt::Display for VectorError {
             VectorError::ConversionError(msg) => write!(f, "Conversion error: {msg}"),
             VectorError::VectorCoreError(msg) => write!(f, "Vector core error: {msg}"),
             VectorError::VectorAlreadyDeleted(id) => write!(f, "Vector already deleted: {id}"),
+            VectorError::ZeroMagnitudeVector => write!(f, "Vector has zero magnitude; cosine similarity is undefined"),
         }
     }
 }
