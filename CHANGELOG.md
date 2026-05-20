@@ -4,6 +4,37 @@ All notable changes to SparrowDB are documented here.
 
 ---
 
+## [Unreleased]
+
+### New Features
+
+**HNSW / Vector Search**
+- Enable PREFILTER mode during HNSW traversal for more accurate filtered vector search
+
+**Diagnostics**
+- `GET /hnsw-health` — BFS reachability check across the HNSW graph; reports unreachable node count and entry point validity
+
+**Memory (sparrow-memory crate)**
+- New `sparrow-memory` crate scaffolded: episodic memory store with opaque ID fields, `TryFrom<&str>` for `Priority`, and `PartialEq` on stored types
+- Index name constants and core type definitions
+
+### Bug Fixes
+
+**Vector / HNSW**
+- Return `ZeroMagnitudeVector` error instead of dividing by zero on zero-magnitude input vectors
+- Propagate non-`EntryPointNotFound` errors in `insert` instead of swallowing them
+
+### Internal
+
+**CI**
+- Rewrote all GitHub Actions workflows for the `sparrow-*` crate structure
+- Replaced three separate feature-flag test files with a single `sparrow-db-tests.yml` matrix (`lmdb` / `dev-instance` / `production` × `ubuntu` / `macos`)
+- Added `sparrow-cli-tests.yml` — CLI unit tests previously had no CI coverage
+- Dropped Windows from all matrices; replaced deprecated `actions-rs/toolchain@v1` with `dtolnay/rust-toolchain@stable`
+- Fixed `hql_tests.yml` path triggers (`helix-*` → `sparrow-*`)
+
+---
+
 ## [3.0.0] — 2026-05-20
 
 ### Breaking Changes
