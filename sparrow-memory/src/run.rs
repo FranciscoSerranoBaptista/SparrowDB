@@ -7,8 +7,8 @@ use sparrow_db::{
 
 use crate::{
     error::MemoryError,
-    graph::{add_to_index, ids_from_index, read_node_props, write_edge, write_node_indexed},
-    indices::{FINDING_ENTITY_ID, FINDING_THREAD_ID, QUESTION_THREAD_ID, RUN_THREAD_ID, SUMMARY_THREAD_ID},
+    graph::{add_to_index, ids_from_index, out_neighbors, read_node_props, write_edge, write_node_indexed},
+    indices::{FINDING_ENTITY_ID, FINDING_THREAD_ID, QUESTION_STATUS, QUESTION_THREAD_ID, RUN_THREAD_ID, SUMMARY_THREAD_ID},
     types::{Finding, FindingId, Priority, QuestionId},
 };
 
@@ -23,9 +23,7 @@ impl RunHandle {
         self.run_id
     }
 
-    /// Create a new run node and attach it to the thread.
     pub fn create(storage: Arc<SparrowGraphStorage>, thread_id: u128) -> Result<Self, MemoryError> {
-        // Write the new run node indexed under this thread
         let run_id = write_node_indexed(
             &storage,
             "agent_run",
@@ -37,19 +35,24 @@ impl RunHandle {
             Value::U128(thread_id),
         )?;
 
-        // Wire up FOLLOWS edge to the previous run (most recent by ID)
+        // Wire FOLLOWS edge to the most recent *completed* run — skip orphaned/interrupted runs
         let prev_runs = ids_from_index(&storage, RUN_THREAD_ID, &Value::U128(thread_id))?;
-        let prev = prev_runs.iter().copied().filter(|&id| id != run_id).max();
+        let prev = prev_runs.iter().copied()
+            .filter(|&id| {
+                if id == run_id { return false; }
+                let props = read_node_props(&storage, id).unwrap_or_default();
+                let map: std::collections::HashMap<String, Value> = props.into_iter().collect();
+                matches!(map.get("status"), Some(Value::String(s)) if s.as_str() == "completed")
+            })
+            .max();
         if let Some(prev_id) = prev {
             write_edge(&storage, run_id, prev_id, "FOLLOWS")?;
         }
 
-        // Wire PART_OF edge: run → thread
         write_edge(&storage, run_id, thread_id, "PART_OF")?;
 
-        // Carry forward open questions from prior runs (CARRIED edge)
-        let open_q_ids =
-            ids_from_index(&storage, QUESTION_THREAD_ID, &Value::U128(thread_id))?;
+        // Carry forward open questions from this thread
+        let open_q_ids = ids_from_index(&storage, QUESTION_THREAD_ID, &Value::U128(thread_id))?;
         for qid in open_q_ids {
             let props = read_node_props(&storage, qid)?;
             let map: std::collections::HashMap<String, Value> = props.into_iter().collect();
@@ -90,10 +93,8 @@ impl RunHandle {
             Value::U128(self.thread_id),
         )?;
 
-        // Link run → finding
         write_edge(&self.storage, self.run_id, id, "PRODUCED")?;
 
-        // Also add to the entity index if entity_id was set
         if let Some(eid) = finding.entity_id {
             add_to_index(&self.storage, FINDING_ENTITY_ID, &Value::U128(eid), id)?;
         }
@@ -101,12 +102,8 @@ impl RunHandle {
         Ok(FindingId(id))
     }
 
-    /// Record an open question raised by this run.
-    pub fn record_question(
-        &self,
-        question: &str,
-        priority: Priority,
-    ) -> Result<QuestionId, MemoryError> {
+    /// Raise an open question from this run.
+    pub fn raise_question(&self, question: &str, priority: Priority) -> Result<QuestionId, MemoryError> {
         let id = write_node_indexed(
             &self.storage,
             "open_question",
@@ -120,31 +117,30 @@ impl RunHandle {
             Value::U128(self.thread_id),
         )?;
 
-        // Link run → question
+        add_to_index(&self.storage, QUESTION_STATUS, &Value::String("open".to_string()), id)?;
+
         write_edge(&self.storage, self.run_id, id, "RAISED")?;
 
         Ok(QuestionId(id))
     }
 
-    /// Answer (close) an existing open question.
-    pub fn answer_question(&self, question_id: QuestionId) -> Result<(), MemoryError> {
-        let id = question_id.0;
-        let props = read_node_props(&self.storage, id)?;
-        let mut map: std::collections::HashMap<String, Value> =
-            props.into_iter().collect();
-        map.insert("status".to_string(), Value::String("answered".to_string()));
-        overwrite_node(&self.storage, id, "open_question", map)?;
+    /// Mark an open question resolved, linking the finding that answers it.
+    pub fn answer_question(&self, question_id: QuestionId, finding_id: FindingId) -> Result<(), MemoryError> {
+        let qid = question_id.0;
+        let fid = finding_id.0;
+        let props = read_node_props(&self.storage, qid)?;
+        let mut map: std::collections::HashMap<String, Value> = props.into_iter().collect();
+        map.insert("status".to_string(), Value::String("resolved".to_string()));
+        overwrite_node(&self.storage, qid, "open_question", map)?;
+        write_edge(&self.storage, fid, qid, "ANSWERS")?;
         Ok(())
     }
 
-    /// Complete the run, writing a summary node.
-    pub fn complete(
-        &self,
-        summary: &str,
-        finding_count: u32,
-        question_count: u32,
-    ) -> Result<(), MemoryError> {
-        // Write summary node
+    /// Complete the run: write a summary node, derive counts from graph, update status.
+    pub fn complete(self, summary: &str) -> Result<(), MemoryError> {
+        let finding_count = out_neighbors(&self.storage, self.run_id, "PRODUCED")?.len() as u32;
+        let question_count = out_neighbors(&self.storage, self.run_id, "RAISED")?.len() as u32;
+
         let summary_id = write_node_indexed(
             &self.storage,
             "run_summary",
@@ -159,22 +155,27 @@ impl RunHandle {
             Value::U128(self.thread_id),
         )?;
 
-        // Link summary → run
         write_edge(&self.storage, summary_id, self.run_id, "SUMMARIZES")?;
 
-        // Update run status to completed
         let props = read_node_props(&self.storage, self.run_id)?;
-        let mut map: std::collections::HashMap<String, Value> =
-            props.into_iter().collect();
+        let mut map: std::collections::HashMap<String, Value> = props.into_iter().collect();
         map.insert("status".to_string(), Value::String("completed".to_string()));
         overwrite_node(&self.storage, self.run_id, "agent_run", map)?;
 
         Ok(())
     }
+
+    /// Mark the run interrupted; open questions are carried forward on next start_run.
+    pub fn interrupt(self) -> Result<(), MemoryError> {
+        let props = read_node_props(&self.storage, self.run_id)?;
+        let mut map: std::collections::HashMap<String, Value> = props.into_iter().collect();
+        map.insert("status".to_string(), Value::String("interrupted".to_string()));
+        overwrite_node(&self.storage, self.run_id, "agent_run", map)?;
+        Ok(())
+    }
 }
 
-/// Re-write a node with updated properties (same ID).
-/// Uses heed3's `put` which overwrites on same key.
+/// Re-write a node with updated properties (same ID). Uses plain `put` which overwrites on same key.
 pub(crate) fn overwrite_node(
     storage: &SparrowGraphStorage,
     id: u128,

@@ -63,7 +63,7 @@ fn build_summaries(
 
     // Sort by summary node ID descending (newest first — v6 UUIDs are time-ordered)
     summaries.sort_by(|a, b| b.0.cmp(&a.0));
-    summaries.truncate(5);
+    summaries.truncate(3);
 
     Ok(summaries.into_iter().map(|(_, s)| s).collect())
 }

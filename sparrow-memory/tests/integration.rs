@@ -77,6 +77,7 @@ fn open_memory_store() -> (MemoryStore, TempDir) {
     let store = MemoryStore::open(MemoryConfig {
         path: dir.path().to_str().unwrap().to_string(),
         db_max_size_gb: Some(1),
+        embedding_model: None,
     })
     .unwrap();
     (store, dir)
@@ -85,7 +86,7 @@ fn open_memory_store() -> (MemoryStore, TempDir) {
 #[test]
 fn test_memory_store_opens() {
     let (store, _dir) = open_memory_store();
-    assert_eq!(store.index_names().len(), 5, "expected 5 secondary indices");
+    assert_eq!(store.index_names().len(), 6, "expected 6 secondary indices");
 }
 
 #[test]
@@ -110,7 +111,7 @@ fn test_run_record_finding_and_complete() {
         metadata: Default::default(),
     })
     .unwrap();
-    run.complete("First run done", 1, 0).unwrap();
+    run.complete("First run done").unwrap();
 
     let recall = thread.recall("").unwrap();
     assert_eq!(recall.recent_summaries.len(), 1, "expected 1 summary");
@@ -142,9 +143,9 @@ fn test_recall_accumulates_across_runs() {
             metadata: Default::default(),
         })
         .unwrap();
-        run.record_question("What is X?", sparrow_memory::types::Priority::High)
+        run.raise_question("What is X?", sparrow_memory::types::Priority::High)
             .unwrap();
-        run.complete("Run 1 done", 2, 1).unwrap();
+        run.complete("Run 1 done").unwrap();
     }
 
     // Run 2: 1 finding, open question carried forward
@@ -158,7 +159,7 @@ fn test_recall_accumulates_across_runs() {
             metadata: Default::default(),
         })
         .unwrap();
-        run.complete("Run 2 done", 1, 0).unwrap();
+        run.complete("Run 2 done").unwrap();
     }
 
     let recall = thread.recall("").unwrap();
@@ -196,7 +197,7 @@ fn test_count_distinct_deduplicates() {
         })
         .unwrap();
     }
-    run.complete("distinct run done", 4, 0).unwrap();
+    run.complete("distinct run done").unwrap();
 
     let count = thread.count_distinct("sacred_cow").unwrap();
     assert_eq!(count, 2, "expected 2 distinct entity IDs");
@@ -228,7 +229,7 @@ fn test_findings_for_entity() {
         metadata: Default::default(),
     })
     .unwrap();
-    run.complete("entity-filter done", 2, 0).unwrap();
+    run.complete("entity-filter done").unwrap();
 
     let findings = thread.findings_for_entity(10).unwrap();
     assert_eq!(findings.len(), 1, "expected exactly 1 finding for entity 10");

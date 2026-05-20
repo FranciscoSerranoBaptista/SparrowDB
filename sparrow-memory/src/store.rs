@@ -13,6 +13,7 @@ use sparrow_db::sparrow_engine::storage_core::storage_methods::StorageMethods;
 pub struct MemoryConfig {
     pub path: String,
     pub db_max_size_gb: Option<usize>,
+    pub embedding_model: Option<String>,
 }
 
 pub struct MemoryStore {
