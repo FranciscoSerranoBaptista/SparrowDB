@@ -549,6 +549,72 @@ impl VectorCore {
         HVector::from_raw_vector_data(arena, vector_data_bytes, label, id)
     }
 
+    /// Returns the count of vectors reachable by BFS from the entry point at level 0.
+    /// Soft-deleted neighbors are visited (to continue traversal) but not counted.
+    pub fn bfs_reachable_count<'db: 'arena, 'arena>(
+        &self,
+        txn: &'arena heed3::RoTxn<'db>,
+        label: &'arena str,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<usize, VectorError> {
+        let entry_point = match self.get_entry_point(txn, label, arena) {
+            Ok(ep) => ep,
+            Err(VectorError::EntryPointNotFound) => return Ok(0),
+            Err(e) => return Err(e),
+        };
+
+        let mut visited: std::collections::HashSet<u128> = std::collections::HashSet::new();
+        let mut queue: std::collections::VecDeque<u128> = std::collections::VecDeque::new();
+
+        visited.insert(entry_point.id);
+        queue.push_back(entry_point.id);
+
+        while let Some(id) = queue.pop_front() {
+            let neighbors = self.get_neighbors::<fn(&HVector, &heed3::RoTxn) -> bool>(
+                txn, label, id, 0, None, arena,
+            )?;
+            for neighbor in neighbors {
+                if visited.insert(neighbor.id) {
+                    let is_deleted = self
+                        .vector_properties_db
+                        .get(txn, &neighbor.id)
+                        .ok()
+                        .flatten()
+                        .and_then(|bytes| {
+                            VectorWithoutData::from_bincode_bytes(arena, bytes, neighbor.id).ok()
+                        })
+                        .map(|p| p.deleted)
+                        .unwrap_or(false);
+                    if !is_deleted {
+                        queue.push_back(neighbor.id);
+                    }
+                }
+            }
+        }
+
+        Ok(visited.len())
+    }
+
+    /// Returns count of non-deleted vectors for a specific label.
+    pub fn count_active_vectors<'db: 'arena, 'arena>(
+        &self,
+        txn: &'arena heed3::RoTxn<'db>,
+        label: &'arena str,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<usize, VectorError> {
+        let mut count = 0usize;
+        let iter = self.vector_properties_db.iter(txn)?;
+        for result in iter {
+            let (id, bytes) = result?;
+            let props = VectorWithoutData::from_bincode_bytes(arena, bytes, id)
+                .map_err(|e| VectorError::VectorCoreError(e.to_string()))?;
+            if !props.deleted && props.label == label {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     /// Get all vectors from the database, optionally filtered by level
     pub fn get_all_vectors<'db: 'arena, 'arena: 'txn, 'txn>(
         &self,
