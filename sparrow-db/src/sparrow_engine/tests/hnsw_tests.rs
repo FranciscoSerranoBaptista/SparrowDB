@@ -839,3 +839,38 @@ mod prefilter_tests {
         }
     }
 }
+
+mod insert_validation_tests {
+    use super::*;
+    use crate::sparrow_engine::{types::VectorError, vector_core::{HNSW, VectorCore}};
+
+    #[test]
+    fn test_insert_zero_magnitude_vector_is_rejected() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let arena = Bump::new();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+        txn.commit().unwrap();
+
+        let mut txn = env.write_txn().unwrap();
+        let result = vc.insert::<Filter>(&mut txn, "test", &[0.0f64, 0.0, 0.0, 0.0], None, &arena);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector on insert, got {result:?}"
+        );
+        // Transaction must not be committed — no side effects
+    }
+
+    #[test]
+    fn test_insert_nonzero_vector_succeeds() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let arena = Bump::new();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+        txn.commit().unwrap();
+
+        let mut txn = env.write_txn().unwrap();
+        let result = vc.insert::<Filter>(&mut txn, "test", &[1.0f64, 0.0, 0.0, 0.0], None, &arena);
+        assert!(result.is_ok(), "non-zero vector insert should succeed: {result:?}");
+    }
+}
