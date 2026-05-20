@@ -722,3 +722,48 @@ mod cosine_tests {
         assert!(result.is_finite(), "cosine result must be finite, got {result}");
     }
 }
+
+// ============================================================================
+// Entry Point Error Handling Tests
+// ============================================================================
+
+#[cfg(test)]
+mod entry_point_tests {
+    use super::*;
+    use crate::sparrow_engine::vector_core::{HNSWConfig, VectorCore};
+
+    #[test]
+    fn test_first_insert_succeeds() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+
+        let arena = Bump::new();
+        let data = vec![1.0f64, 0.0, 0.0, 0.0];
+        let data_slice = arena.alloc_slice_copy(&data);
+
+        let result = vc.insert::<Filter>(&mut txn, "test_ep", data_slice, None, &arena);
+        assert!(result.is_ok(), "first insert should succeed: {result:?}");
+
+        txn.commit().unwrap();
+    }
+
+    #[test]
+    fn test_multiple_inserts_all_succeed() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+
+        let arena = Bump::new();
+
+        // Insert multiple vectors with non-zero magnitude
+        for i in 0..20i64 {
+            let data = vec![i as f64 + 1.0, 0.5, 0.3, 0.2];
+            let data_slice = arena.alloc_slice_copy(&data);
+            let result = vc.insert::<Filter>(&mut txn, "test_ep", data_slice, None, &arena);
+            assert!(result.is_ok(), "insert {i} should succeed: {result:?}");
+        }
+
+        txn.commit().unwrap();
+    }
+}

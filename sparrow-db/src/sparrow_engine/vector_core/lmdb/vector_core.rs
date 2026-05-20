@@ -970,13 +970,12 @@ impl HNSW for VectorCore {
 
         let entry_point = match self.get_entry_point(txn, label, arena) {
             Ok(ep) => ep,
-            Err(_) => {
-                // TODO: use proper error handling
+            Err(VectorError::EntryPointNotFound) => {
                 self.set_entry_point(txn, &query)?;
                 query.set_distance(0.0);
-
                 return Ok(query);
             }
+            Err(e) => return Err(e),
         };
 
         let l = entry_point.level;
