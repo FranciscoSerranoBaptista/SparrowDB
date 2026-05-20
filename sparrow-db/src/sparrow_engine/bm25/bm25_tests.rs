@@ -27,7 +27,7 @@ mod tests {
 
         let env = unsafe {
             EnvOpenOptions::new()
-                .map_size(4 * 1024 * 1024 * 1024) // 4GB
+                .map_size(128 * 1024 * 1024) // 128MB
                 .max_dbs(20)
                 .open(path)
                 .unwrap()

@@ -752,6 +752,10 @@ impl HNSW for VectorCore {
         'db: 'arena,
         'arena: 'txn,
     {
+        if !data.is_empty() && data.iter().map(|x| x * x).sum::<f64>() == 0.0 {
+            return Err(VectorError::ZeroMagnitudeVector);
+        }
+
         let new_level = self.get_new_level();
 
         let mut query = HVector::from_slice(label, 0, data);

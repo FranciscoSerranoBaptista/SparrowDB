@@ -16,7 +16,7 @@ fn setup_env() -> (Env, TempDir) {
 
     let env = unsafe {
         EnvOpenOptions::new()
-            .map_size(512 * 1024 * 1024)
+            .map_size(64 * 1024 * 1024)
             .max_dbs(32)
             .open(path)
             .unwrap()
@@ -539,8 +539,8 @@ fn test_set_neighbours_respects_m_max_0_degree_limit() {
 
     let arena = Bump::new();
 
-    // Insert the hub vector
-    let hub_data: Vec<f64> = vec![0.0f64; 4];
+    // Insert the hub vector (must be non-zero; zero-magnitude vectors are invalid for cosine)
+    let hub_data: Vec<f64> = vec![1.0f64, 0.0, 0.0, 0.0];
     let hub_slice = arena.alloc_slice_copy(&hub_data);
     let hub = index
         .insert::<Filter>(&mut txn, "test", hub_slice, None, &arena)
@@ -650,4 +650,227 @@ fn test_hnsw_search_returns_results() {
         .search::<Filter>(&txn, &query, 5, "vector", None, false, &arena)
         .unwrap();
     assert!(!results.is_empty());
+}
+
+#[cfg(test)]
+mod cosine_tests {
+    use crate::sparrow_engine::{
+        types::VectorError,
+        vector_core::vector_distance::cosine_similarity,
+    };
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_zero_magnitude_a_returns_error() {
+        let a = vec![0.0f64, 0.0, 0.0, 0.0];
+        let b = vec![1.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_zero_magnitude_b_returns_error() {
+        let a = vec![1.0f64, 0.0, 0.0, 0.0];
+        let b = vec![0.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_both_zero_magnitude_returns_error() {
+        let a = vec![0.0f64, 0.0, 0.0, 0.0];
+        let b = vec![0.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector, got {result:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_identical_unit_vectors() {
+        let a = vec![1.0f64, 0.0, 0.0, 0.0];
+        let b = vec![1.0f64, 0.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b).unwrap();
+        assert!((result - 1.0).abs() < 1e-10, "identical vectors should have cosine 1.0, got {result}");
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_orthogonal_vectors() {
+        let a = vec![1.0f64, 0.0, 0.0, 0.0];
+        let b = vec![0.0f64, 1.0, 0.0, 0.0];
+        let result = cosine_similarity(&a, &b).unwrap();
+        assert!(result.abs() < 1e-10, "orthogonal vectors should have cosine ~0.0, got {result}");
+    }
+
+    #[test]
+    #[cfg(feature = "cosine")]
+    fn test_cosine_result_is_finite() {
+        let a = vec![0.5f64; 128];
+        let b = vec![0.5f64; 128];
+        let result = cosine_similarity(&a, &b).unwrap();
+        assert!(result.is_finite(), "cosine result must be finite, got {result}");
+    }
+}
+
+// ============================================================================
+// Entry Point Error Handling Tests
+// ============================================================================
+
+#[cfg(test)]
+mod entry_point_tests {
+    use super::*;
+    use crate::sparrow_engine::vector_core::{HNSWConfig, VectorCore};
+
+    #[test]
+    fn test_first_insert_succeeds() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+
+        let arena = Bump::new();
+        let data = vec![1.0f64, 0.0, 0.0, 0.0];
+        let data_slice = arena.alloc_slice_copy(&data);
+
+        let result = vc.insert::<Filter>(&mut txn, "test_ep", data_slice, None, &arena);
+        assert!(result.is_ok(), "first insert should succeed: {result:?}");
+
+        txn.commit().unwrap();
+    }
+
+    #[test]
+    fn test_multiple_inserts_all_succeed() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+
+        let arena = Bump::new();
+
+        // Insert multiple vectors with non-zero magnitude
+        for i in 0..20i64 {
+            let data = vec![i as f64 + 1.0, 0.5, 0.3, 0.2];
+            let data_slice = arena.alloc_slice_copy(&data);
+            let result = vc.insert::<Filter>(&mut txn, "test_ep", data_slice, None, &arena);
+            assert!(result.is_ok(), "insert {i} should succeed: {result:?}");
+        }
+
+        txn.commit().unwrap();
+    }
+}
+
+// ============================================================================
+// PREFILTER Tests (should_trickle = true)
+// ============================================================================
+
+#[cfg(test)]
+mod prefilter_tests {
+    use super::*;
+    use crate::sparrow_engine::vector_core::{HNSW, HNSWConfig, VectorCore};
+
+    fn setup_vector_core_pf(env: &heed3::Env) -> VectorCore {
+        let mut txn = env.write_txn().unwrap();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+        txn.commit().unwrap();
+        vc
+    }
+
+    #[test]
+    fn test_search_with_filter_returns_k_matching_results() {
+        // Insert 30 vectors with data values 1.0 through 30.0.
+        // Filter: only accept vectors whose first data element is even (2,4,6,...,30 = 15 vectors).
+        // k=5 — there are 15 matching vectors, so we must get exactly 5 back.
+        let (env, _tmp) = setup_env();
+        let vc = setup_vector_core_pf(&env);
+        let arena = Bump::new();
+        let mut txn = env.write_txn().unwrap();
+
+        for i in 1i64..=30 {
+            let data = vec![i as f64, 0.0, 0.0, 0.0];
+            let data_slice = arena.alloc_slice_copy(&data);
+            vc.insert::<Filter>(&mut txn, "test_pf", data_slice, None, &arena)
+                .unwrap();
+        }
+        txn.commit().unwrap();
+
+        let ro_txn = env.read_txn().unwrap();
+        let query = vec![15.0f64, 0.0, 0.0, 0.0]; // query near middle
+        let query_slice = arena.alloc_slice_copy(&query);
+
+        // Filter: first data element must be even
+        let filter_fn: Filter = |v: &HVector, _txn: &RoTxn| {
+            v.data.first().map(|x| x % 2.0 == 0.0).unwrap_or(false)
+        };
+        let filters = [filter_fn];
+
+        let results = vc.search(
+            &ro_txn,
+            query_slice,
+            5,
+            "test_pf",
+            Some(&filters),
+            true, // should_trickle = PREFILTER enabled
+            &arena,
+        ).unwrap();
+
+        assert_eq!(
+            results.len(), 5,
+            "PREFILTER should return exactly 5 matching results, got {}. Results: {:?}",
+            results.len(),
+            results.iter().map(|v| v.data.first().copied().unwrap_or(0.0)).collect::<Vec<_>>()
+        );
+
+        // Verify all returned vectors match the filter (even first element)
+        for v in &results {
+            let first = v.data.first().copied().unwrap_or(0.0);
+            assert_eq!(
+                first % 2.0, 0.0,
+                "result has odd first element {first} — filter was not applied"
+            );
+        }
+    }
+}
+
+mod insert_validation_tests {
+    use super::*;
+    use crate::sparrow_engine::{types::VectorError, vector_core::{HNSW, VectorCore}};
+
+    #[test]
+    fn test_insert_zero_magnitude_vector_is_rejected() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let arena = Bump::new();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+        txn.commit().unwrap();
+
+        let mut txn = env.write_txn().unwrap();
+        let result = vc.insert::<Filter>(&mut txn, "test", &[0.0f64, 0.0, 0.0, 0.0], None, &arena);
+        assert!(
+            matches!(result, Err(VectorError::ZeroMagnitudeVector)),
+            "expected ZeroMagnitudeVector on insert, got {result:?}"
+        );
+        // Transaction must not be committed — no side effects
+    }
+
+    #[test]
+    fn test_insert_nonzero_vector_succeeds() {
+        let (env, _tmp) = setup_env();
+        let mut txn = env.write_txn().unwrap();
+        let arena = Bump::new();
+        let vc = VectorCore::new(&env, &mut txn, HNSWConfig::new(None, None, None)).unwrap();
+        txn.commit().unwrap();
+
+        let mut txn = env.write_txn().unwrap();
+        let result = vc.insert::<Filter>(&mut txn, "test", &[1.0f64, 0.0, 0.0, 0.0], None, &arena);
+        assert!(result.is_ok(), "non-zero vector insert should succeed: {result:?}");
+    }
 }

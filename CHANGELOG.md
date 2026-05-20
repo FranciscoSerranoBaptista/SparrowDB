@@ -6,7 +6,33 @@ All notable changes to SparrowDB are documented here.
 
 ## [Unreleased]
 
+### New Features
+
+**HNSW / Vector Search**
+- Enable PREFILTER mode during HNSW traversal for more accurate filtered vector search
+
+**Diagnostics**
+- `GET /hnsw-health` — BFS reachability check across the HNSW graph; reports unreachable node count and entry point validity; now covers all labels (not just `"default"`)
+- `GET /hnsw-integrity` — scans every HNSW edge and verifies bidirectional symmetry; reports `asymmetric_edges` count and overall `symmetric` flag
+
+**Memory (sparrow-memory crate)**
+- New `sparrow-memory` crate scaffolded: episodic memory store with opaque ID fields, `TryFrom<&str>` for `Priority`, and `PartialEq` on stored types
+- Index name constants and core type definitions
+
+### Bug Fixes
+
+**Vector / HNSW**
+- Return `ZeroMagnitudeVector` error instead of dividing by zero on zero-magnitude input vectors
+- Propagate non-`EntryPointNotFound` errors in `insert` instead of swallowing them
+- `insert()` now rejects non-empty zero-magnitude vectors at the API boundary (both lmdb and rocks backends); empty placeholder vectors are still allowed
+- `search_v` and `brute_force_search_v` now return a `GraphError` on negative `k` instead of panicking via `TryInto<usize>::unwrap()`; `brute_force_search_v` also replaces a `cosine_similarity().unwrap()` with a silent skip (`.ok()?`) for any zero-magnitude stored vector
+
 ### Internal
+
+**Tests**
+- Reduced oversized LMDB map sizes in test helpers: `hnsw_tests` 512 MB → 64 MB, `bm25_tests` 4 GB → 128 MB; tests now run on any machine without requiring excessive free disk space
+- Updated three tests that asserted the old buggy zero-magnitude cosine behavior; `test_hvector_distance_max` now uses anti-parallel vectors, and a new `test_hvector_distance_zero_magnitude_returns_error` documents the correct contract
+- Fixed two prune unit tests that used zero-magnitude hub vectors, which became invalid once the zero-magnitude guard was in place
 
 **CI**
 - Rewrote all GitHub Actions workflows for the `sparrow-*` crate structure

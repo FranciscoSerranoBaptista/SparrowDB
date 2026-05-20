@@ -6,6 +6,7 @@ members = [
     "sparrow-cli",
     "hql-tests",
     "metrics",
+    "sparrow-memory",
 ]
 resolver = "2"
 

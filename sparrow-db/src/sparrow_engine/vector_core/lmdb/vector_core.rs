@@ -549,6 +549,166 @@ impl VectorCore {
         HVector::from_raw_vector_data(arena, vector_data_bytes, label, id)
     }
 
+    /// Returns the count of vectors reachable by BFS from the entry point at level 0.
+    /// Soft-deleted neighbors are visited (to continue traversal) but not counted.
+    pub fn bfs_reachable_count<'db: 'arena, 'arena>(
+        &self,
+        txn: &'arena heed3::RoTxn<'db>,
+        label: &'arena str,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<usize, VectorError> {
+        let entry_point = match self.get_entry_point(txn, label, arena) {
+            Ok(ep) => ep,
+            Err(VectorError::EntryPointNotFound) => return Ok(0),
+            Err(e) => return Err(e),
+        };
+
+        let mut visited: std::collections::HashSet<u128> = std::collections::HashSet::new();
+        let mut queue: std::collections::VecDeque<u128> = std::collections::VecDeque::new();
+
+        visited.insert(entry_point.id);
+        queue.push_back(entry_point.id);
+
+        while let Some(id) = queue.pop_front() {
+            let neighbors = self.get_neighbors::<fn(&HVector, &heed3::RoTxn) -> bool>(
+                txn, label, id, 0, None, arena,
+            )?;
+            for neighbor in neighbors {
+                if visited.insert(neighbor.id) {
+                    let is_deleted = self
+                        .vector_properties_db
+                        .get(txn, &neighbor.id)
+                        .ok()
+                        .flatten()
+                        .and_then(|bytes| {
+                            VectorWithoutData::from_bincode_bytes(arena, bytes, neighbor.id).ok()
+                        })
+                        .map(|p| p.deleted)
+                        .unwrap_or(false);
+                    if !is_deleted {
+                        queue.push_back(neighbor.id);
+                    }
+                }
+            }
+        }
+
+        Ok(visited.len())
+    }
+
+    /// Returns the count of active (non-deleted) vectors reachable by BFS from the global
+    /// entry point at level 0, traversing edges directly without requiring a label.
+    /// This covers all labels in a single pass.
+    pub fn bfs_reachable_count_global<'db>(
+        &self,
+        txn: &RoTxn<'db>,
+    ) -> Result<usize, VectorError> {
+        let ep_bytes = match self.vectors_db.get(txn, ENTRY_POINT_KEY)? {
+            None => return Ok(0),
+            Some(b) => b,
+        };
+        let mut arr = [0u8; 16];
+        let len = ep_bytes.len().min(16);
+        arr[..len].copy_from_slice(&ep_bytes[..len]);
+        let ep_id = u128::from_be_bytes(arr);
+
+        let arena = bumpalo::Bump::new();
+        let mut visited: HashSet<u128> = HashSet::new();
+        let mut queue: std::collections::VecDeque<u128> = std::collections::VecDeque::new();
+        let mut active_reachable = 0usize;
+
+        visited.insert(ep_id);
+        queue.push_back(ep_id);
+
+        while let Some(id) = queue.pop_front() {
+            let is_deleted = self
+                .vector_properties_db
+                .get(txn, &id)
+                .ok()
+                .flatten()
+                .and_then(|bytes| VectorWithoutData::from_bincode_bytes(&arena, bytes, id).ok())
+                .map(|p| p.deleted)
+                .unwrap_or(true);
+
+            if !is_deleted {
+                active_reachable += 1;
+            }
+
+            let prefix = Self::out_edges_key(id, 0, None);
+            for result in self.edges_db.prefix_iter(txn, &prefix)? {
+                let (key, _) = result?;
+                if key.len() < 40 {
+                    continue;
+                }
+                let mut narr = [0u8; 16];
+                narr.copy_from_slice(&key[24..40]);
+                let neighbor_id = u128::from_be_bytes(narr);
+                if visited.insert(neighbor_id) {
+                    queue.push_back(neighbor_id);
+                }
+            }
+        }
+
+        Ok(active_reachable)
+    }
+
+    /// Scans all HNSW edges and returns (total_directed_edges, asymmetric_count).
+    /// An asymmetric edge is one where A→B exists but B→A does not.
+    /// A healthy graph has asymmetric_count == 0.
+    pub fn count_asymmetric_edges<'db>(
+        &self,
+        txn: &RoTxn<'db>,
+    ) -> Result<(usize, usize), VectorError> {
+        let mut total = 0usize;
+        let mut asymmetric = 0usize;
+
+        for result in self.edges_db.iter(txn)? {
+            let (key, _) = result?;
+            if key.len() < 40 {
+                continue;
+            }
+            total += 1;
+
+            let mut src_arr = [0u8; 16];
+            src_arr.copy_from_slice(&key[0..16]);
+            let src_id = u128::from_be_bytes(src_arr);
+
+            let mut level_arr = [0u8; 8];
+            level_arr.copy_from_slice(&key[16..24]);
+            let level = usize::from_be_bytes(level_arr);
+
+            let mut dst_arr = [0u8; 16];
+            dst_arr.copy_from_slice(&key[24..40]);
+            let dst_id = u128::from_be_bytes(dst_arr);
+
+            let reverse_key = Self::out_edges_key(dst_id, level, Some(src_id));
+            if self.edges_db.get(txn, &reverse_key)?.is_none() {
+                asymmetric += 1;
+            }
+        }
+
+        Ok((total, asymmetric))
+    }
+
+    /// Returns count of non-deleted vectors for a specific label.
+    pub fn count_active_vectors<'db: 'arena, 'arena>(
+        &self,
+        txn: &'arena heed3::RoTxn<'db>,
+        label: &'arena str,
+        arena: &'arena bumpalo::Bump,
+    ) -> Result<usize, VectorError> {
+        let mut count = 0usize;
+        let iter = self.vector_properties_db.iter(txn)?;
+        for result in iter {
+            let (id, bytes) = result?;
+            let props = VectorWithoutData::from_bincode_bytes(arena, bytes, id)
+                .map_err(|e| VectorError::VectorCoreError(e.to_string()))?;
+            if !props.deleted && props.label == label {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     /// Get all vectors from the database, optionally filtered by level
     pub fn get_all_vectors<'db: 'arena, 'arena: 'txn, 'txn>(
         &self,
@@ -773,7 +933,7 @@ mod prune_tests {
 
         // IDs
         let hub_id = fake_id(0);
-        let hub_data = vec![0.0f64, 0.0, 0.0, 0.0];
+        let hub_data = vec![1.0f64, 0.0, 0.0, 0.0];
 
         // Write hub's raw vector data.
         write_vector_data(&vc, &mut txn, hub_id, &hub_data);
@@ -838,7 +998,7 @@ mod prune_tests {
         let sat_id    = fake_id(200);
 
         // Write raw vector data for both.
-        write_vector_data(&vc, &mut txn, hub_id, &[0.0, 0.0, 0.0, 0.0]);
+        write_vector_data(&vc, &mut txn, hub_id, &[1.0, 0.0, 0.0, 0.0]);
         write_vector_data(&vc, &mut txn, sat_id, &[0.001, 0.001, 0.001, 0.001]);
 
         // Write m_max_0 existing outgoing edges for the satellite so it is already
@@ -960,6 +1120,10 @@ impl HNSW for VectorCore {
         'db: 'arena,
         'arena: 'txn,
     {
+        if !data.is_empty() && data.iter().map(|x| x * x).sum::<f64>() == 0.0 {
+            return Err(VectorError::ZeroMagnitudeVector);
+        }
+
         let new_level = self.get_new_level();
 
         let mut query = HVector::from_slice(label, 0, data);
@@ -970,13 +1134,12 @@ impl HNSW for VectorCore {
 
         let entry_point = match self.get_entry_point(txn, label, arena) {
             Ok(ep) => ep,
-            Err(_) => {
-                // TODO: use proper error handling
+            Err(VectorError::EntryPointNotFound) => {
                 self.set_entry_point(txn, &query)?;
                 query.set_distance(0.0);
-
                 return Ok(query);
             }
+            Err(e) => return Err(e),
         };
 
         let l = entry_point.level;

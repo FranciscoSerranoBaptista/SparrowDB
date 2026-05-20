@@ -66,6 +66,114 @@ inventory::submit! {
     )
 }
 
+// GET /hnsw-health
+// curl "http://localhost:PORT/hnsw-health"
+//
+// Runs BFS from HNSW entry point (level 0) and reports unreachable active vectors.
+// {"status":"healthy"|"degraded"|"broken","total_active":N,"reachable":R,"unreachable":U}
+//
+// healthy  = 0 unreachable
+// degraded = 1–5% unreachable
+// broken   = >5% unreachable, or no entry point when active vectors exist
+
+pub fn hnsw_health_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
+    let db = Arc::clone(&input.graph.storage);
+
+    #[cfg(feature = "lmdb")]
+    {
+        let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
+
+        let vector_stats = db
+            .vectors
+            .stats(&txn)
+            .map_err(|e| GraphError::New(e.to_string()))?;
+        let total_active = vector_stats.active as usize;
+
+        let reachable = db
+            .vectors
+            .bfs_reachable_count_global(&txn)
+            .map_err(|e| GraphError::New(e.to_string()))?;
+
+        let unreachable = total_active.saturating_sub(reachable);
+
+        let status = if total_active == 0 || unreachable == 0 {
+            "healthy"
+        } else if (unreachable as f64 / total_active as f64) <= 0.05 {
+            "degraded"
+        } else {
+            "broken"
+        };
+
+        let body = format!(
+            r#"{{"status":"{status}","total_active":{total_active},"reachable":{reachable},"unreachable":{unreachable}}}"#,
+        );
+
+        return Ok(protocol::Response {
+            body: body.into_bytes(),
+            fmt: Default::default(),
+        });
+    }
+
+    #[cfg(not(feature = "lmdb"))]
+    {
+        Err(GraphError::New(
+            "hnsw-health endpoint requires lmdb feature".to_string(),
+        ))
+    }
+}
+
+inventory::submit! {
+    HandlerSubmission(
+        Handler::new("hnsw_health", hnsw_health_inner, false)
+    )
+}
+
+// GET /hnsw-integrity
+// curl "http://localhost:PORT/hnsw-integrity"
+//
+// Scans every HNSW edge and verifies bidirectional symmetry: for every A→B,
+// B→A must also exist. Asymmetric edges indicate a graph corruption.
+//
+// {"symmetric":true,"total_edges":1000,"asymmetric_edges":0}
+
+pub fn hnsw_integrity_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
+    let db = Arc::clone(&input.graph.storage);
+
+    #[cfg(feature = "lmdb")]
+    {
+        let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
+
+        let (total_edges, asymmetric_edges) = db
+            .vectors
+            .count_asymmetric_edges(&txn)
+            .map_err(|e| GraphError::New(e.to_string()))?;
+
+        let symmetric = asymmetric_edges == 0;
+
+        let body = format!(
+            r#"{{"symmetric":{symmetric},"total_edges":{total_edges},"asymmetric_edges":{asymmetric_edges}}}"#,
+        );
+
+        return Ok(protocol::Response {
+            body: body.into_bytes(),
+            fmt: Default::default(),
+        });
+    }
+
+    #[cfg(not(feature = "lmdb"))]
+    {
+        Err(GraphError::New(
+            "hnsw-integrity endpoint requires lmdb feature".to_string(),
+        ))
+    }
+}
+
+inventory::submit! {
+    HandlerSubmission(
+        Handler::new("hnsw_integrity", hnsw_integrity_inner, false)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +303,63 @@ mod tests {
         Ok(())
     }
 
+    fn make_hnsw_health_request() -> Request {
+        Request {
+            name: "hnsw_health".to_string(),
+            req_type: RequestType::Query,
+            api_key: None,
+            body: Bytes::new(),
+            in_fmt: Format::Json,
+            out_fmt: Format::Json,
+            pre_computed_embedding: None,
+        }
+    }
+
+    #[test]
+    fn test_hnsw_health_empty_db_is_healthy() {
+        let (engine, _temp_dir) = setup_test_engine();
+        let input = HandlerInput {
+            graph: Arc::new(engine),
+            request: make_hnsw_health_request(),
+        };
+
+        let result = hnsw_health_inner(input);
+        assert!(result.is_ok(), "hnsw_health on empty db should succeed: {result:?}");
+
+        let body = String::from_utf8(result.unwrap().body).unwrap();
+        assert!(body.contains("\"status\":\"healthy\""), "empty db should be healthy, got: {body}");
+        assert!(body.contains("\"unreachable\":0"), "got: {body}");
+    }
+
+    #[test]
+    fn test_hnsw_health_after_inserts_is_healthy() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::sparrow_engine::vector_core::HNSW;
+
+        let (engine, _temp_dir) = setup_test_engine();
+        let arena = bumpalo::Bump::new();
+        let mut txn = engine.storage.graph_env.write_txn().unwrap();
+
+        for i in 0..10i64 {
+            let data = vec![i as f64 + 1.0, 0.0, 0.0, 0.0]; // non-zero vectors
+            engine.storage.vectors
+                .insert::<fn(&_, &_) -> bool>(&mut txn, "default", &data, None, &arena)
+                .unwrap();
+        }
+        txn.commit().unwrap();
+
+        let input = HandlerInput {
+            graph: Arc::new(engine),
+            request: make_hnsw_health_request(),
+        };
+
+        let result = hnsw_health_inner(input)?;
+        let body = String::from_utf8(result.body).unwrap();
+        assert!(body.contains("\"status\":\"healthy\""), "10 inserts should be healthy, got: {body}");
+        assert!(body.contains("\"total_active\":10"), "got: {body}");
+        assert!(body.contains("\"unreachable\":0"), "got: {body}");
+        Ok(())
+    }
+
     #[test]
     fn test_diagnostics_with_vectors() -> Result<(), Box<dyn std::error::Error>> {
         use crate::sparrow_engine::vector_core::HNSW;
@@ -239,6 +404,63 @@ mod tests {
         assert!(body_str.contains("\"active\":1"));
         assert!(body_str.contains("\"soft_deleted\":1"));
         assert!(body_str.contains("\"entry_point_present\":true"));
+        Ok(())
+    }
+
+    fn make_integrity_request() -> Request {
+        Request {
+            name: "hnsw_integrity".to_string(),
+            req_type: RequestType::Query,
+            api_key: None,
+            body: Bytes::new(),
+            in_fmt: Format::Json,
+            out_fmt: Format::Json,
+            pre_computed_embedding: None,
+        }
+    }
+
+    #[test]
+    fn test_hnsw_integrity_empty_db_is_symmetric() {
+        let (engine, _temp_dir) = setup_test_engine();
+        let input = HandlerInput {
+            graph: Arc::new(engine),
+            request: make_integrity_request(),
+        };
+
+        let result = hnsw_integrity_inner(input);
+        assert!(result.is_ok(), "hnsw_integrity on empty db should succeed: {result:?}");
+
+        let body = String::from_utf8(result.unwrap().body).unwrap();
+        assert!(body.contains("\"symmetric\":true"), "empty db should be symmetric, got: {body}");
+        assert!(body.contains("\"asymmetric_edges\":0"), "got: {body}");
+        assert!(body.contains("\"total_edges\":0"), "got: {body}");
+    }
+
+    #[test]
+    fn test_hnsw_integrity_after_inserts_is_symmetric() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::sparrow_engine::vector_core::HNSW;
+
+        let (engine, _temp_dir) = setup_test_engine();
+        let arena = bumpalo::Bump::new();
+        let mut txn = engine.storage.graph_env.write_txn().unwrap();
+
+        for i in 1..=10i64 {
+            let data = vec![i as f64, 0.0, 0.0, 0.0];
+            engine.storage.vectors
+                .insert::<fn(&_, &_) -> bool>(&mut txn, "default", &data, None, &arena)
+                .unwrap();
+        }
+        txn.commit().unwrap();
+
+        let input = HandlerInput {
+            graph: Arc::new(engine),
+            request: make_integrity_request(),
+        };
+
+        let result = hnsw_integrity_inner(input)?;
+        let body = String::from_utf8(result.body).unwrap();
+        assert!(body.contains("\"symmetric\":true"), "10 inserts should be symmetric, got: {body}");
+        assert!(body.contains("\"asymmetric_edges\":0"), "got: {body}");
         Ok(())
     }
 }
