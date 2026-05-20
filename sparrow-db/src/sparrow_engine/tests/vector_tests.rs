@@ -35,11 +35,21 @@ fn test_hvector_distance_min() {
 
 #[test]
 fn test_hvector_distance_max() {
+    // Anti-parallel vectors have cosine similarity = -1.0 → distance = 2.0 (MAX_DISTANCE).
     let arena = Bump::new();
-    let v1 = alloc_vector(&arena, &[0.0, 0.0]);
+    let v1 = alloc_vector(&arena, &[-3.0, -4.0]);
     let v2 = alloc_vector(&arena, &[3.0, 4.0]);
     let distance = v1.distance_to(&v2).unwrap();
     assert_eq!(distance, MAX_DISTANCE);
+}
+
+#[test]
+fn test_hvector_distance_zero_magnitude_returns_error() {
+    use crate::sparrow_engine::types::VectorError;
+    let arena = Bump::new();
+    let v1 = alloc_vector(&arena, &[0.0, 0.0]);
+    let v2 = alloc_vector(&arena, &[3.0, 4.0]);
+    assert!(matches!(v1.distance_to(&v2), Err(VectorError::ZeroMagnitudeVector)));
 }
 
 #[test]

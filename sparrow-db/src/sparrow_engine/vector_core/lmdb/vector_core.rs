@@ -839,7 +839,7 @@ mod prune_tests {
 
         // IDs
         let hub_id = fake_id(0);
-        let hub_data = vec![0.0f64, 0.0, 0.0, 0.0];
+        let hub_data = vec![1.0f64, 0.0, 0.0, 0.0];
 
         // Write hub's raw vector data.
         write_vector_data(&vc, &mut txn, hub_id, &hub_data);
@@ -904,7 +904,7 @@ mod prune_tests {
         let sat_id    = fake_id(200);
 
         // Write raw vector data for both.
-        write_vector_data(&vc, &mut txn, hub_id, &[0.0, 0.0, 0.0, 0.0]);
+        write_vector_data(&vc, &mut txn, hub_id, &[1.0, 0.0, 0.0, 0.0]);
         write_vector_data(&vc, &mut txn, sat_id, &[0.001, 0.001, 0.001, 0.001]);
 
         // Write m_max_0 existing outgoing edges for the satellite so it is already
