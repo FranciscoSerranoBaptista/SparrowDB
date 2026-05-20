@@ -3,16 +3,32 @@ use std::collections::HashMap;
 
 // ── Opaque ID newtypes ────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FindingId(pub u128);
+pub struct FindingId(pub(crate) u128);
+
+impl FindingId {
+    pub fn as_u128(self) -> u128 { self.0 }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct QuestionId(pub u128);
+pub struct QuestionId(pub(crate) u128);
+
+impl QuestionId {
+    pub fn as_u128(self) -> u128 { self.0 }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ThreadId(pub u128);
+pub struct ThreadId(pub(crate) u128);
+
+impl ThreadId {
+    pub fn as_u128(self) -> u128 { self.0 }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RunId(pub u128);
+pub struct RunId(pub(crate) u128);
+
+impl RunId {
+    pub fn as_u128(self) -> u128 { self.0 }
+}
 
 // ── Input types (what the agent provides) ────────────────────────────
 
@@ -47,9 +63,21 @@ impl Priority {
     }
 }
 
+impl TryFrom<&str> for Priority {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, ()> {
+        match s {
+            "high"   => Ok(Priority::High),
+            "medium" => Ok(Priority::Medium),
+            "low"    => Ok(Priority::Low),
+            _        => Err(()),
+        }
+    }
+}
+
 // ── Stored types (what recall returns) ───────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StoredFinding {
     pub id: FindingId,
     pub claim: String,
@@ -59,7 +87,7 @@ pub struct StoredFinding {
     pub metadata: HashMap<String, Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StoredSummary {
     pub run_id: RunId,
     pub summary: String,
@@ -67,14 +95,14 @@ pub struct StoredSummary {
     pub question_count: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StoredQuestion {
     pub id: QuestionId,
     pub question: String,
     pub priority: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ThreadSummary {
     pub id: ThreadId,
     pub name: String,
@@ -84,7 +112,7 @@ pub struct ThreadSummary {
 
 // ── Recall result ─────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct RecallResult {
     /// Summaries of the last 3 completed runs, newest first.
     pub recent_summaries: Vec<StoredSummary>,
