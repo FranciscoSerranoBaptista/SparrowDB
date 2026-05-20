@@ -57,7 +57,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
             k.try_into().unwrap(),
             label,
             filter,
-            false,
+            true,
             self.arena,
         );
 
