@@ -224,6 +224,26 @@ pub fn write_edge(
     Ok(edge.id)
 }
 
+/// Add an existing node to a secondary index without touching the node itself.
+pub fn add_to_index(
+    storage: &SparrowGraphStorage,
+    index_name: &str,
+    key: &Value,
+    node_id: u128,
+) -> Result<(), MemoryError> {
+    let (idx_db, _) = storage
+        .secondary_indices
+        .get(index_name)
+        .ok_or_else(|| MemoryError::IndexNotFound(index_name.to_string()))?;
+    let key_bytes = bincode::serialize(key).map_err(MemoryError::Serialization)?;
+    let mut wtxn = storage.graph_env.write_txn().map_err(MemoryError::Heed)?;
+    idx_db
+        .put_with_flags(&mut wtxn, PutFlags::empty(), &key_bytes, &node_id)
+        .map_err(MemoryError::Heed)?;
+    wtxn.commit().map_err(MemoryError::Heed)?;
+    Ok(())
+}
+
 /// Get IDs of all nodes reachable via an out-edge of `edge_label` from `from_id`.
 pub fn out_neighbors(
     storage: &SparrowGraphStorage,
