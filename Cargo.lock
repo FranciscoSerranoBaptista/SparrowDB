@@ -4622,6 +4622,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sparrow-chef"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "cliclack",
+ "color-eyre",
+ "dirs-next",
+ "eyre",
+ "open",
+ "reqwest 0.12.23",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "sparrow-cli"
 version = "3.0.0"
 dependencies = [
@@ -4653,7 +4670,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "sha2",
- "sparrow-db",
+ "sparrow-core",
  "sparrow-metrics",
  "tempfile",
  "thiserror 2.0.18",
@@ -4679,7 +4696,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sonic-rs",
- "sparrow-db",
+ "sparrow-core",
  "sparrow-macros",
  "tokio",
  "tracing",
@@ -4688,7 +4705,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sparrow-db"
+name = "sparrow-core"
 version = "3.0.0"
 dependencies = [
  "ariadne",
@@ -4754,7 +4771,7 @@ dependencies = [
  "bumpalo",
  "heed3",
  "serde",
- "sparrow-db",
+ "sparrow-core",
  "tempfile",
  "thiserror 2.0.18",
  "uuid",
@@ -4786,23 +4803,6 @@ dependencies = [
  "serde",
  "sonic-rs",
  "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "sparrowdb-chef"
-version = "0.1.0"
-dependencies = [
- "clap",
- "cliclack",
- "color-eyre",
- "dirs-next",
- "eyre",
- "open",
- "reqwest 0.12.23",
- "serde",
- "serde_json",
- "tempfile",
  "tokio",
 ]
 

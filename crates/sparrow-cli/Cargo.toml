@@ -4,8 +4,8 @@ version = "3.0.0"
 edition = "2024"
 
 [dependencies]
-sparrow-metrics = { path = "../metrics" }
-sparrow-db = { path = "../sparrow-db" }
+sparrow-metrics = { path = "../sparrow-metrics" }
+sparrow-core = { path = "../sparrow-core" }
 clap = { version = "4.5.53", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
@@ -55,6 +55,6 @@ name = "sparrow"
 path = "src/main.rs"
 
 [features]
-normal = ["sparrow-db/server"]
-ingestion = ["sparrow-db/full"]
+normal = ["sparrow-core/server"]
+ingestion = ["sparrow-core/full"]
 default = ["normal"]

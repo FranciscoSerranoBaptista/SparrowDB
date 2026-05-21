@@ -1,5 +1,5 @@
 [package]
-name = "sparrow-db"
+name = "sparrow-core"
 version = "3.0.0"
 edition = "2024"
 description = "SparrowDB is a powerful, open-source, graph-vector database built in Rust for intelligent data storage for RAG and AI."
@@ -7,10 +7,14 @@ license = "AGPL-3.0"
 authors = ["SparrowDB Team"]
 repository = "https://github.com/YOUR_ORG/SparrowDB"
 
+[lib]
+name = "sparrow_db"
+path = "src/lib.rs"
+
 [dependencies]
 # SparrowDB dependencies
 sparrow-macros = { path = "../sparrow-macros" }
-sparrow-metrics = { path = "../metrics" }
+sparrow-metrics = { path = "../sparrow-metrics" }
 
 # external dependencies
 tokio = { version = "1.44.2", features = ["full"] }

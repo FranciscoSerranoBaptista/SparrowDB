@@ -1,14 +1,14 @@
 [workspace]
 members = [
-    "sparrow-db",
-    "sparrow-container",
-    "sparrow-macros",
-    "sparrow-cli",
-    "hql-tests",
-    "metrics",
-    "sparrow-memory",
-    "sparrowdb-chef",
-    "sparrow-sdk",
+    "crates/sparrow-core",
+    "crates/sparrow-container",
+    "crates/sparrow-macros",
+    "crates/sparrow-cli",
+    "crates/sparrow-metrics",
+    "crates/sparrow-memory",
+    "crates/sparrow-chef",
+    "sdks/rust",
+    "tests/hql-tests",
 ]
 resolver = "2"
 

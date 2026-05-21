@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-sparrow-db = { path = "../sparrow-db", default-features = false }
+sparrow-core = { path = "../sparrow-core", default-features = false }
 sparrow-macros = { path = "../sparrow-macros" }
 
 inventory = "0.3.16"
@@ -24,6 +24,6 @@ bumpalo = "3.19.0"
 
 [features]
 default = ["lmdb"]
-lmdb = ["sparrow-db/lmdb"]
-dev = ["sparrow-db/dev-instance"]
-production = ["sparrow-db/production"]
+lmdb = ["sparrow-core/lmdb"]
+dev = ["sparrow-core/dev-instance"]
+production = ["sparrow-core/production"]
