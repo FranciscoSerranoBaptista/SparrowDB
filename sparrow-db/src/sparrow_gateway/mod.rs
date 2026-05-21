@@ -10,4 +10,5 @@ pub mod router;
 pub mod runtime_eval;
 #[cfg(test)]
 pub mod tests;
+pub mod v1_compat;
 pub mod worker_pool;

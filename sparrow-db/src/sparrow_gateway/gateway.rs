@@ -11,6 +11,7 @@ use core_affinity::CoreId;
 use tracing::{info, trace, warn};
 
 use super::router::router::{HandlerFn, SparrowRouter};
+use crate::sparrow_gateway::v1_compat::v1_query_axum_handler;
 #[cfg(feature = "dev-instance")]
 use crate::sparrow_gateway::builtin::all_nodes_and_edges::nodes_edges_handler;
 #[cfg(feature = "dev-instance")]
@@ -117,7 +118,10 @@ impl SparrowGateway {
 
         let mut axum_app = axum::Router::new();
 
+        // /v1/query MUST be registered before /{*path}: the wildcard handler rejects
+        // any path whose name component contains '/', which "v1/query" does.
         axum_app = axum_app
+            .route("/v1/query", post(v1_query_axum_handler))
             .route("/{*path}", post(post_handler))
             .route("/introspect", get(introspect_schema_handler));
 
