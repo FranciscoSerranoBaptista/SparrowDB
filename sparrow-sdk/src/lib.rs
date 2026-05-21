@@ -196,6 +196,9 @@ impl<'hlx, 'a, R: for<'de> Deserialize<'de>> QueryRequest<'hlx, 'a, R> {
 }
 
 extern crate self as sparrow_sdk;
+// Compatibility alias so the `helix-dsl-macros` proc-macro (which emits
+// `::helix_db::` paths) continues to resolve until the macro is updated.
+extern crate self as helix_db;
 
 #[cfg(test)]
 mod tests {
