@@ -4,7 +4,5 @@ target/
 .cargo/credentials
 docs/
 *.md
-!sparrow-container/src/
-hql-tests/
 .volumes/
 **/.DS_Store
