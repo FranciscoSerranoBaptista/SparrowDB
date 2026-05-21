@@ -1,0 +1,24 @@
+[package]
+name = "sparrow-sdk"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Rust SDK for SparrowDB — query-builder DSL and async HTTP client"
+license = "Apache-2.0"
+repository = "https://github.com/YOUR_ORG/SparrowDB"
+readme = "README.md"
+keywords = ["graph", "database", "sparrowdb", "dsl", "query"]
+categories = ["database", "data-structures"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
+sonic-rs = "0.5.8"
+inventory = "0.3.24"
+helix-dsl-macros = "0.2.0"
+reqwest = { version = "0.13.3" }
+tokio = { version = "1", features = ["full"] }
+thiserror = "2.0.18"
