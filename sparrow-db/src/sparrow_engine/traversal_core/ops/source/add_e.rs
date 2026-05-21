@@ -164,5 +164,3 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         }
     }
 }
-
-// RocksDB Implementation
