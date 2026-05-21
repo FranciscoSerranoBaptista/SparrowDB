@@ -6,8 +6,6 @@ pub mod traversal_core;
 pub mod types;
 pub mod vector_core;
 
-#[cfg(feature = "rocks")]
-pub mod rocks_utils;
 
 #[cfg(test)]
 mod tests;

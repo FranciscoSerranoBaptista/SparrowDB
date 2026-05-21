@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-#[cfg(feature = "rocks")]
-use crate::sparrow_engine::storage_core::txn::ReadTransaction;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::gateway::AppState;
 use crate::sparrow_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
@@ -84,82 +82,39 @@ pub fn nodes_by_label_inner(input: HandlerInput) -> Result<protocol::Response, G
     let mut nodes_json = Vec::new();
     let mut count = 0;
 
-    #[cfg(feature = "lmdb")]
-    {
-        // LMDB implementation
-        for result in db.nodes_db.iter(&txn)? {
-            let (id, node_data) = result?;
-            match Node::from_bincode_bytes(id, node_data, &arena) {
-                Ok(node) => {
-                    if node.label == label {
-                        let id_str = ID::from(id).stringify();
+    // LMDB implementation
+    for result in db.nodes_db.iter(&txn)? {
+        let (id, node_data) = result?;
+        match Node::from_bincode_bytes(id, node_data, &arena) {
+            Ok(node) => {
+                if node.label == label {
+                    let id_str = ID::from(id).stringify();
 
-                        let mut node_json = json!({
-                            "id": id_str.clone(),
-                            "label": node.label,
-                            "title": id_str
-                        });
+                    let mut node_json = json!({
+                        "id": id_str.clone(),
+                        "label": node.label,
+                        "title": id_str
+                    });
 
-                        // Add node properties
-                        if let Some(properties) = &node.properties {
-                            for (key, value) in properties.iter() {
-                                node_json[key] = sonic_rs::to_value(&value.inner_stringify())
-                                    .unwrap_or_else(|_| sonic_rs::Value::from(""));
-                            }
-                        }
-
-                        nodes_json.push(node_json);
-                        count += 1;
-
-                        if let Some(limit_count) = limit
-                            && count >= limit_count
-                        {
-                            break;
+                    // Add node properties
+                    if let Some(properties) = &node.properties {
+                        for (key, value) in properties.iter() {
+                            node_json[key] = sonic_rs::to_value(&value.inner_stringify())
+                                .unwrap_or_else(|_| sonic_rs::Value::from(""));
                         }
                     }
-                }
-                Err(_) => continue,
-            }
-        }
-    }
 
-    #[cfg(feature = "rocks")]
-    {
-        // RocksDB implementation
-        let cf_nodes = db.cf_nodes();
-        let iter = txn.iterator_cf(&cf_nodes, rocksdb::IteratorMode::Start);
+                    nodes_json.push(node_json);
+                    count += 1;
 
-        for (key, value) in iter.flatten() {
-            assert!(key.len() == 16);
-            let id = u128::from_be_bytes(key[..].try_into().unwrap());
-            if let Ok(node) = Node::from_bincode_bytes(id, &value, &arena)
-                && node.label == label
-            {
-                let id_str = ID::from(id).stringify();
-
-                let mut node_json = json!({
-                    "id": id_str.clone(),
-                    "label": node.label,
-                    "title": id_str
-                });
-
-                // Add node properties
-                if let Some(properties) = &node.properties {
-                    for (key, value) in properties.iter() {
-                        node_json[key] = sonic_rs::to_value(&value.inner_stringify())
-                            .unwrap_or_else(|_| sonic_rs::Value::from(""));
+                    if let Some(limit_count) = limit
+                        && count >= limit_count
+                    {
+                        break;
                     }
                 }
-
-                nodes_json.push(node_json);
-                count += 1;
-
-                if let Some(limit_count) = limit
-                    && count >= limit_count
-                {
-                    break;
-                }
             }
+            Err(_) => continue,
         }
     }
 
@@ -183,8 +138,6 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "rocks")]
-    use crate::sparrow_engine::storage_core::txn::WriteTransaction;
     use crate::{
         sparrow_engine::{
             storage_core::version_info::VersionInfo,

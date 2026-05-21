@@ -6,10 +6,7 @@ use crate::sparrow_engine::{
     },
     types::GraphError,
 };
-#[cfg(feature = "lmdb")]
 use heed3::{RoTxn, RwTxn};
-#[cfg(feature = "rocks")]
-use crate::sparrow_engine::traversal_core::{RTxn as RoTxn, WTxn as RwTxn};
 
 pub struct G {}
 

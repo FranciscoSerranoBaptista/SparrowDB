@@ -6,5 +6,3 @@ pub mod capacity_optimization_tests;
 pub mod concurrency_tests;
 pub mod hnsw_tests;
 pub mod storage_tests;
-#[cfg(feature = "rocks")]
-pub mod rocks_tests;

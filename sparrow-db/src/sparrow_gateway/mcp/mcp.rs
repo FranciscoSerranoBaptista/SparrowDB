@@ -1,5 +1,3 @@
-#[cfg(feature = "rocks")]
-use crate::sparrow_engine::storage_core::txn::ReadTransaction;
 use crate::{
     sparrow_engine::{
         storage_core::{SparrowGraphStorage, Txn},

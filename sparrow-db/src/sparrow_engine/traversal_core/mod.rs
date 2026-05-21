@@ -57,12 +57,5 @@ impl SparrowGraphEngine {
     }
 }
 
-#[cfg(feature = "rocks")]
-pub type WTxn<'db> = rocksdb::Transaction<'db, rocksdb::TransactionDB>;
-#[cfg(feature = "rocks")]
-pub type RTxn<'db> = rocksdb::Transaction<'db, rocksdb::TransactionDB>;
-
-#[cfg(feature = "lmdb")]
 pub type WTxn<'db> = heed3::RwTxn<'db>;
-#[cfg(feature = "lmdb")]
 pub type RTxn<'db> = heed3::RoTxn<'db>;

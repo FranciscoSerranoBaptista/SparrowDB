@@ -26,10 +26,7 @@ pub trait SearchVAdapter<'db, 'arena, 'txn>:
         K::Error: std::fmt::Debug;
 }
 
-#[cfg(feature = "lmdb")]
 type Txn<'db> = heed3::RoTxn<'db>;
-#[cfg(feature = "rocks")]
-type Txn<'db> = rocksdb::Transaction<'db, rocksdb::TransactionDB>;
 
 impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
     SearchVAdapter<'db, 'arena, 'txn> for RoTraversalIterator<'db, 'arena, 'txn, I>

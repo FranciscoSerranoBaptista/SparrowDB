@@ -27,7 +27,6 @@ pub trait OutEdgesAdapter<'db, 'arena, 'txn, 's>:
     >;
 }
 
-#[cfg(feature = "lmdb")]
 impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
     OutEdgesAdapter<'db, 'arena, 'txn, 's> for RoTraversalIterator<'db, 'arena, 'txn, I>
 {
@@ -97,76 +96,3 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
     }
 }
 
-#[cfg(feature = "rocks")]
-impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
-    OutEdgesAdapter<'db, 'arena, 'txn, 's> for RoTraversalIterator<'db, 'arena, 'txn, I>
-{
-    #[inline]
-    fn out_e(
-        self,
-        edge_label: &'s str,
-    ) -> RoTraversalIterator<
-        'db,
-        'arena,
-        'txn,
-        impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
-    > {
-        use crate::sparrow_engine::rocks_utils::RocksUtils;
-
-        let storage = self.storage;
-        let arena = self.arena;
-        let txn = self.txn;
-
-        let iter = self
-            .inner
-            .filter_map(move |item| {
-                let edge_label_hash = hash_label(edge_label, None);
-                let node_id = match item {
-                    Ok(item) => item.id(),
-                    Err(_) => return None,
-                };
-                let prefix = SparrowGraphStorage::out_edge_key_prefix(node_id, &edge_label_hash);
-                let cf_out_edges = storage.cf_out_edges();
-
-                let mut raw_iter = txn.raw_prefix_iter(&cf_out_edges, &prefix);
-                let mut results: Vec<Result<TraversalValue<'arena>, GraphError>> = Vec::new();
-
-                while let Some(key) = raw_iter.key() {
-                    if !key.starts_with(&prefix) {
-                        break;
-                    }
-                    // Key: from_node(16) | label(4) | to_node(16) | edge_id(16)
-                    match SparrowGraphStorage::unpack_adj_edge_key(key) {
-                        Ok((_, _, _, edge_id)) => {
-                            match storage.get_edge(txn, edge_id, arena) {
-                                Ok(edge) => {
-                                    results.push(Ok(TraversalValue::Edge(edge)));
-                                }
-                                Err(e) => {
-                                    results.push(Err(e));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            results.push(Err(e));
-                        }
-                    }
-                    raw_iter.next();
-                }
-
-                if results.is_empty() {
-                    None
-                } else {
-                    Some(results.into_iter())
-                }
-            })
-            .flatten();
-
-        RoTraversalIterator {
-            storage,
-            arena,
-            txn,
-            inner: iter,
-        }
-    }
-}

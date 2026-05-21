@@ -10,8 +10,6 @@ use tracing::info;
 
 use crate::sparrow_engine::storage_core::SparrowGraphStorage;
 use crate::sparrow_engine::storage_core::storage_methods::StorageMethods;
-#[cfg(feature = "rocks")]
-use crate::sparrow_engine::storage_core::txn::ReadTransaction;
 use crate::sparrow_engine::traversal_core::traversal_value::TraversalValue;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::gateway::AppState;
@@ -92,104 +90,56 @@ pub fn node_connections_inner(input: HandlerInput) -> Result<protocol::Response,
     let mut incoming_edges = Vec::new();
     let mut outgoing_edges = Vec::new();
 
-    #[cfg(feature = "lmdb")]
-    {
-        // LMDB implementation
-        incoming_edges.extend(
-            db.in_edges_db
-                .prefix_iter(&txn, &node_id.to_be_bytes())?
-                .filter_map(|result| {
-                    if let Ok((_, value)) = result
-                        && let Ok((edge_id, from_node)) =
-                            SparrowGraphStorage::unpack_adj_edge_data(value)
-                    {
-                        if connected_node_ids.insert(from_node)
-                            && let Ok(node) = db.get_node(&txn, from_node, &arena)
-                        {
-                            connected_nodes.push(TraversalValue::Node(node));
-                        }
-
-                        match db.get_edge(&txn, edge_id, &arena) {
-                            Ok(edge) => Some(TraversalValue::Edge(edge)),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>(),
-        );
-
-        outgoing_edges.extend(
-            db.out_edges_db
-                .prefix_iter(&txn, &node_id.to_be_bytes())?
-                .filter_map(|result| {
-                    if let Ok((_, value)) = result
-                        && let Ok((edge_id, to_node)) =
-                            SparrowGraphStorage::unpack_adj_edge_data(value)
-                    {
-                        if connected_node_ids.insert(to_node)
-                            && let Ok(node) = db.get_node(&txn, to_node, &arena)
-                        {
-                            connected_nodes.push(TraversalValue::Node(node));
-                        }
-
-                        match db.get_edge(&txn, edge_id, &arena) {
-                            Ok(edge) => Some(TraversalValue::Edge(edge)),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>(),
-        );
-    }
-
-    #[cfg(feature = "rocks")]
-    {
-        // RocksDB implementation - process incoming edges
-        let cf_in_edges = db.cf_in_edges();
-        let iter = txn.prefix_iterator_cf(&cf_in_edges, node_id.to_be_bytes());
-
-        for (key, _) in iter.flatten() {
-            assert!(key.len() >= 52);
-            if let Ok((_to_node_id, _label, from_node_id, edge_id)) =
-                SparrowGraphStorage::unpack_adj_edge_key(&key)
-            {
-                if connected_node_ids.insert(from_node_id)
-                    && let Ok(node) = db.get_node(&txn, from_node_id, &arena)
+    // LMDB implementation
+    incoming_edges.extend(
+        db.in_edges_db
+            .prefix_iter(&txn, &node_id.to_be_bytes())?
+            .filter_map(|result| {
+                if let Ok((_, value)) = result
+                    && let Ok((edge_id, from_node)) =
+                        SparrowGraphStorage::unpack_adj_edge_data(value)
                 {
-                    connected_nodes.push(TraversalValue::Node(node));
+                    if connected_node_ids.insert(from_node)
+                        && let Ok(node) = db.get_node(&txn, from_node, &arena)
+                    {
+                        connected_nodes.push(TraversalValue::Node(node));
+                    }
+
+                    match db.get_edge(&txn, edge_id, &arena) {
+                        Ok(edge) => Some(TraversalValue::Edge(edge)),
+                        Err(_) => None,
+                    }
+                } else {
+                    None
                 }
+            })
+            .collect::<Vec<_>>(),
+    );
 
-                if let Ok(edge) = db.get_edge(&txn, edge_id, &arena) {
-                    incoming_edges.push(TraversalValue::Edge(edge));
-                }
-            }
-        }
-
-        // RocksDB implementation - process outgoing edges
-        let cf_out_edges = db.cf_out_edges();
-        let iter = txn.prefix_iterator_cf(&cf_out_edges, node_id.to_be_bytes());
-
-        for (key, _) in iter.flatten() {
-            assert!(key.len() >= 52);
-            if let Ok((_from_node_id, _label, to_node_id, edge_id)) =
-                SparrowGraphStorage::unpack_adj_edge_key(&key)
-            {
-                if connected_node_ids.insert(to_node_id)
-                    && let Ok(node) = db.get_node(&txn, to_node_id, &arena)
+    outgoing_edges.extend(
+        db.out_edges_db
+            .prefix_iter(&txn, &node_id.to_be_bytes())?
+            .filter_map(|result| {
+                if let Ok((_, value)) = result
+                    && let Ok((edge_id, to_node)) =
+                        SparrowGraphStorage::unpack_adj_edge_data(value)
                 {
-                    connected_nodes.push(TraversalValue::Node(node));
-                }
+                    if connected_node_ids.insert(to_node)
+                        && let Ok(node) = db.get_node(&txn, to_node, &arena)
+                    {
+                        connected_nodes.push(TraversalValue::Node(node));
+                    }
 
-                if let Ok(edge) = db.get_edge(&txn, edge_id, &arena) {
-                    outgoing_edges.push(TraversalValue::Edge(edge));
+                    match db.get_edge(&txn, edge_id, &arena) {
+                        Ok(edge) => Some(TraversalValue::Edge(edge)),
+                        Err(_) => None,
+                    }
+                } else {
+                    None
                 }
-            }
-        }
-    }
+            })
+            .collect::<Vec<_>>(),
+    );
 
     let connected_nodes_json: Vec<sonic_rs::Value> = connected_nodes
         .into_iter()
@@ -267,8 +217,6 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "rocks")]
-    use crate::sparrow_engine::storage_core::txn::WriteTransaction;
     use crate::{
         sparrow_engine::{
             storage_core::version_info::VersionInfo,

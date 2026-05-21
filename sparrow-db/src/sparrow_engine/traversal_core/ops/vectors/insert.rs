@@ -25,10 +25,7 @@ pub trait InsertVAdapter<'db, 'arena, 'txn>:
         F: Fn(&HVector<'arena>, &Txn<'db>) -> bool;
 }
 
-#[cfg(feature = "lmdb")]
 type Txn<'db> = heed3::RoTxn<'db>;
-#[cfg(feature = "rocks")]
-type Txn<'db> = rocksdb::Transaction<'db, rocksdb::TransactionDB>;
 
 impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphError>>>
     InsertVAdapter<'db, 'arena, 'txn> for RwTraversalIterator<'db, 'arena, 'txn, I>

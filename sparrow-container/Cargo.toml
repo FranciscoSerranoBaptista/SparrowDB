@@ -25,6 +25,5 @@ bumpalo = "3.19.0"
 [features]
 default = ["lmdb"]
 lmdb = ["sparrow-db/lmdb"]
-rocks = ["sparrow-db/rocks"]
 dev = ["sparrow-db/dev-instance"]
 production = ["sparrow-db/production"]

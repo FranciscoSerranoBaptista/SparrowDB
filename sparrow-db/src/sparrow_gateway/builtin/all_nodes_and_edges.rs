@@ -7,7 +7,6 @@ use serde::Deserialize;
 use sonic_rs::{JsonValueTrait, json};
 use tracing::info;
 
-#[cfg(feature = "lmdb")]
 use crate::sparrow_engine::storage_core::graph_visualization::GraphVisualization;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::gateway::AppState;
@@ -67,115 +66,65 @@ pub async fn nodes_edges_handler(
 
 pub fn nodes_edges_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
+    let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
+    let arena = bumpalo::Bump::new();
 
-    #[cfg(feature = "lmdb")]
-    {
-        let txn = db.graph_env.read_txn().map_err(GraphError::from)?;
-        let arena = bumpalo::Bump::new();
+    let (limit, node_label) = if !input.request.body.is_empty() {
+        match sonic_rs::from_slice::<sonic_rs::Value>(&input.request.body) {
+            Ok(params) => (
+                params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as usize),
+                params
+                    .get("node_label")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            ),
+            Err(_) => (None, None),
+        }
+    } else {
+        (None, None)
+    };
 
-        let (limit, node_label) = if !input.request.body.is_empty() {
-            match sonic_rs::from_slice::<sonic_rs::Value>(&input.request.body) {
-                Ok(params) => (
-                    params
-                        .get("limit")
-                        .and_then(|v| v.as_u64())
-                        .map(|v| v as usize),
-                    params
-                        .get("node_label")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                ),
-                Err(_) => (None, None),
-            }
-        } else {
-            (None, None)
-        };
+    let json_result = if limit.is_some() {
+        db.nodes_edges_to_json(&txn, limit, node_label)?
+    } else {
+        get_all_nodes_edges_json_lmdb(&db, &txn, node_label, &arena)?
+    };
 
-        let json_result = if limit.is_some() {
-            db.nodes_edges_to_json(&txn, limit, node_label)?
-        } else {
-            get_all_nodes_edges_json_lmdb(&db, &txn, node_label, &arena)?
-        };
+    let db_stats = db.get_db_stats_json(&txn)?;
 
-        let db_stats = db.get_db_stats_json(&txn)?;
-
-        let vectors_result = db
-            .vectors
-            .get_all_vectors(&txn, None, &arena)
-            .map(|vecs| {
-                let vectors_json: Vec<sonic_rs::Value> = vecs
-                    .iter()
-                    .map(|v| {
-                        json!({
-                            "id": v.id.to_string(),
-                            "level": v.level,
-                            "distance": v.distance,
-                            "data": v.data,
-                            "dimension": v.data.len()
-                        })
+    let vectors_result = db
+        .vectors
+        .get_all_vectors(&txn, None, &arena)
+        .map(|vecs| {
+            let vectors_json: Vec<sonic_rs::Value> = vecs
+                .iter()
+                .map(|v| {
+                    json!({
+                        "id": v.id.to_string(),
+                        "level": v.level,
+                        "distance": v.distance,
+                        "data": v.data,
+                        "dimension": v.data.len()
                     })
-                    .collect();
-                sonic_rs::to_string(&vectors_json).unwrap_or_else(|_| "[]".to_string())
-            })
-            .unwrap_or_else(|_| "[]".to_string());
-
-        let combined = format!(
-            r#"{{"data": {json_result}, "vectors": {vectors_result}, "stats": {db_stats}}}"#
-        );
-
-        Ok(protocol::Response {
-            body: combined.into_bytes(),
-            fmt: Default::default(),
+                })
+                .collect();
+            sonic_rs::to_string(&vectors_json).unwrap_or_else(|_| "[]".to_string())
         })
-    }
+        .unwrap_or_else(|_| "[]".to_string());
 
-    #[cfg(feature = "rocks")]
-    {
-        use crate::sparrow_engine::storage_core::txn::ReadTransaction;
-        let txn = db.graph_env.read_txn()?;
-        let arena = bumpalo::Bump::new();
+    let combined = format!(
+        r#"{{"data": {json_result}, "vectors": {vectors_result}, "stats": {db_stats}}}"#
+    );
 
-        let (limit, node_label) = if !input.request.body.is_empty() {
-            match sonic_rs::from_slice::<sonic_rs::Value>(&input.request.body) {
-                Ok(params) => (
-                    params
-                        .get("limit")
-                        .and_then(|v| v.as_u64())
-                        .map(|v| v as usize),
-                    params
-                        .get("node_label")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                ),
-                Err(_) => (None, None),
-            }
-        } else {
-            (None, None)
-        };
-
-        let json_result = if limit.is_some() {
-            db.nodes_edges_to_json(&txn, limit, node_label)?
-        } else {
-            get_all_nodes_edges_json_rocks(&db, &txn, node_label, &arena)?
-        };
-
-        let db_stats = db.get_db_stats_json(&txn)?;
-
-        // TODO: Implement get_all_vectors for RocksDB
-        let vectors_result = "[]".to_string();
-
-        let combined = format!(
-            r#"{{"data": {json_result}, "vectors": {vectors_result}, "stats": {db_stats}}}"#
-        );
-
-        Ok(protocol::Response {
-            body: combined.into_bytes(),
-            fmt: Default::default(),
-        })
-    }
+    Ok(protocol::Response {
+        body: combined.into_bytes(),
+        fmt: Default::default(),
+    })
 }
 
-#[cfg(feature = "lmdb")]
 fn get_all_nodes_edges_json_lmdb(
     db: &Arc<crate::sparrow_engine::storage_core::SparrowGraphStorage>,
     txn: &heed3::RoTxn,
@@ -233,81 +182,6 @@ fn get_all_nodes_edges_json_lmdb(
     sonic_rs::to_string(&result).map_err(|e| GraphError::New(e.to_string()))
 }
 
-#[cfg(feature = "rocks")]
-fn get_all_nodes_edges_json_rocks(
-    db: &Arc<crate::sparrow_engine::storage_core::SparrowGraphStorage>,
-    txn: &rocksdb::Transaction<rocksdb::TransactionDB>,
-    node_label: Option<String>,
-    arena: &bumpalo::Bump,
-) -> Result<String, GraphError> {
-    use sonic_rs::json;
-
-    let mut nodes = Vec::new();
-    let mut edges = Vec::new();
-
-    // Iterate over all nodes
-    let cf_nodes = db.cf_nodes();
-    let mut iter = txn.raw_iterator_cf(&cf_nodes);
-    iter.seek_to_first();
-
-    while let Some((key, value)) = iter.item() {
-        assert!(key.len() == 16);
-        let id = u128::from_be_bytes(key.try_into().unwrap());
-        let id_str = ID::from(id).stringify();
-
-        let mut json_node = json!({
-            "id": id_str.clone(),
-            "title": id_str.clone()
-        });
-
-        if let Some(prop) = &node_label
-            && let Ok(node) = Node::from_bincode_bytes(id, value, arena)
-        {
-            json_node["label"] = json!(node.label);
-            if let Some(props) = node.properties
-                && let Some(prop_value) = props.get(prop)
-            {
-                json_node["label"] = sonic_rs::to_value(&prop_value.inner_stringify())
-                    .unwrap_or_else(|_| sonic_rs::Value::from(""));
-            }
-        }
-        nodes.push(json_node);
-
-        iter.next();
-    }
-    iter.status().map_err(GraphError::from)?;
-
-    // Iterate over all edges
-    let cf_edges = db.cf_edges();
-    let mut iter = txn.raw_iterator_cf(&cf_edges);
-    iter.seek_to_first();
-
-    while iter.valid() {
-        if let Some((key, value)) = iter.item() {
-            assert!(key.len() == 16);
-            let id = u128::from_be_bytes(key.try_into().unwrap());
-            if let Ok(edge) = Edge::from_bincode_bytes(id, value, arena) {
-                let id_str = ID::from(id).stringify();
-
-                edges.push(json!({
-                    "from": ID::from(edge.from_node).stringify(),
-                    "to": ID::from(edge.to_node).stringify(),
-                    "title": id_str.clone(),
-                    "id": id_str
-                }));
-            }
-        }
-        iter.next();
-    }
-    iter.status().map_err(GraphError::from)?;
-
-    let result = json!({
-        "nodes": nodes,
-        "edges": edges
-    });
-
-    sonic_rs::to_string(&result).map_err(|e| GraphError::New(e.to_string()))
-}
 
 inventory::submit! {
     HandlerSubmission(

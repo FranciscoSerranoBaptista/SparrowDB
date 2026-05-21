@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use crate::sparrow_engine::storage_core::storage_methods::StorageMethods;
-#[cfg(feature = "rocks")]
-use crate::sparrow_engine::storage_core::txn::ReadTransaction;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::gateway::AppState;
 use crate::sparrow_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
@@ -129,8 +127,6 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "rocks")]
-    use crate::sparrow_engine::storage_core::txn::WriteTransaction;
     use crate::{
         sparrow_engine::{
             storage_core::version_info::VersionInfo,

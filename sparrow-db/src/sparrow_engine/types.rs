@@ -6,7 +6,6 @@ use crate::{
     },
 };
 use core::fmt;
-#[cfg(feature = "lmdb")]
 use heed3::Error as HeedError;
 use serde::{Deserialize, Serialize};
 use sonic_rs::Error as SonicError;
@@ -85,7 +84,6 @@ impl fmt::Display for GraphError {
     }
 }
 
-#[cfg(feature = "lmdb")]
 impl From<HeedError> for GraphError {
     fn from(error: HeedError) -> Self {
         match error {
@@ -196,7 +194,6 @@ impl fmt::Display for VectorError {
     }
 }
 
-#[cfg(feature = "lmdb")]
 impl From<HeedError> for VectorError {
     fn from(error: HeedError) -> Self {
         VectorError::VectorCoreError(format!("heed error: {error}"))
@@ -227,19 +224,6 @@ impl From<bincode::Error> for VectorError {
     }
 }
 
-#[cfg(feature = "rocks")]
-impl From<rocksdb::Error> for VectorError {
-    fn from(error: rocksdb::Error) -> Self {
-        VectorError::VectorCoreError(format!("rocksdb error: {error}"))
-    }
-}
-
-#[cfg(feature = "rocks")]
-impl From<rocksdb::Error> for GraphError {
-    fn from(error: rocksdb::Error) -> Self {
-        GraphError::StorageError(format!("rocksdb error: {error}"))
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SecondaryIndex {
