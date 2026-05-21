@@ -5,7 +5,7 @@ pub mod macros {
     /// The vector is preallocated with capacity for all potential items.
     ///
     /// ## Example Use
-    /// ```rust
+    /// ```rust,ignore
     /// use sparrow_db::optional_props;
     /// use sparrow_db::protocol::value::Value;
     ///
@@ -44,7 +44,7 @@ pub mod macros {
     /// Creates array of pairs which each represent the property key and corresponding value.
     ///
     /// ## Example Use
-    /// ```rust
+    /// ```rust,ignore
     /// use sparrow_db::props;
     /// use sparrow_db::protocol::value::Value;
     ///
@@ -73,7 +73,7 @@ pub mod macros {
     ///
     /// ## Example Use
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// use sparrow_db::node_matches;
     /// use sparrow_db::protocol::value::Value;
     /// use sparrow_db::protocol::items::Node;

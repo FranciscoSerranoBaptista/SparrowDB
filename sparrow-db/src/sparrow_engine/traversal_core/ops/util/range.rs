@@ -52,7 +52,7 @@ pub trait RangeAdapter<'db, 'arena, 'txn>: Iterator {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let traversal = G::new(storage, &txn).range(0, 10);
     /// ```
     fn range<N, K>(

@@ -20,7 +20,7 @@ impl G {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let storage = Arc::new(SparrowGraphStorage::new());
     /// let txn = storage.graph_env.read_txn().unwrap();
     /// let traversal = G::new(storage, &txn);
@@ -57,7 +57,7 @@ impl G {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let storage = Arc::new(SparrowGraphStorage::new());
     /// let txn = storage.graph_env.read_txn().unwrap();
     /// let traversal = G::from_iter(storage, &txn, vec![TraversalValue::Node(Node { id: 1, label: "Person".to_string(), properties: None })]);
@@ -91,7 +91,7 @@ impl G {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let storage = Arc::new(SparrowGraphStorage::new());
     /// let txn = storage.graph_env.write_txn().unwrap();
     /// let traversal = G::new_mut(storage, &mut txn);

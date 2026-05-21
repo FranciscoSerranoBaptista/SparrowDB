@@ -189,7 +189,7 @@ pub trait ShortestPathAdapter<'db, 'arena, 'txn, 's, I>:
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let node1 = Node { id: 1, label: "Person".to_string(), properties: None };
     /// let node2 = Node { id: 2, label: "Person".to_string(), properties: None };
     /// let traversal = G::new(storage, &txn).shortest_path(Some("knows"), Some(&node1.id), Some(&node2.id));

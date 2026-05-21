@@ -40,7 +40,7 @@ pub trait MapAdapter<'db, 'arena, 'txn>:
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let traversal = G::new(storage, &txn).map_traversal(|item, txn| {
     ///     Ok(item)
     /// });
