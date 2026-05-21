@@ -40,7 +40,8 @@ pub async fn nodes_edges_handler(
     let mut req = protocol::request::Request {
         name: "nodes_edges".to_string(),
         req_type: RequestType::Query,
-        api_key_hash: None,
+        api_key: None,
+        pre_computed_embedding: None,
         body: axum::body::Bytes::new(),
         in_fmt: protocol::Format::default(),
         out_fmt: protocol::Format::default(),
@@ -185,7 +186,7 @@ fn get_all_nodes_edges_json_lmdb(
 
 inventory::submit! {
     HandlerSubmission(
-        Handler::new("nodes_edges", nodes_edges_inner)
+        Handler::new("nodes_edges", nodes_edges_inner, false)
     )
 }
 
@@ -231,7 +232,8 @@ mod tests {
         let request = Request {
             name: "nodes_edges".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -304,7 +306,8 @@ mod tests {
         let request = Request {
             name: "nodes_edges".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -370,7 +373,8 @@ mod tests {
         let request = Request {
             name: "nodes_edges".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -417,7 +421,8 @@ mod tests {
         let request = Request {
             name: "nodes_edges".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -439,7 +444,8 @@ mod tests {
         let request = Request {
             name: "nodes_edges".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,

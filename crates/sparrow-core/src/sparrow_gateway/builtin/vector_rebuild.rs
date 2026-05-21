@@ -13,8 +13,8 @@ use crate::protocol;
 pub fn rebuild_vector_index_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
 
-    let mut txn = db.graph_env.write_txn()?;
     let arena = bumpalo::Bump::new();
+    let mut txn = db.graph_env.write_txn()?;
 
     let stats = db
         .vectors
@@ -49,8 +49,8 @@ inventory::submit! {
 pub fn purge_soft_deleted_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
 
-    let mut txn = db.graph_env.write_txn()?;
     let arena = bumpalo::Bump::new();
+    let mut txn = db.graph_env.write_txn()?;
 
     let stats = db
         .vectors

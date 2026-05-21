@@ -28,7 +28,8 @@ pub async fn node_details_handler(
     let mut req = protocol::request::Request {
         name: "node_details".to_string(),
         req_type: RequestType::Query,
-        api_key_hash: None,
+        api_key: None,
+        pre_computed_embedding: None,
         body: axum::body::Bytes::new(),
         in_fmt: protocol::Format::default(),
         out_fmt: protocol::Format::default(),
@@ -120,7 +121,7 @@ pub fn node_details_inner(input: HandlerInput) -> Result<protocol::Response, Gra
 
 inventory::submit! {
     HandlerSubmission(
-        Handler::new("node_details", node_details_inner)
+        Handler::new("node_details", node_details_inner, false)
     )
 }
 
@@ -185,7 +186,8 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -215,7 +217,8 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -243,7 +246,8 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -265,7 +269,8 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::new(),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
@@ -312,7 +317,8 @@ mod tests {
         let request = Request {
             name: "node_details".to_string(),
             req_type: RequestType::Query,
-            api_key_hash: None,
+            api_key: None,
+            pre_computed_embedding: None,
             body: Bytes::from(params_json),
             in_fmt: Format::Json,
             out_fmt: Format::Json,
