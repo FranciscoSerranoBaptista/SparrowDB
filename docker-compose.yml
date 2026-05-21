@@ -1,0 +1,19 @@
+services:
+  sparrow:
+    build: .
+    ports:
+      - "${SPARROW_PORT:-6969}:${SPARROW_PORT:-6969}"
+    volumes:
+      - sparrow-data:/data
+    environment:
+      - SPARROW_DATA_DIR=/data
+      - SPARROW_PORT=${SPARROW_PORT:-6969}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/status | grep -q Sleeping || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  sparrow-data:
