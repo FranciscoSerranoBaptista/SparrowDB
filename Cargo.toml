@@ -19,7 +19,7 @@ strip = "debuginfo"
 
 [profile.dev]
 opt-level = 0
-codegen-units = 256
+codegen-units = 16
 lto = false
 panic = "abort"
 incremental = true

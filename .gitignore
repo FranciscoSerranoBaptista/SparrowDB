@@ -9,6 +9,6 @@ hack/
 /tmp
 /data
 claude.md
-.cargo/
+.cargo/credentials
 **/dist
 **/node_modules
