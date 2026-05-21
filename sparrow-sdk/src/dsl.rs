@@ -1,6 +1,6 @@
-//! # HelixDB Query Guide
+//! # SparrowDB Query Guide
 //!
-//! This module is the query-builder DSL of the `helix-db` crate (imported as `helix_db`),
+//! This module is the query-builder DSL of the `sparrow-sdk` crate (imported as `sparrow_sdk`),
 //! centered on two entry points:
 //! - [`read_batch()`] for read-only transactions
 //! - [`write_batch()`] for write-capable transactions
@@ -11,7 +11,7 @@
 //!
 //! For shorter query code, import the curated builder API:
 //! ```
-//! use helix_db::dsl::prelude::*;
+//! use sparrow_sdk::dsl::prelude::*;
 //! ```
 //!
 //! ## Core Shape
@@ -29,7 +29,7 @@
 //! ## Read Batches
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "user",
@@ -47,7 +47,7 @@
 //! ```
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "active_users",
@@ -67,7 +67,7 @@
 //! variables satisfy runtime conditions.
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "user",
@@ -84,7 +84,7 @@
 //! ## Write Batches
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! write_batch()
 //!     .var_as(
 //!         "alice",
@@ -106,7 +106,7 @@
 //! ```
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! write_batch()
 //!     .var_as(
 //!         "inactive_users",
@@ -156,7 +156,7 @@
 //! ### 1) Create indexes and insert vectors
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! write_batch()
 //!     .var_as(
 //!         "create_doc_index",
@@ -200,7 +200,7 @@
 //! ### 2) Node vector search: get ranked hits and fetch node properties
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "doc_hits",
@@ -221,7 +221,7 @@
 //! ### 3) Use `project(...)` on vector hits (including distance)
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "ranked_docs",
@@ -241,7 +241,7 @@
 //! continue graph traversal from those hit IDs.
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "doc_hit_rows",
@@ -260,7 +260,7 @@
 //! ### 5) Edge vector search and endpoint/property extraction
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "edge_hits",
@@ -282,7 +282,7 @@
 //! ### 6) Optional multitenancy
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! write_batch()
 //!     .var_as(
 //!         "create_mt_index",
@@ -307,7 +307,7 @@
 //! ```
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "acme_hits",
@@ -331,7 +331,7 @@
 //! ## Edge-First Reads
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "heavy_edges",
@@ -354,7 +354,7 @@
 //! ## Branching and Repetition
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "recommendations",
@@ -378,7 +378,7 @@
 //! ### Sources, NodeRef, EdgeRef, and Vector Search
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as("n_id", g().n(NodeRef::id(1)))
 //!     .var_as("n_ids", g().n(NodeRef::ids([1u64, 2, 3])))
@@ -449,7 +449,7 @@
 //! ### Node Traversal, Filters, Predicates, Expressions, and Projections
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "filtered",
@@ -546,7 +546,7 @@
 //! ### Edge Traversal and Edge Terminals
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "edge_ops",
@@ -576,7 +576,7 @@
 //! ### Branching, Sub-Traversals, Repeat, Grouping, Paths, and Sack
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as(
 //!         "advanced",
@@ -677,7 +677,7 @@
 //! ### Read-Batch Conditions
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! read_batch()
 //!     .var_as("base", g().n_with_label("User"))
 //!     .var_as_if(
@@ -706,7 +706,7 @@
 //! ### Write Sources, Mutations, and Vector Index Configuration
 //!
 //! ```
-//! # use helix_db::dsl::prelude::*;
+//! # use sparrow_sdk::dsl::prelude::*;
 //! write_batch()
 //!     .var_as("created_user", g().add_n("User", vec![("name", "Alice")]))
 //!     .var_as(
@@ -4568,7 +4568,7 @@ pub fn write_batch() -> WriteBatch {
 /// This module re-exports the APIs most users reach for when building read and
 /// write batches.
 ///
-/// Typical usage in application code: `use helix_db::dsl::prelude::*;`
+/// Typical usage in application code: `use sparrow_sdk::dsl::prelude::*;`
 #[allow(missing_docs)]
 pub mod prelude {
     pub use crate::{
