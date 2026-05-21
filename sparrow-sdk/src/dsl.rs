@@ -128,7 +128,7 @@
 //!
 //! ## Vector Search Operations (End-to-End)
 //!
-//! The current Helix interpreter executes vector search as top-k nearest-neighbor
+//! The current SparrowDB runtime executes vector search as top-k nearest-neighbor
 //! lookup with these runtime semantics:
 //! - returns up to `k` hits (top-k behavior)
 //! - hit order is ascending by `$distance` (smaller is closer)
@@ -147,7 +147,7 @@
 //!
 //! `*` For edge hits, `$id` is present when an edge ID is available in storage.
 //!
-//! Contract scope in the current Helix interpreter:
+//! Contract scope in the current SparrowDB runtime:
 //! - available on direct vector-hit streams and projection terminals
 //! - available in `value_map`, `values`, `project`, and (for edges) `edge_properties`
 //! - once a traversal step leaves the hit stream (`out`, `in_`, `both`, etc.),
@@ -323,7 +323,7 @@
 //!     .returning(["acme_hits"]);
 //! ```
 //!
-//! Multitenant behavior in the current Helix interpreter:
+//! Multitenant behavior in the current SparrowDB runtime:
 //! - multitenant index + missing `tenant_value` on search => query error
 //! - multitenant index + unknown tenant => empty result set
 //! - write with vector present but missing tenant property => write error
@@ -788,7 +788,7 @@
 //! - `n(...)`, `n_where(...)`, `n_with_label(...)`
 //! - `e(...)`, `e_where(...)`, `e_with_label(...)`
 //! - `vector_search_nodes(...)`, `vector_search_edges(...)`
-//!   - current Helix runtime exposes vector hit metadata via virtual fields
+//!   - current SparrowDB runtime exposes vector hit metadata via virtual fields
 //!     (`$id`, `$distance`, `$from`, `$to`) in terminal projections
 //!
 //! Common navigation and filtering:
@@ -2319,7 +2319,7 @@ impl SubTraversal {
 
     /// Include the full traversal path in results.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn path(mut self) -> Self {
         self.steps.push(Step::Path);
         self
@@ -2327,7 +2327,7 @@ impl SubTraversal {
 
     /// Filter to only simple paths (no repeated nodes).
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn simple_path(mut self) -> Self {
         self.steps.push(Step::SimplePath);
         self
@@ -3013,44 +3013,44 @@ pub enum Step {
 
     /// Barrier step.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     Fold,
 
     /// Expand a collected list back into individual items.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     Unfold,
 
     // Path Steps - Track traversal history
     /// Include the full traversal path in results.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     Path,
 
     /// Filter to paths without repeated nodes (cycle detection).
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     SimplePath,
 
     // Sack Steps - Carry state through traversal
     /// Initialize a sack with a value.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     WithSack(PropertyValue),
 
     /// Update the sack with a property value.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     SackSet(String),
 
     /// Add to the sack (numeric only).
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     SackAdd(String),
 
     /// Get the current sack value.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     SackGet,
 
     // Inject Steps - Add values to the stream
@@ -3248,7 +3248,7 @@ impl Traversal<Empty, ReadOnly> {
     /// Uses the HNSW index for the given (label, property) combination to find
     /// the k nearest neighbors to the query vector.
     ///
-    /// Runtime behavior in the current Helix interpreter:
+    /// Runtime behavior in the current SparrowDB runtime:
     /// - returns top-k nearest hits (up to `k`) ordered by ascending distance
     /// - `value_map`, `values`, and `project` can read virtual fields `$id` and `$distance`
     /// - after traversing away from the hit stream (for example, `out`/`in_`),
@@ -3382,7 +3382,7 @@ impl Traversal<Empty, ReadOnly> {
     /// Uses the HNSW index for the given (label, property) combination to find
     /// the k nearest neighbors to the query vector.
     ///
-    /// Runtime behavior in the current Helix interpreter:
+    /// Runtime behavior in the current SparrowDB runtime:
     /// - returns top-k nearest hits (up to `k`) ordered by ascending distance
     /// - `edge_properties` includes virtual fields `$from`, `$to`, and `$distance`
     ///   (plus `$id` when available)
@@ -3537,7 +3537,7 @@ impl Traversal<Empty, ReadOnly> {
     ///
     /// The node ID is automatically allocated.
     ///
-    /// In the current Helix interpreter, this step creates exactly one node and
+    /// In the current SparrowDB runtime, this step creates exactly one node and
     /// starts the traversal from that node.
     ///
     pub fn add_n<K, V>(
@@ -3855,14 +3855,14 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
 
     /// Barrier step.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn fold(self) -> Self {
         self.push_step(Step::Fold)
     }
 
     /// Expand a collected list back into individual items.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn unfold(self) -> Self {
         self.push_step(Step::Unfold)
     }
@@ -3871,7 +3871,7 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
 
     /// Include the full traversal path in results.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     ///
     pub fn path(self) -> Self {
         self.push_step(Step::Path)
@@ -3879,7 +3879,7 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
 
     /// Filter to only simple paths (no repeated nodes).
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn simple_path(self) -> Self {
         self.push_step(Step::SimplePath)
     }
@@ -3888,7 +3888,7 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
 
     /// Initialize a sack (traverser-local state) with a value.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     ///
     pub fn with_sack(self, initial: PropertyValue) -> Self {
         self.push_step(Step::WithSack(initial))
@@ -3896,21 +3896,21 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
 
     /// Set the sack to a property value from the current node.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn sack_set(self, property: impl Into<String>) -> Self {
         self.push_step(Step::SackSet(property.into()))
     }
 
     /// Add a property value to the sack (numeric types only).
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn sack_add(self, property: impl Into<String>) -> Self {
         self.push_step(Step::SackAdd(property.into()))
     }
 
     /// Get the current sack value.
     ///
-    /// Note: this step is reserved; the current Helix interpreter treats it as a no-op.
+    /// Note: this step is reserved; the current SparrowDB runtime treats it as a no-op.
     pub fn sack_get(self) -> Self {
         self.push_step(Step::SackGet)
     }
@@ -3921,7 +3921,7 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
     ///
     /// The node ID is automatically allocated.
     ///
-    /// In the current Helix interpreter, this step creates exactly one node and
+    /// In the current SparrowDB runtime, this step creates exactly one node and
     /// replaces the current node stream with that new node.
     pub fn add_n<K, V>(
         self,
@@ -3944,7 +3944,7 @@ impl<M: MutationMode> Traversal<OnNodes, M> {
 
     /// Add edges from the current nodes to target nodes.
     ///
-    /// In the current Helix interpreter, this creates edges for every pair in the
+    /// In the current SparrowDB runtime, this creates edges for every pair in the
     /// cartesian product `current_nodes x target_nodes` and leaves the current
     /// node stream unchanged.
     ///
