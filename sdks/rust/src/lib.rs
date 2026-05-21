@@ -1,12 +1,12 @@
 
-//! # sparrow-sdk Rust SDK
+//! # helix-db Rust SDK
 //!
 //! Crate root. The query-builder DSL lives in [`dsl`] and the query bundle /
 //! code-generation support lives in [`query_generator`].
 //!
 //! Most application code only needs the curated builder API:
 //! ```
-//! use sparrow_sdk::dsl::prelude::*;
+//! use helix_db::dsl::prelude::*;
 //! ```
 
 pub mod dsl;
@@ -19,17 +19,17 @@ use std::marker::PhantomData;
 // `query_generator.rs` resolve.
 pub use dsl::*;
 
-// Convenience re-export so `sparrow_sdk::prelude::*` is reachable directly, in
-// addition to the canonical `sparrow_sdk::dsl::prelude::*`.
+// Convenience re-export so `helix_db::prelude::*` is reachable directly, in
+// addition to the canonical `helix_db::dsl::prelude::*`.
 pub use dsl::prelude;
 
 use reqwest::{Client as ReqwestClient, StatusCode};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Async HTTP client for running queries against a SparrowDB instance.
+/// Async HTTP client for running queries against a Helix instance.
 ///
-/// Reachable as `sparrow_sdk::Client`.
+/// Reachable as `helix_db::Client`.
 #[derive(Debug, Clone)]
 pub struct Client {
     client: ReqwestClient,
@@ -38,10 +38,10 @@ pub struct Client {
 }
 
 /// Backwards-compatible alias for [`Client`].
-pub type SparrowDBClient = Client;
+pub type HelixDBClient = Client;
 
 #[derive(Debug, Error)]
-pub enum SparrowError {
+pub enum HelixError {
     #[error("Error communicating with server: {0}")]
     ReqwestError(#[from] reqwest::Error),
     #[error("Got Error from server: {details}")]
@@ -53,13 +53,13 @@ pub enum SparrowError {
 }
 
 impl Client {
-    pub fn new(url: Option<&str>) -> Result<Self, SparrowError> {
+    pub fn new(url: Option<&str>) -> Result<Self, HelixError> {
         // Resolve the base query endpoint up front. `send()` reuses this for
         // dynamic queries and appends `/<name>` for stored queries.
         let url = reqwest::Url::parse(url.unwrap_or("http://localhost:6969"))
-            .map_err(|e| SparrowError::InvalidURL(e.to_string()))?
+            .map_err(|e| HelixError::InvalidURL(e.to_string()))?
             .join("/v1/query")
-            .map_err(|e| SparrowError::InvalidURL(e.to_string()))?;
+            .map_err(|e| HelixError::InvalidURL(e.to_string()))?;
         Ok(Self {
             client: ReqwestClient::new(),
             url,
@@ -78,7 +78,7 @@ impl Client {
 }
 
 pub struct QueryBuilder<'hlx, 'a, R> {
-    client: &'hlx SparrowDBClient,
+    client: &'hlx HelixDBClient,
     query_type: QueryType,
     headers: [Option<(&'a str, &'a str)>; 4],
     body: Option<Vec<u8>>,
@@ -94,7 +94,7 @@ pub(crate) enum QueryType {
 }
 
 impl<'hlx, 'a, R> QueryBuilder<'hlx, 'a, R> {
-    pub fn new(client: &'hlx SparrowDBClient) -> Self {
+    pub fn new(client: &'hlx HelixDBClient) -> Self {
         let mut headers = [None; 4];
         headers[0] = Some(("Content-Type", "application/json"));
         Self {
@@ -125,7 +125,7 @@ impl<'hlx, 'a, R> QueryBuilder<'hlx, 'a, R> {
         self
     }
 
-    pub fn body<T: Serialize + Sync>(mut self, data: &T) -> Result<Self, SparrowError> {
+    pub fn body<T: Serialize + Sync>(mut self, data: &T) -> Result<Self, HelixError> {
         self.body = Some(sonic_rs::to_vec(data)?);
         Ok(self)
     }
@@ -146,7 +146,7 @@ pub struct QueryRequest<'hlx, 'a, R> {
 }
 
 impl<'hlx, 'a, R: for<'de> Deserialize<'de>> QueryRequest<'hlx, 'a, R> {
-    pub async fn send(self) -> Result<R, SparrowError> {
+    pub async fn send(self) -> Result<R, HelixError> {
         let query_request = self.request;
         let (url, body) = match query_request.query_type {
             QueryType::Dynamic(query) => ("/v1/query".to_string(), Some(sonic_rs::to_vec(&query)?)),
@@ -159,7 +159,7 @@ impl<'hlx, 'a, R: for<'de> Deserialize<'de>> QueryRequest<'hlx, 'a, R> {
             .client
             .url
             .join(&url)
-            .map_err(|e| SparrowError::InvalidURL(e.to_string()))?;
+            .map_err(|e| HelixError::InvalidURL(e.to_string()))?;
 
         let mut request = query_request.client.client.post(url);
 
@@ -181,12 +181,12 @@ impl<'hlx, 'a, R: for<'de> Deserialize<'de>> QueryRequest<'hlx, 'a, R> {
                 sonic_rs::from_slice::<R>(&bytes).map_err(Into::into)
             }
             code => match response.text().await {
-                Ok(t) => Err(SparrowError::RemoteError { details: t }),
+                Ok(t) => Err(HelixError::RemoteError { details: t }),
                 Err(_) => match code.canonical_reason() {
-                    Some(r) => Err(SparrowError::RemoteError {
+                    Some(r) => Err(HelixError::RemoteError {
                         details: r.to_string(),
                     }),
-                    None => Err(SparrowError::RemoteError {
+                    None => Err(HelixError::RemoteError {
                         details: format!("unkown error with code: {code}"),
                     }),
                 },
@@ -195,16 +195,16 @@ impl<'hlx, 'a, R: for<'de> Deserialize<'de>> QueryRequest<'hlx, 'a, R> {
     }
 }
 
-extern crate self as sparrow_sdk;
+extern crate self as helix_db;
 
 #[cfg(test)]
 mod tests {
-    use sparrow_sdk::dsl::prelude::*;
+    use helix_db::dsl::prelude::*;
     use std::collections::BTreeMap;
 
     #[register]
     fn query1(name: String) {
-        // sparrow_sdk query that returns a read query or write query
+        // helix_db query that returns a read query or write query
         read_batch()
             .var_as("user", g().n_where(SourcePredicate::eq("username", name)))
             .var_as(
@@ -497,7 +497,7 @@ mod tests {
 mod client_tests {
     //! Tests for the `Client` / `QueryBuilder` request-building surface. These
     //! exercise everything up to (but not including) the network round-trip, so
-    //! they need no running SparrowDB instance. As a child module of the crate root
+    //! they need no running Helix instance. As a child module of the crate root
     //! they can read the builder's private fields directly.
     use super::*;
     use serde::Deserialize;
@@ -527,14 +527,14 @@ mod client_tests {
 
     #[test]
     fn new_parses_custom_url() {
-        let client = Client::new(Some("https://cluster.sparrowdb.example.com")).unwrap();
-        assert_eq!(client.url.as_str(), "https://cluster.sparrowdb.example.com/v1/query");
+        let client = Client::new(Some("https://cluster.helix-db.com")).unwrap();
+        assert_eq!(client.url.as_str(), "https://cluster.helix-db.com/v1/query");
     }
 
     #[test]
     fn new_rejects_invalid_url() {
         let err = Client::new(Some("not a url")).unwrap_err();
-        assert!(matches!(err, SparrowError::InvalidURL(_)));
+        assert!(matches!(err, HelixError::InvalidURL(_)));
     }
 
     #[test]
