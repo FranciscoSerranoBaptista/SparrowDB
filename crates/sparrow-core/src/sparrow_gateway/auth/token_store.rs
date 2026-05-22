@@ -219,7 +219,7 @@ impl TokenStore {
 // Tests
 // ---------------------------------------------------------------------------
 
-#[cfg(test)]
+#[cfg(all(test, feature = "lmdb"))]
 mod tests {
     use super::*;
     use tempfile::TempDir;

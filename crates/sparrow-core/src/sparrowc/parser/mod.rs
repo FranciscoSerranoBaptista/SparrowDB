@@ -202,6 +202,7 @@ impl SparrowParser {
     }
 }
 
+#[cfg(test)]
 pub fn write_to_temp_file(content: Vec<&str>) -> Content {
     let mut files = Vec::new();
     for c in content {
