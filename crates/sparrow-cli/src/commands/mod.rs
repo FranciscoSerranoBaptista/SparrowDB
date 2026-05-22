@@ -18,3 +18,4 @@ pub mod status;
 pub mod stop;
 pub mod stress;
 pub mod update;
+pub mod upgrade;

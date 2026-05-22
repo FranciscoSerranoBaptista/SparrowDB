@@ -189,9 +189,15 @@ enum Commands {
         force: bool,
     },
 
-    /// Migrate v1 project to v2 format
+    /// Manage schema migrations (status / apply / list)
     Migrate {
-        /// Project directory to migrate (defaults to current directory)
+        #[command(subcommand)]
+        subcommand: commands::migrate::MigrateSubcommand,
+    },
+
+    /// Upgrade a v1 project to v2 format
+    Upgrade {
+        /// Project directory to upgrade (defaults to current directory)
         #[arg(short, long)]
         path: Option<String>,
 
@@ -207,7 +213,7 @@ enum Commands {
         #[arg(long, default_value = "6969")]
         port: u16,
 
-        /// Show what would be migrated without making changes
+        /// Show what would be changed without making changes
         #[arg(long)]
         dry_run: bool,
 
@@ -454,7 +460,8 @@ async fn main() -> Result<()> {
             Commands::Metrics { action } => commands::metrics::run(action).await,
             Commands::Data { action } => commands::data::run(action).await,
             Commands::Update { force } => commands::update::run(force).await,
-            Commands::Migrate {
+            Commands::Migrate { subcommand } => commands::migrate::run(subcommand).await,
+            Commands::Upgrade {
                 path,
                 queries_dir,
                 instance_name,
@@ -462,7 +469,7 @@ async fn main() -> Result<()> {
                 dry_run,
                 no_backup,
             } => {
-                commands::migrate::run(path, queries_dir, instance_name, port, dry_run, no_backup)
+                commands::upgrade::run(path, queries_dir, instance_name, port, dry_run, no_backup)
                     .await
             }
             Commands::Backup { instance, output } => commands::backup::run(output, instance).await,
