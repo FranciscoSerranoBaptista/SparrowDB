@@ -10,6 +10,7 @@ hack/
 /data
 .cargo/credentials
 **/dist
+!packages/studio/dist/index.html
 **/dist-dev
 **/node_modules
 .superpowers/
