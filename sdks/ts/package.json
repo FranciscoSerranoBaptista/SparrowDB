@@ -1,0 +1,21 @@
+{
+  "name": "sparrow-sdk",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for SparrowDB — query-builder DSL",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist-dev/src/index.js",
+      "types": "./dist-dev/src/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^5.9.3"
+  },
+  "license": "Apache-2.0"
+}
