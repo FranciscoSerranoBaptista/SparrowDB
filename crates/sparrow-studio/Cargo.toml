@@ -1,0 +1,19 @@
+[package]
+name = "sparrow-studio"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "sparrow_studio"
+path = "src/lib.rs"
+
+[dependencies]
+rust-embed = { version = "8", features = ["mime-guess"] }
+axum = "0.8.4"
+mime_guess = "2"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tokio = { version = "1", features = ["full"] }

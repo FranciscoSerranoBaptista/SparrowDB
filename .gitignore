@@ -12,3 +12,4 @@ hack/
 **/dist
 **/dist-dev
 **/node_modules
+.superpowers/

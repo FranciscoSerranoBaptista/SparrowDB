@@ -1,2 +1,3 @@
 packages:
   - 'sdks/ts'
+  - 'packages/studio'
