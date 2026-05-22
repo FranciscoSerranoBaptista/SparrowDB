@@ -27,14 +27,22 @@ All notable changes to SparrowDB are documented here.
 - `sparrow upgrade` — the former `sparrow migrate` v1→v2 project wizard is renamed to `upgrade`; `sparrow migrate` is now the schema-migration subcommand dispatcher
 
 **Auth / TokenStore**
-- `TokenStore` — LMDB-backed named token registry with role-based access control
-  - Roles: `admin` (full read/write) and `readonly` (read-only queries)
-  - `create_token(name, role)` — generates a random 256-bit token and stores it
-  - `revoke(name)` — deletes a named token; no-ops if the name is unknown
-  - `verify(token) -> Option<Role>` — constant-time lookup returning the role if the token exists
-- `seed_legacy` — on startup, backfills the `SPARROW_API_KEY` environment variable as an `admin` token for backward compatibility with single-key deployments
-- `SparrowGateway` and `AppState` now hold an `Arc<TokenStore>` (gated on the `lmdb` feature)
-- Per-request token verification enforced on all routes when the `api-key` feature is enabled
+- `TokenStore` — LMDB-backed named token registry stored in a dedicated `{data_parent}/auth/` LMDB environment
+  - Three roles: `Admin` (full access + token management), `ReadWrite` (read + write queries), `ReadOnly` (read-only queries)
+  - `create(name, role)` — generates a `sparrow_<32 hex chars>` token, stores only the SHA-256 hash; returns the raw token once
+  - `revoke(id)` — deletes a token by its 8-char short ID; returns `false` when not found
+  - `verify(raw_key)` — constant-time full-store scan using `subtle::ConstantTimeEq`; returns `TokenRecord` on success
+  - `list()` — returns all token records (never raw keys)
+  - `is_auth_required()` — returns `false` when the store is empty; server runs unauthenticated in dev mode with no tokens
+- `seed_legacy` — on startup, seeds `SPARROW_API_KEY` as an Admin token; idempotent and backward-compatible with single-key deployments
+- `SparrowGateway` and `AppState` now carry `Arc<TokenStore>` (gated on the `lmdb` feature); auth path derived from `opts.path` automatically
+- Auth enforced on all three gateway entry points (`post_handler`, `introspect_schema_handler`, `v1_query_axum_handler`); write routes additionally require `can_write()` role
+- Removed `api-key` feature flag — replaced by always-compiled `TokenStore` auth that self-disables when the store is empty
+- **Token management REST API** (`#[cfg(feature = "lmdb")]`):
+  - `GET /tokens` — list all tokens; Admin role required
+  - `POST /tokens` — create a named token with a role; returns the raw token once; Admin role required
+  - `DELETE /tokens/{id}` — revoke a token by short ID; Admin role required
+  - Bootstrap: when no tokens exist, `POST /tokens` is callable without credentials to create the first Admin token
 
 **Sparrow Studio (embedded web UI)**
 - New `sparrow-studio` crate — pre-built React/TypeScript assets served via `rust-embed` at `GET /studio` and `GET /studio/*`
@@ -68,12 +76,15 @@ All notable changes to SparrowDB are documented here.
 - `#[sparrow_migration]` macro path corrected from `graph_core::ops::version_info` to `storage_core::version_info`
 
 **Auth / TokenStore**
-- Constant-time verification loop prevents timing-based token enumeration
-- Complete the full scan before returning `None` — previously short-circuited on the first non-matching entry
-- Serialize all writes with a `Mutex` to prevent concurrent insertions from racing inside LMDB
-- `seed_legacy` is idempotent — calling it multiple times on startup does not create duplicate entries
-- Use the `db.delete` return value in `revoke()` to detect concurrent deletion races
-- `pub mod auth` gated on the `lmdb` feature — previously caused compile errors on non-lmdb builds
+- Constant-time verification uses `subtle::ConstantTimeEq` over a full scan — no early exit after a match prevents timing-based token enumeration
+- All write paths serialized with `std::sync::Mutex` — prevents concurrent LMDB write-txn deadlocks from async Axum handlers
+- `seed_legacy` is idempotent — unconditional `put` replaces the read-then-write TOCTOU race
+- `revoke()` uses the `db.delete` return value instead of hardcoding `true` — correctly reports concurrent deletion
+- `require_admin` gated on `lmdb` feature — was missing the gate, causing compile errors on non-lmdb builds
+- `seed_legacy` logs `warn!` on LMDB write failures — previously swallowed errors silently, leaving the server unauthenticated with no operator signal
+- Auth path derivation handles bare-filename `opts.path` — `Path::parent()` returns `Some("")` for bare names; now treated as absent and falls back to a unique `/tmp` path
+- `SparrowError::InvalidApiKey` now maps to HTTP 401 (was 403); new `SparrowError::Forbidden` maps to 403
+- `DELETE /tokens/:id` route corrected to `DELETE /tokens/{id}` — Axum 0.8 dropped colon-style path parameters
 
 **Sparrow Studio**
 - Parse `/introspect` JSON response correctly in the Studio API client (was treating the raw string as the schema)
