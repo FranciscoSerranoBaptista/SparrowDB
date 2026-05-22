@@ -1,0 +1,31 @@
+{
+  "name": "@sparrowdb/studio",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "solid-js": "^1.9.0",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.35.0",
+    "@codemirror/language": "^6.10.8",
+    "@codemirror/commands": "^6.7.1",
+    "@codemirror/search": "^6.5.8",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "cytoscape": "^3.31.0",
+    "cytoscape-cose-bilkent": "^4.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-solid": "^2.11.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/cytoscape": "^3.21.8",
+    "jsdom": "^26.0.0"
+  }
+}
