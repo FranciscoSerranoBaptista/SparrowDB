@@ -1,4 +1,4 @@
-use crate::commands::run::{resolve_binary, resolve_data_dir};
+use sparrow_cli::commands::run::{resolve_binary, resolve_data_dir};
 use std::fs;
 use tempfile::TempDir;
 

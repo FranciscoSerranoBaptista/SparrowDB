@@ -1,6 +1,8 @@
-use crate::commands::compile::run;
-use crate::config::SparrowConfig;
-use crate::tests::test_utils::TestContext;
+mod test_utils;
+
+use sparrow_cli::commands::compile::run;
+use sparrow_cli::config::SparrowConfig;
+use test_utils::TestContext;
 use std::fs;
 use std::path::PathBuf;
 

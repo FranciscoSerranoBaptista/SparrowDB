@@ -1,5 +1,7 @@
-use crate::config::SparrowConfig;
-use crate::project::{ProjectContext, get_sparrow_cache_dir};
+mod test_utils;
+
+use sparrow_cli::config::SparrowConfig;
+use sparrow_cli::project::{ProjectContext, get_sparrow_cache_dir};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -213,7 +215,7 @@ fn test_project_context_ensure_instance_dirs_idempotent() {
 
 #[test]
 fn test_get_sparrow_cache_dir_creates_directory() {
-    use crate::tests::test_utils::TestContext;
+    use test_utils::TestContext;
 
     // Use TestContext to isolate the test from other tests
     let ctx = TestContext::new();

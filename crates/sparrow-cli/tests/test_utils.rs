@@ -104,7 +104,7 @@ impl TestContext {
     /// - db/schema.hx with sample node and edge definitions
     /// - db/queries.hx with sample queries
     pub fn setup_valid_project(&self) {
-        use crate::config::SparrowConfig;
+        use sparrow_cli::config::SparrowConfig;
         use std::fs;
 
         // Create sparrow.toml
@@ -164,7 +164,7 @@ QUERY GetUserPosts(user_id: ID) =>
 
     /// Create a sparrow project with only schema (no queries).
     pub fn setup_schema_only_project(&self) {
-        use crate::config::SparrowConfig;
+        use sparrow_cli::config::SparrowConfig;
         use std::fs;
 
         // Create sparrow.toml
@@ -198,7 +198,7 @@ E::Follows {
 
     /// Create a sparrow project without schema definitions (queries only, should fail validation).
     pub fn setup_project_without_schema(&self) {
-        use crate::config::SparrowConfig;
+        use sparrow_cli::config::SparrowConfig;
         use std::fs;
 
         // Create sparrow.toml
@@ -226,7 +226,7 @@ QUERY GetUser(user_id: ID) =>
 
     /// Create a sparrow project with invalid syntax in queries.
     pub fn setup_project_with_invalid_syntax(&self) {
-        use crate::config::SparrowConfig;
+        use sparrow_cli::config::SparrowConfig;
         use std::fs;
 
         // Create sparrow.toml
@@ -269,39 +269,3 @@ impl Default for TestContext {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_context_creates_directories() {
-        let ctx = TestContext::new();
-
-        assert!(ctx.project_path.exists());
-        assert!(ctx.cache_dir.exists());
-    }
-
-    #[test]
-    fn test_context_sets_env_var() {
-        let ctx = TestContext::new();
-
-        let env_value = std::env::var("SPARROW_CACHE_DIR").expect("SPARROW_CACHE_DIR should be set");
-        assert_eq!(PathBuf::from(env_value), ctx.cache_dir);
-    }
-
-    // NOTE: test_context_restores_env_var_on_drop is removed because it
-    // cannot run reliably in parallel with other tests that also set
-    // SPARROW_CACHE_DIR. The EnvGuard functionality is tested implicitly
-    // through the other tests.
-
-    #[test]
-    fn test_setup_valid_project() {
-        let ctx = TestContext::new();
-        ctx.setup_valid_project();
-
-        assert!(ctx.project_path.join("sparrow.toml").exists());
-        assert!(ctx.project_path.join(".sparrow").exists());
-        assert!(ctx.project_path.join("db/schema.hx").exists());
-        assert!(ctx.project_path.join("db/queries.hx").exists());
-    }
-}

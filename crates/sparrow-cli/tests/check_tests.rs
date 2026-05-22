@@ -1,7 +1,9 @@
-use crate::commands::check::run;
-use crate::config::{DbConfig, SparrowConfig, LocalInstanceConfig};
-use crate::metrics_sender::MetricsSender;
-use crate::tests::test_utils::TestContext;
+mod test_utils;
+
+use sparrow_cli::commands::check::run;
+use sparrow_cli::config::{DbConfig, SparrowConfig, LocalInstanceConfig};
+use sparrow_cli::metrics_sender::MetricsSender;
+use test_utils::TestContext;
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
@@ -135,8 +137,8 @@ async fn test_check_with_multiple_instances() {
         "staging".to_string(),
         LocalInstanceConfig {
             port: Some(6970),
-            build_mode: crate::config::BuildMode::Dev,
-            storage_backend: crate::config::StorageBackend::Lmdb,
+            build_mode: sparrow_cli::config::BuildMode::Dev,
+            storage_backend: sparrow_cli::config::StorageBackend::Lmdb,
             db_config: DbConfig::default(),
         },
     );
@@ -144,8 +146,8 @@ async fn test_check_with_multiple_instances() {
         "production".to_string(),
         LocalInstanceConfig {
             port: Some(6971),
-            build_mode: crate::config::BuildMode::Dev,
-            storage_backend: crate::config::StorageBackend::Lmdb,
+            build_mode: sparrow_cli::config::BuildMode::Dev,
+            storage_backend: sparrow_cli::config::StorageBackend::Lmdb,
             db_config: DbConfig::default(),
         },
     );

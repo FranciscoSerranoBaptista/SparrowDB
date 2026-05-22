@@ -1,4 +1,4 @@
-use crate::commands::data::{clone_impl, copy_dir_all, resolve_db_dir, restore_impl, snapshot_impl};
+use sparrow_cli::commands::data::{clone_impl, copy_dir_all, resolve_db_dir, restore_impl, snapshot_impl};
 use std::fs;
 use tempfile::tempdir;
 

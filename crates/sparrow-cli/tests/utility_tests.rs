@@ -3,8 +3,10 @@
 //! These tests focus on error paths and configuration validation
 //! that don't require external services.
 
-use crate::config::SparrowConfig;
-use crate::tests::test_utils::TestContext;
+mod test_utils;
+
+use sparrow_cli::config::SparrowConfig;
+use test_utils::TestContext;
 use serial_test::serial;
 use std::fs;
 
@@ -13,8 +15,9 @@ use std::fs;
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_add_fails_without_sparrow_project() {
-    use crate::commands::add;
+    use sparrow_cli::commands::add;
 
     let ctx = TestContext::new();
     // Don't set up any project
@@ -30,9 +33,10 @@ async fn test_add_fails_without_sparrow_project() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_add_local_instance_succeeds() {
-    use crate::CloudDeploymentTypeCommand;
-    use crate::commands::add;
+    use sparrow_cli::CloudDeploymentTypeCommand;
+    use sparrow_cli::commands::add;
 
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -61,9 +65,10 @@ async fn test_add_local_instance_succeeds() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_add_rejects_duplicate_instance_name() {
-    use crate::CloudDeploymentTypeCommand;
-    use crate::commands::add;
+    use sparrow_cli::CloudDeploymentTypeCommand;
+    use sparrow_cli::commands::add;
 
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -88,8 +93,9 @@ async fn test_add_rejects_duplicate_instance_name() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_add_requires_deployment_type_in_non_interactive() {
-    use crate::commands::add;
+    use sparrow_cli::commands::add;
 
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -115,8 +121,9 @@ async fn test_add_requires_deployment_type_in_non_interactive() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_prune_fails_for_specific_instance_outside_project() {
-    use crate::commands::prune;
+    use sparrow_cli::commands::prune;
 
     let ctx = TestContext::new();
     // Don't set up any project
@@ -137,8 +144,9 @@ async fn test_prune_fails_for_specific_instance_outside_project() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_prune_all_fails_outside_project() {
-    use crate::commands::prune;
+    use sparrow_cli::commands::prune;
 
     let ctx = TestContext::new();
     // Don't set up any project
@@ -151,8 +159,9 @@ async fn test_prune_all_fails_outside_project() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_prune_nonexistent_instance_fails() {
-    use crate::commands::prune;
+    use sparrow_cli::commands::prune;
 
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -179,8 +188,8 @@ async fn test_prune_nonexistent_instance_fails() {
 #[tokio::test]
 #[serial]
 async fn test_metrics_status_succeeds() {
-    use crate::MetricsAction;
-    use crate::commands::metrics;
+    use sparrow_cli::MetricsAction;
+    use sparrow_cli::commands::metrics;
 
     let _ctx = TestContext::new();
 
@@ -192,8 +201,8 @@ async fn test_metrics_status_succeeds() {
 #[tokio::test]
 #[serial]
 async fn test_metrics_basic_enables_collection() {
-    use crate::MetricsAction;
-    use crate::commands::metrics;
+    use sparrow_cli::MetricsAction;
+    use sparrow_cli::commands::metrics;
 
     let ctx = TestContext::new();
 
@@ -207,7 +216,7 @@ async fn test_metrics_basic_enables_collection() {
 
     // Derive config path from the same env var the command uses, not from ctx,
     // to avoid stale-path races with concurrent non-serial tests.
-    let config_path = crate::metrics_sender::get_metrics_config_path()
+    let config_path = sparrow_cli::metrics_sender::get_metrics_config_path()
         .expect("Should resolve metrics config path");
     assert!(
         config_path.exists(),
@@ -231,8 +240,9 @@ async fn test_metrics_basic_enables_collection() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_migrate_fails_without_v1_config() {
-    use crate::commands::migrate;
+    use sparrow_cli::commands::migrate;
 
     let ctx = TestContext::new();
     // Create an empty directory without v1 config
@@ -259,8 +269,9 @@ async fn test_migrate_fails_without_v1_config() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_migrate_fails_if_v2_exists() {
-    use crate::commands::migrate;
+    use sparrow_cli::commands::migrate;
 
     let ctx = TestContext::new();
 
@@ -322,8 +333,9 @@ async fn test_migrate_fails_if_v2_exists() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_migrate_dry_run_shows_plan() {
-    use crate::commands::migrate;
+    use sparrow_cli::commands::migrate;
 
     let ctx = TestContext::new();
 
@@ -432,7 +444,7 @@ build_mode = "debug"
     // But the config contains Debug mode which is deprecated
     assert_eq!(
         config.local.get("dev").unwrap().build_mode,
-        crate::config::BuildMode::Debug
+        sparrow_cli::config::BuildMode::Debug
     );
 }
 
@@ -443,7 +455,7 @@ fn test_config_default_has_dev_instance() {
     assert!(config.local.contains_key("dev"));
     let dev_config = config.local.get("dev").unwrap();
     assert_eq!(dev_config.port, Some(6969));
-    assert_eq!(dev_config.build_mode, crate::config::BuildMode::Dev);
+    assert_eq!(dev_config.build_mode, sparrow_cli::config::BuildMode::Dev);
 }
 
 #[test]
@@ -467,11 +479,11 @@ fn test_config_list_instances() {
     // Add another instance
     config.local.insert(
         "staging".to_string(),
-        crate::config::LocalInstanceConfig {
+        sparrow_cli::config::LocalInstanceConfig {
             port: Some(6970),
-            build_mode: crate::config::BuildMode::Dev,
-            storage_backend: crate::config::StorageBackend::Lmdb,
-            db_config: crate::config::DbConfig::default(),
+            build_mode: sparrow_cli::config::BuildMode::Dev,
+            storage_backend: sparrow_cli::config::StorageBackend::Lmdb,
+            db_config: sparrow_cli::config::DbConfig::default(),
         },
     );
 

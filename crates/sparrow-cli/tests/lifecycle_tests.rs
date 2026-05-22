@@ -3,9 +3,11 @@
 //! These tests focus on error paths and project configuration validation
 //! that don't require Docker to be actually running.
 
-use crate::commands::{restart, start, status, stop};
-use crate::config::SparrowConfig;
-use crate::tests::test_utils::TestContext;
+mod test_utils;
+
+use sparrow_cli::commands::{restart, start, status, stop};
+use sparrow_cli::config::SparrowConfig;
+use test_utils::TestContext;
 use std::fs;
 
 // ============================================================================
@@ -262,20 +264,20 @@ async fn test_status_with_multiple_instances() {
     let mut config = SparrowConfig::default_config("multi-instance-project");
     config.local.insert(
         "staging".to_string(),
-        crate::config::LocalInstanceConfig {
+        sparrow_cli::config::LocalInstanceConfig {
             port: Some(6970),
-            build_mode: crate::config::BuildMode::Dev,
-            storage_backend: crate::config::StorageBackend::Lmdb,
-            db_config: crate::config::DbConfig::default(),
+            build_mode: sparrow_cli::config::BuildMode::Dev,
+            storage_backend: sparrow_cli::config::StorageBackend::Lmdb,
+            db_config: sparrow_cli::config::DbConfig::default(),
         },
     );
     config.local.insert(
         "production".to_string(),
-        crate::config::LocalInstanceConfig {
+        sparrow_cli::config::LocalInstanceConfig {
             port: Some(6971),
-            build_mode: crate::config::BuildMode::Release,
-            storage_backend: crate::config::StorageBackend::Lmdb,
-            db_config: crate::config::DbConfig::default(),
+            build_mode: sparrow_cli::config::BuildMode::Release,
+            storage_backend: sparrow_cli::config::StorageBackend::Lmdb,
+            db_config: sparrow_cli::config::DbConfig::default(),
         },
     );
 
@@ -299,7 +301,7 @@ async fn test_status_with_multiple_instances() {
 
 #[tokio::test]
 async fn test_delete_fails_with_nonexistent_instance_dev() {
-    use crate::commands::delete;
+    use sparrow_cli::commands::delete;
 
     let ctx = TestContext::new();
 
@@ -323,7 +325,7 @@ async fn test_delete_fails_with_nonexistent_instance_dev() {
 
 #[tokio::test]
 async fn test_delete_fails_with_nonexistent_instance() {
-    use crate::commands::delete;
+    use sparrow_cli::commands::delete;
 
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -363,7 +365,7 @@ async fn test_instance_validation_rejects_empty_name() {
 
 #[tokio::test]
 async fn test_project_context_finds_sparrow_toml() {
-    use crate::project::ProjectContext;
+    use sparrow_cli::project::ProjectContext;
 
     let ctx = TestContext::new();
     ctx.setup_valid_project();
@@ -381,7 +383,7 @@ async fn test_project_context_finds_sparrow_toml() {
 
 #[tokio::test]
 async fn test_project_context_fails_without_sparrow_toml() {
-    use crate::project::ProjectContext;
+    use sparrow_cli::project::ProjectContext;
 
     let ctx = TestContext::new();
     // Don't create sparrow.toml

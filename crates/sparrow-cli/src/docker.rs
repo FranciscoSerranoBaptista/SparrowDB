@@ -81,7 +81,7 @@ impl<'a> DockerManager<'a> {
     }
 
     /// Get the image name for an instance
-    pub(crate) fn image_name(&self, instance_name: &str, build_mode: BuildMode, storage_backend: StorageBackend) -> String {
+    pub fn image_name(&self, instance_name: &str, build_mode: BuildMode, storage_backend: StorageBackend) -> String {
         let tag = match (build_mode, storage_backend) {
             (BuildMode::Debug, StorageBackend::Lmdb) => "debug".to_string(),
             (BuildMode::Debug, StorageBackend::Rocks) => "debug-rocks".to_string(),
@@ -95,12 +95,12 @@ impl<'a> DockerManager<'a> {
     }
 
     #[inline]
-    pub(crate) fn data_dir(&self, instance_name: &str) -> String {
+    pub fn data_dir(&self, instance_name: &str) -> String {
         std::env::var("SPARROW_DATA_DIR").unwrap_or_else(|_| format!("../.volumes/{instance_name}"))
     }
 
     /// Get environment variables for an instance
-    pub(crate) fn environment_variables(&self, instance_name: &str) -> Vec<String> {
+    pub fn environment_variables(&self, instance_name: &str) -> Vec<String> {
         // Load .env from project root first (base configuration)
         let root_env = self.project.root.join(".env");
         if root_env.exists() {

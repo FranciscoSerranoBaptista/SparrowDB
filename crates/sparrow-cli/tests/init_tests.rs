@@ -1,5 +1,5 @@
-use crate::CloudDeploymentTypeCommand;
-use crate::commands::init::run;
+use sparrow_cli::CloudDeploymentTypeCommand;
+use sparrow_cli::commands::init::run;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -530,7 +530,7 @@ async fn test_init_local_name_is_honored() {
         Some(project_path.to_str().unwrap().to_string()),
         "default".to_string(),
         "queries".to_string(),
-        Some(crate::CloudDeploymentTypeCommand::Local {
+        Some(sparrow_cli::CloudDeploymentTypeCommand::Local {
             name: Some("localdev".to_string()),
         }),
     )

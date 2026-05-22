@@ -1,6 +1,6 @@
-use crate::config::SparrowConfig;
-use crate::docker::DockerManager;
-use crate::project::ProjectContext;
+use sparrow_cli::config::SparrowConfig;
+use sparrow_cli::docker::DockerManager;
+use sparrow_cli::project::ProjectContext;
 use std::fs;
 use tempfile::TempDir;
 
@@ -83,7 +83,7 @@ fn test_host_data_dir_respects_env_var() {
 
 #[test]
 fn test_dockerfile_lmdb_release_uses_release_flag() {
-    use crate::config::BuildMode;
+    use sparrow_cli::config::BuildMode;
     let (_temp_dir, mut context) = setup_test_project();
     context
         .config
@@ -110,7 +110,7 @@ fn test_dockerfile_lmdb_release_uses_release_flag() {
 
 #[test]
 fn test_dockerfile_rocks_release_uses_rocks_no_default_features() {
-    use crate::config::{BuildMode, StorageBackend};
+    use sparrow_cli::config::{BuildMode, StorageBackend};
     let (_temp_dir, mut context) = setup_test_project();
     let dev = context.config.local.get_mut("dev").unwrap();
     dev.build_mode = BuildMode::Release;
@@ -130,7 +130,7 @@ fn test_dockerfile_rocks_release_uses_rocks_no_default_features() {
 
 #[test]
 fn test_dockerfile_rocks_dev_uses_rocks_no_default_features() {
-    use crate::config::StorageBackend;
+    use sparrow_cli::config::StorageBackend;
     let (_temp_dir, mut context) = setup_test_project();
     context
         .config
@@ -150,7 +150,7 @@ fn test_dockerfile_rocks_dev_uses_rocks_no_default_features() {
 
 #[test]
 fn test_image_name_differs_between_lmdb_and_rocks() {
-    use crate::config::{BuildMode, StorageBackend};
+    use sparrow_cli::config::{BuildMode, StorageBackend};
     let (_temp_dir, context) = setup_test_project();
     let docker = DockerManager::new(&context);
     let lmdb_name = docker.image_name("dev", BuildMode::Release, StorageBackend::Lmdb);

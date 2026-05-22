@@ -282,5 +282,3 @@ pub enum ClusterConfigAction {
     },
 }
 
-#[cfg(test)]
-mod tests;

@@ -159,7 +159,7 @@ pub(crate) fn save_metrics_config(config: &MetricsConfig) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn get_metrics_config_path() -> Result<PathBuf> {
+pub fn get_metrics_config_path() -> Result<PathBuf> {
     let sparrow_dir = if let Ok(home) = std::env::var("SPARROW_HOME") {
         PathBuf::from(home)
     } else {
