@@ -1,29 +1,47 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import solidPlugin from "vite-plugin-solid";
 
-export default defineConfig({
-  plugins: [solidPlugin()],
-  base: "/__studio/",
-  server: {
-    port: 5173,
-    proxy: {
-      "/v1": "http://localhost:6969",
-      "/__hql_runtime_eval": "http://localhost:6969",
-      "/introspect": "http://localhost:6969",
-      "/diagnostics": "http://localhost:6969",
-      "/hnsw_health": "http://localhost:6969",
-      "/hnsw_integrity": "http://localhost:6969",
-      "/vector_soft_delete": "http://localhost:6969",
-      "/vector_hard_delete": "http://localhost:6969",
-      "/purge_soft_deleted": "http://localhost:6969",
-      "/rebuild_vector_index": "http://localhost:6969",
+const PROXY_PATHS = [
+  "/v1",
+  "/__hql_runtime_eval",
+  "/introspect",
+  "/diagnostics",
+  "/hnsw_health",
+  "/hnsw_integrity",
+  "/vector_soft_delete",
+  "/vector_hard_delete",
+  "/purge_soft_deleted",
+  "/rebuild_vector_index",
+];
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const apiKey = env.SPARROW_API_KEY ?? "";
+  const target = env.SPARROW_URL ?? "http://localhost:6969";
+
+  const proxyEntry = (path: string) => ({
+    target,
+    changeOrigin: true,
+    configure: (proxy: import("vite").HttpProxy.Server) => {
+      proxy.on("proxyReq", (proxyReq) => {
+        if (apiKey) proxyReq.setHeader("x-api-key", apiKey);
+      });
     },
-  },
-  build: {
-    outDir: "dist",
-    emptyOutDir: true,
-  },
-  test: {
-    environment: "jsdom",
-  },
+  });
+
+  return {
+    plugins: [solidPlugin()],
+    base: "/__studio/",
+    server: {
+      port: 5173,
+      proxy: Object.fromEntries(PROXY_PATHS.map((p) => [p, proxyEntry(p)])),
+    },
+    build: {
+      outDir: "dist",
+      emptyOutDir: true,
+    },
+    test: {
+      environment: "jsdom",
+    },
+  };
 });

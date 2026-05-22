@@ -103,7 +103,7 @@ export const HqlEditor: Component<{
       EditorView.lineWrapping,
     ];
     editorView = new EditorView({
-      state: EditorState.create({ doc: "V | RETURN *", extensions }),
+      state: EditorState.create({ doc: "QUERY getAll() =>\n    result <- N<People>\nRETURN result", extensions }),
       parent: editorRef,
     });
   });

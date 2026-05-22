@@ -15,7 +15,7 @@ function loadFromStorage(): ConnectionStore {
   } catch {
     // ignore
   }
-  return { baseUrl: "http://localhost:6969", apiKey: "", connected: false };
+  return { baseUrl: "", apiKey: "", connected: false };
 }
 
 export const [connection, setConnection] = createStore<ConnectionStore>(

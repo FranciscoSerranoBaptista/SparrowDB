@@ -39,7 +39,7 @@ export const GraphViz: Component<{
 }> = (props) => {
   let canvasRef!: HTMLDivElement;
   let cy: Core | undefined;
-  const [query, setQuery] = createSignal("V | RETURN *");
+  const [query, setQuery] = createSignal("QUERY getAll() =>\n    result <- N<People>\nRETURN result");
   const [running, setRunning] = createSignal(false);
   const [error, setError] = createSignal("");
   const [selected, setSelected] = createSignal<Record<string, unknown> | null>(null);
@@ -127,7 +127,7 @@ export const GraphViz: Component<{
           style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px"
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
-          placeholder="V | RETURN *"
+          placeholder="QUERY getAll() => result <- N<People> RETURN result"
           onKeyDown={(e) => e.key === "Enter" && runQuery()}
         />
         <button class="btn" onClick={runQuery} disabled={running()}>

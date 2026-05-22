@@ -1,7 +1,8 @@
 export type SchemaNode = { name: string; properties: Record<string, string> };
 export type SchemaEdge = { name: string; from: string; to: string; properties: Record<string, string> };
 export type SchemaResponse = { nodes: SchemaNode[]; edges: SchemaEdge[] };
-export type DiagnosticsResponse = { node_count: number; edge_count: number; db_size_bytes: number; uptime_secs: number };
+export type VectorStats = { total: number; active: number; soft_deleted: number; hnsw_edges: number; entry_point_present: boolean };
+export type DiagnosticsResponse = { nodes: number; edges: number; vectors: VectorStats };
 export type HnswHealthResponse = { status: string; vector_count: number; soft_deleted_count: number };
 export type HnswIntegrityResponse = { ok: boolean; details: string };
 

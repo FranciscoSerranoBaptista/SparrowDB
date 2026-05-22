@@ -246,6 +246,20 @@ enum CompatStep {
 ///
 /// Results are keyed by their query name and each value is a list of serialised
 /// node JSON objects with `$id` and `$label` compat aliases included.
+///
+/// **Batched transaction**: all write steps (AddN, AddEdge, UpdateProperties,
+/// DropNodes) share a single LMDB write transaction that is committed once at
+/// the end of the request.  This means:
+///
+/// * Only **one fsync** is issued per request instead of one per write step,
+///   dramatically reducing write latency when a request contains many write
+///   operations.
+/// * The entire batch is **atomic**: if any step fails the uncommitted
+///   transaction is dropped (rolled back) and none of the writes persist.
+///
+/// Read-only steps (Traverse, LookupByUuid) reuse the write transaction as a
+/// read view via `Deref` coercion (`&*wtxn`), allowing them to observe
+/// uncommitted writes from earlier steps in the same request.
 fn execute_helix_queries<'db, 'arena>(
     raw_queries: &[sonic_rs::Value],
     storage: &'db SparrowGraphStorage,
@@ -256,6 +270,15 @@ where
 {
     let mut live_store: HashMap<String, Vec<TraversalValue<'arena>>> = HashMap::new();
     let mut result_store: HashMap<String, Vec<sonic_rs::Value>> = HashMap::new();
+
+    // Open ONE write transaction for the entire request.  All steps — both
+    // reads and writes — run inside it.  On success we commit once (one
+    // fsync).  On failure the `?` propagates the error and `wtxn` is dropped
+    // without committing, rolling back any changes.
+    let mut wtxn = storage
+        .graph_env
+        .write_txn()
+        .map_err(|e| CompatError::Execution(e.to_string()))?;
 
     for query_item in raw_queries {
         let query_body = match query_item.get("Query") {
@@ -277,9 +300,13 @@ where
         let steps = translate_named_query(name, raw_steps)?;
 
         for step in steps {
-            execute_compat_step(step, storage, arena, &mut live_store, &mut result_store)?;
+            execute_compat_step(step, storage, &mut wtxn, arena, &mut live_store, &mut result_store)?;
         }
     }
+
+    // Commit all writes in a single fsync.
+    wtxn.commit()
+        .map_err(|e| CompatError::Execution(e.to_string()))?;
 
     Ok(result_store)
 }
@@ -746,34 +773,36 @@ fn parse_uuid_ids(ids_val: &sonic_rs::Value) -> Result<Vec<u128>, CompatError> {
 
 // ─── execution ─────────────────────────────────────────────────────────────────
 
-fn execute_compat_step<'db, 'arena>(
+fn execute_compat_step<'db, 'txn, 'arena>(
     step: CompatStep,
     storage: &'db SparrowGraphStorage,
+    wtxn: &'txn mut heed3::RwTxn<'db>,
     arena: &'arena Bump,
     live_store: &mut HashMap<String, Vec<TraversalValue<'arena>>>,
     result_store: &mut HashMap<String, Vec<sonic_rs::Value>>,
 ) -> Result<(), CompatError>
 where
     'db: 'arena,
+    'arena: 'txn,
 {
     match step {
+        // ── Read-only: use write txn as a read view (sees uncommitted writes
+        // from earlier steps in the same request) ────────────────────────────
         CompatStep::Traverse { seed_var, tool_args, bind_to } => {
-            let txn = storage
-                .graph_env
-                .read_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
-            let values: Vec<TraversalValue<'arena>> = if let Some(sv) = &seed_var {
-                let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
-                execute_query_chain_from_seed(&tool_args, storage, &txn, arena, seeds.into_iter())
-                    .map_err(CompatError::from)?
-                    .collect()
-                    .map_err(CompatError::from)?
-            } else {
-                execute_query_chain(&tool_args, storage, &txn, arena)
-                    .map_err(CompatError::from)?
-                    .collect()
-                    .map_err(CompatError::from)?
+            let values: Vec<TraversalValue<'arena>> = {
+                let ro: &heed3::RoTxn<'db> = wtxn;
+                if let Some(sv) = &seed_var {
+                    let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
+                    execute_query_chain_from_seed(&tool_args, storage, ro, arena, seeds.into_iter())
+                        .map_err(CompatError::from)?
+                        .collect()
+                        .map_err(CompatError::from)?
+                } else {
+                    execute_query_chain(&tool_args, storage, ro, arena)
+                        .map_err(CompatError::from)?
+                        .collect()
+                        .map_err(CompatError::from)?
+                }
             };
 
             let json_values = serialise_results(&values);
@@ -782,29 +811,22 @@ where
         }
 
         CompatStep::LookupByUuid { ids, bind_to } => {
-            let txn = storage
-                .graph_env
-                .read_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
-            let values: Vec<TraversalValue<'arena>> = ids
-                .iter()
-                .filter_map(|&id| {
-                    storage.get_node(&txn, id, arena).ok().map(TraversalValue::Node)
-                })
-                .collect();
+            let values: Vec<TraversalValue<'arena>> = {
+                let ro: &heed3::RoTxn<'db> = wtxn;
+                ids.iter()
+                    .filter_map(|&id| {
+                        storage.get_node(ro, id, arena).ok().map(TraversalValue::Node)
+                    })
+                    .collect()
+            };
 
             let json_values = serialise_results(&values);
             live_store.insert(bind_to.clone(), values);
             result_store.insert(bind_to, json_values);
         }
 
+        // ── Mutations: write directly into the shared transaction ─────────
         CompatStep::AddNode { node_type, fields, bind_to } => {
-            let mut wtxn = storage
-                .graph_env
-                .write_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
             let label: &'arena str = arena.alloc_str(&node_type);
 
             let sec_index_names: Vec<&'static str> = fields
@@ -822,13 +844,13 @@ where
             let iter = fields.iter().map(|(k, v)| (arena.alloc_str(k) as &'arena str, v.clone()));
             let props = ImmutablePropertiesMap::new(count, iter, arena);
 
-            let result = G::new_mut(storage, arena, &mut wtxn)
+            let result = G::new_mut(storage, arena, wtxn)
                 .add_n(label, Some(props), sec_indices)
                 .collect_to_obj()
                 .map_err(CompatError::from)?;
 
-            wtxn.commit()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
+            // No commit here — the caller (execute_helix_queries) commits once
+            // after all steps succeed.
 
             let json = sonic_rs::to_value(&result).unwrap_or_default();
             let json_with_aliases = add_dollar_aliases(json);
@@ -855,11 +877,6 @@ where
             let from_id = from_node.id();
             let to_id = to_node.id();
 
-            let mut wtxn = storage
-                .graph_env
-                .write_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
             let label: &'arena str = arena.alloc_str(&edge_type);
             let props = if fields.is_empty() {
                 None
@@ -870,13 +887,12 @@ where
                 Some(ImmutablePropertiesMap::new(count, iter, arena))
             };
 
-            let result = G::new_mut(storage, arena, &mut wtxn)
+            let result = G::new_mut(storage, arena, wtxn)
                 .add_edge(label, props, from_id, to_id, false)
                 .collect_to_obj()
                 .map_err(CompatError::from)?;
 
-            wtxn.commit()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
+            // No commit here.
 
             let json = sonic_rs::to_value(&result).unwrap_or_default();
             live_store.insert(bind_to.clone(), vec![result]);
@@ -884,47 +900,43 @@ where
         }
 
         CompatStep::UpdateProperties { seed_var, tool_args, updates, bind_to } => {
-            let txn = storage
-                .graph_env
-                .read_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
-            let targets: Vec<TraversalValue<'arena>> = if let Some(sv) = &seed_var {
-                let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
-                execute_query_chain_from_seed(&tool_args, storage, &txn, arena, seeds.into_iter())
-                    .map_err(CompatError::from)?
-                    .collect()
-                    .map_err(CompatError::from)?
-            } else {
-                execute_query_chain(&tool_args, storage, &txn, arena)
-                    .map_err(CompatError::from)?
-                    .collect()
-                    .map_err(CompatError::from)?
+            // Read phase: collect targets using the write txn as a read view.
+            // The block scope ensures the immutable borrow of `wtxn` ends
+            // before the mutable borrow in the write phase below.
+            let targets: Vec<TraversalValue<'arena>> = {
+                let ro: &heed3::RoTxn<'db> = wtxn;
+                if let Some(sv) = &seed_var {
+                    let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
+                    execute_query_chain_from_seed(&tool_args, storage, ro, arena, seeds.into_iter())
+                        .map_err(CompatError::from)?
+                        .collect()
+                        .map_err(CompatError::from)?
+                } else {
+                    execute_query_chain(&tool_args, storage, ro, arena)
+                        .map_err(CompatError::from)?
+                        .collect()
+                        .map_err(CompatError::from)?
+                }
+                // `ro` borrow released here
             };
-            drop(txn);
 
             let static_updates: Vec<(&'static str, Value)> = updates
                 .into_iter()
                 .map(|(k, v)| (Box::leak(k.into_boxed_str()) as &'static str, v))
                 .collect();
 
-            let mut wtxn = storage
-                .graph_env
-                .write_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
+            // Write phase: apply updates through the shared write transaction.
             let mut updated = Vec::new();
             for target in targets {
                 use crate::sparrow_engine::traversal_core::ops::util::update::UpdateAdapter;
-                let node = G::new_mut_from(storage, &mut wtxn, target, arena)
+                let node = G::new_mut_from(storage, wtxn, target, arena)
                     .update(&static_updates)
                     .collect_to_obj()
                     .map_err(CompatError::from)?;
                 updated.push(node);
             }
 
-            wtxn.commit()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
+            // No commit here.
 
             let json_values = serialise_results(&updated);
             live_store.insert(bind_to.clone(), updated);
@@ -932,44 +944,38 @@ where
         }
 
         CompatStep::DropNodes { seed_var, tool_args } => {
-            let txn = storage
-                .graph_env
-                .read_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
-            let targets: Vec<TraversalValue<'arena>> = if let Some(sv) = &seed_var {
-                let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
-                execute_query_chain_from_seed(&tool_args, storage, &txn, arena, seeds.into_iter())
-                    .map_err(CompatError::from)?
-                    .collect()
-                    .map_err(CompatError::from)?
-            } else {
-                execute_query_chain(&tool_args, storage, &txn, arena)
-                    .map_err(CompatError::from)?
-                    .collect()
-                    .map_err(CompatError::from)?
+            // Read phase: find nodes/edges to drop.
+            let targets: Vec<TraversalValue<'arena>> = {
+                let ro: &heed3::RoTxn<'db> = wtxn;
+                if let Some(sv) = &seed_var {
+                    let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
+                    execute_query_chain_from_seed(&tool_args, storage, ro, arena, seeds.into_iter())
+                        .map_err(CompatError::from)?
+                        .collect()
+                        .map_err(CompatError::from)?
+                } else {
+                    execute_query_chain(&tool_args, storage, ro, arena)
+                        .map_err(CompatError::from)?
+                        .collect()
+                        .map_err(CompatError::from)?
+                }
+                // `ro` borrow released here
             };
-            drop(txn);
 
-            let mut wtxn = storage
-                .graph_env
-                .write_txn()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
-
+            // Write phase: delete through the shared write transaction.
             for target in &targets {
                 match target {
                     TraversalValue::Node(n) => storage
-                        .drop_node(&mut wtxn, n.id)
+                        .drop_node(wtxn, n.id)
                         .map_err(CompatError::from)?,
                     TraversalValue::Edge(e) => storage
-                        .drop_edge(&mut wtxn, e.id)
+                        .drop_edge(wtxn, e.id)
                         .map_err(CompatError::from)?,
                     _ => {}
                 }
             }
 
-            wtxn.commit()
-                .map_err(|e| CompatError::Execution(e.to_string()))?;
+            // No commit here.
         }
     }
 
@@ -1017,4 +1023,138 @@ fn add_dollar_aliases(obj: sonic_rs::Value) -> sonic_rs::Value {
     }
     bytes.push(b'}');
     sonic_rs::from_slice(&bytes).unwrap_or_default()
+}
+
+// ─── tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+#[cfg(all(feature = "lmdb", feature = "server"))]
+mod tests {
+    use super::v1_compat_handler;
+    use crate::{
+        protocol::{Format, Request, request::RequestType},
+        sparrow_engine::traversal_core::{SparrowGraphEngine, SparrowGraphEngineOpts, config::Config},
+        sparrow_gateway::router::router::HandlerInput,
+    };
+    use axum::body::Bytes;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    fn make_test_graph() -> (Arc<SparrowGraphEngine>, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let mut config = Config::default();
+        config.db_max_size_gb = Some(0);
+        let opts = SparrowGraphEngineOpts {
+            path: dir.path().to_str().unwrap().to_string(),
+            config,
+            version_info: Default::default(),
+        };
+        let graph = Arc::new(SparrowGraphEngine::new(opts).unwrap());
+        (graph, dir)
+    }
+
+    fn make_write_request(body: impl Into<Bytes>) -> Request {
+        Request {
+            name: "__v1_compat_write".to_string(),
+            req_type: RequestType::Query,
+            api_key: None,
+            body: body.into(),
+            in_fmt: Format::Json,
+            out_fmt: Format::Json,
+            pre_computed_embedding: None,
+        }
+    }
+
+    fn node_count(graph: &SparrowGraphEngine) -> u64 {
+        let txn = graph.storage.graph_env.read_txn().unwrap();
+        graph.storage.nodes_db.len(&txn).unwrap_or(0)
+    }
+
+    /// A request with N AddN steps followed by a step that fails must commit
+    /// nothing — all writes in a single request are one atomic unit.
+    ///
+    /// RED: With the current implementation each AddN opens its own write_txn
+    /// and commits immediately, so the first node persists even when a later
+    /// step fails.  This test must FAIL before the batch-transaction fix is
+    /// applied.
+    #[test]
+    #[serial_test::serial]
+    fn batch_write_is_atomic_rollback_on_failure() {
+        let (graph, _dir) = make_test_graph();
+        assert_eq!(node_count(&graph), 0, "precondition: DB is empty");
+
+        // Request:
+        //   1. AddN a "zettel_note" node → this commits its own txn with current code
+        //   2. AddE referencing a variable "ghost" that was never bound → always fails
+        //
+        // Expected after fix: 0 nodes (whole request rolled back atomically).
+        // Actual with current code: 1 node (AddN committed before AddE failed).
+        let body = r#"{
+            "request_type": "write",
+            "query": {
+                "queries": [
+                    {"Query": {"name": "note", "steps": [
+                        {"AddN": {"label": "zettel_note", "properties": [
+                            ["title", {"Value": {"String": "atomic test"}}]
+                        ]}}
+                    ]}},
+                    {"Query": {"name": "bad_edge", "steps": [
+                        {"Inject": "note"},
+                        {"AddE": {"label": "LINKS_TO", "to": {"Var": "ghost_var_never_bound"}}}
+                    ]}}
+                ],
+                "returns": ["note"]
+            }
+        }"#;
+
+        let input = HandlerInput {
+            request: make_write_request(body),
+            graph: graph.clone(),
+        };
+
+        let result = v1_compat_handler(input);
+        assert!(result.is_err(), "handler must return an error when AddE references an unbound variable");
+
+        assert_eq!(
+            node_count(&graph),
+            0,
+            "batch write must be atomic: the AddN node must not persist when a later step in the same request fails"
+        );
+    }
+
+    /// Multiple AddN steps in one request must all be visible after success.
+    /// This verifies the happy path of the batched-transaction implementation.
+    #[test]
+    #[serial_test::serial]
+    fn batch_write_commits_all_nodes_on_success() {
+        let (graph, _dir) = make_test_graph();
+        assert_eq!(node_count(&graph), 0, "precondition: DB is empty");
+
+        let body = r#"{
+            "request_type": "write",
+            "query": {
+                "queries": [
+                    {"Query": {"name": "n1", "steps": [
+                        {"AddN": {"label": "zettel_note", "properties": [["title", {"Value": {"String": "first"}}]]}}
+                    ]}},
+                    {"Query": {"name": "n2", "steps": [
+                        {"AddN": {"label": "zettel_note", "properties": [["title", {"Value": {"String": "second"}}]]}}
+                    ]}},
+                    {"Query": {"name": "n3", "steps": [
+                        {"AddN": {"label": "zettel_note", "properties": [["title", {"Value": {"String": "third"}}]]}}
+                    ]}}
+                ],
+                "returns": ["n1", "n2", "n3"]
+            }
+        }"#;
+
+        let input = HandlerInput {
+            request: make_write_request(body),
+            graph: graph.clone(),
+        };
+
+        let result = v1_compat_handler(input);
+        assert!(result.is_ok(), "three AddN in one request should succeed");
+        assert_eq!(node_count(&graph), 3, "all three nodes must be persisted");
+    }
 }

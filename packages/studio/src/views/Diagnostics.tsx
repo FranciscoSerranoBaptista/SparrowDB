@@ -1,5 +1,5 @@
 import { Component, createSignal, onCleanup } from "solid-js";
-import { SparrowClient, DiagnosticsResponse, HnswHealthResponse } from "../api/client";
+import { SparrowClient, DiagnosticsResponse, HnswHealthResponse, VectorStats } from "../api/client";
 
 export const Diagnostics: Component<{ baseUrl: string; apiKey: string }> = (props) => {
   const [diag, setDiag] = createSignal<DiagnosticsResponse | null>(null);
@@ -78,10 +78,10 @@ export const Diagnostics: Component<{ baseUrl: string; apiKey: string }> = (prop
           <h2 style="font-size:13px;color:var(--text-muted);margin-bottom:12px">System Stats</h2>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             {[
-              ["Nodes", fmt(diag()?.node_count)],
-              ["Edges", fmt(diag()?.edge_count)],
-              ["DB Size", fmtBytes(diag()?.db_size_bytes)],
-              ["Uptime", diag()?.uptime_secs != null ? `${diag()!.uptime_secs}s` : "—"],
+              ["Nodes", fmt(diag()?.nodes)],
+              ["Edges", fmt(diag()?.edges)],
+              ["Vectors (active)", fmt(diag()?.vectors?.active)],
+              ["Vectors (total)", fmt(diag()?.vectors?.total)],
             ].map(([label, value]) => (
               <div>
                 <div style="font-size:11px;color:var(--text-muted)">{label}</div>

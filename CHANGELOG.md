@@ -67,6 +67,16 @@ All notable changes to SparrowDB are documented here.
 - New `sparrow-memory` crate scaffolded: episodic memory store with opaque ID fields, `TryFrom<&str>` for `Priority`, and `PartialEq` on stored types
 - Index name constants and core type definitions
 
+### Performance
+
+**v1/query write batching**
+- `POST /v1/query` write requests now execute all mutation steps (AddN, AddEdge, UpdateProperties, DropNodes) inside a **single LMDB write transaction** committed once at the end of the request, instead of one transaction-per-step
+  - Reduces fsync cost from O(N) to O(1) per request regardless of how many write operations it contains
+  - For a client sending 100 AddN steps in one request this eliminates 99 of 100 fsyncs
+  - Enables `LIMIT` on write throughput to become the wire RTT + one fsync rather than N × fsync
+- Read-only steps (Traverse, LookupByUuid) within the same request reuse the write transaction as a read view via `Deref` coercion, allowing them to observe uncommitted writes from earlier steps in the same request
+- The batch is **atomic**: if any step fails, all uncommitted writes are rolled back; previously a failing step left earlier AddN writes permanently committed
+
 ### Bug Fixes
 
 **Schema Migrations**
@@ -89,6 +99,10 @@ All notable changes to SparrowDB are documented here.
 **Sparrow Studio**
 - Parse `/introspect` JSON response correctly in the Studio API client (was treating the raw string as the schema)
 - Show connection status indicator in the header when the configured instance is unreachable
+- `DiagnosticsResponse` type corrected to match the actual `/diagnostics` response shape (`nodes` / `edges` / `vectors.{total,active,soft_deleted,...}` instead of the old `node_count` / `edge_count` / `db_size_bytes` / `uptime_secs`); Diagnostics view now displays all stats correctly
+- Vite dev-proxy now injects the `x-api-key` header from `SPARROW_API_KEY` env var — Studio is fully usable against a token-protected instance without disabling auth
+- Default `baseUrl` in the connection store changed from `http://localhost:6969` to `""` (empty = same-origin Vite proxy); direct browser-to-server requests no longer hit CORS pre-flight 401 errors
+- Default HQL editor and Graph Visualiser queries changed from the invalid `V | RETURN *` to a valid HQL example (`QUERY getAll() => result <- N<People> RETURN result`)
 
 **Vector / HNSW**
 - Return `ZeroMagnitudeVector` error instead of dividing by zero on zero-magnitude input vectors
