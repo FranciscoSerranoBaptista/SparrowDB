@@ -286,6 +286,51 @@ enum Commands {
         on_error: String,
     },
 
+    /// Export records from a running SparrowDB instance to a JSON, CSV, or Parquet file.
+    ///
+    /// Calls `POST /<query>` with an optional JSON body and writes the response
+    /// records to the output file.  The output format is inferred from the file
+    /// extension; use `--format` to override.
+    ///
+    /// # Examples
+    ///
+    ///   sparrow export users.json    --query GetAllUsers
+    ///   sparrow export edges.csv     --query GetPurchases --key purchases
+    ///   sparrow export snapshot.parquet --query Dump --params '{"limit":1000}'
+    Export {
+        /// Output file path (extension determines format: .json, .csv, .parquet / .pq)
+        file: std::path::PathBuf,
+
+        /// Name of the compiled HQL query to call
+        #[arg(long, short = 'q')]
+        query: String,
+
+        /// JSON key in the response object whose array contains the records.
+        /// Auto-detected when the response has exactly one key; required otherwise.
+        #[arg(long, short = 'k')]
+        key: Option<String>,
+
+        /// SparrowDB target URL
+        #[arg(long, short = 't', default_value = "http://localhost:6969")]
+        target: String,
+
+        /// Auth token (or set SPARROW_TOKEN env var)
+        #[arg(long, env = "SPARROW_TOKEN")]
+        token: Option<String>,
+
+        /// JSON object to send as the request body (default: `{}`)
+        #[arg(long, short = 'p')]
+        params: Option<String>,
+
+        /// Pretty-print JSON output (only applies to .json format)
+        #[arg(long)]
+        pretty: bool,
+
+        /// Override format detection (json | csv | parquet)
+        #[arg(long, short = 'f')]
+        format: Option<String>,
+    },
+
     /// Run a pre-production stress test against a running SparrowDB instance
     ///
     /// Requires the instance to be compiled with the People/Company/Jobs schema and queries.
@@ -548,6 +593,16 @@ async fn main() -> Result<()> {
                     token, dry_run, format, on_error,
                 ).await
             }
+            Commands::Export {
+                file,
+                query,
+                key,
+                target,
+                token,
+                params,
+                pretty,
+                format,
+            } => commands::export::run(file, query, key, target, token, params, pretty, format).await,
             Commands::Stress {
                 endpoint,
                 port,

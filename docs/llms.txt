@@ -89,6 +89,15 @@ sparrow import <FILE> [OPTIONS] — bulk-load records from JSON/CSV/Parquet into
   --on-error continue|abort  Failure policy (default: continue)
 Full guide: docs/import.md
 
+sparrow export <FILE> --query <NAME> [OPTIONS] — export records from a running instance to JSON/CSV/Parquet
+  --query <NAME>       HQL query to call (required)
+  --key <KEY>          JSON key in response object containing the records (auto-detected for single-key responses)
+  --target <URL>       Server URL (default: http://localhost:6969)
+  --token / SPARROW_TOKEN  Auth token → x-api-key header
+  --params <JSON>      Request body (default: {})
+  --pretty             Pretty-print JSON output
+Full guide: docs/import.md#export
+
 ## Crate layout
 
 crates/sparrow-core            — database engine, gateway, query execution

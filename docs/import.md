@@ -196,16 +196,71 @@ The output shows the resolved query name and the exact JSON body that would be p
 
 ## Export
 
-> **Not yet implemented.**
+`sparrow export` calls a compiled HQL query on a running SparrowDB instance and writes the response records to a file. Output format is inferred from the file extension.
 
-Export functionality (`sparrow export`) is planned. In the meantime, use the HTTP API directly to stream query results:
-
-```bash
-# Export all users as newline-delimited JSON
-curl -s http://localhost:6969/getAllUsers \
-  -H "x-api-key: $SPARROW_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{}' | jq -c '.[]'
+```
+sparrow export <FILE> --query <NAME> [OPTIONS]
 ```
 
-For bulk graph exports, write an HQL query that returns all nodes/edges of a given type and pipe the response through `jq` or a custom script.
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--query <NAME>` | `-q` | — | Compiled HQL query to call. Required. |
+| `--key <KEY>` | `-k` | auto | JSON key in the response object whose array is the data. Auto-detected when the response has exactly one key. |
+| `--target <URL>` | `-t` | `http://localhost:6969` | SparrowDB server URL. |
+| `--token <TOKEN>` | | — | Auth token. Also read from `SPARROW_TOKEN` env var. |
+| `--params <JSON>` | `-p` | `{}` | JSON object sent as the request body. |
+| `--pretty` | | off | Pretty-print JSON output (only applies to `.json` format). |
+| `--format <FMT>` | `-f` | auto | Override format detection: `json`, `csv`, `parquet`. |
+
+### Quick start
+
+```bash
+# Export all users to JSON
+sparrow export users.json --query GetAllUsers
+
+# Export a filtered set to CSV
+sparrow export active_users.csv --query GetActiveUsers --params '{"active":true}'
+
+# Export with explicit key (when response has multiple top-level keys)
+sparrow export edges.csv --query GetPurchases --key purchases
+
+# Export a large snapshot to Parquet
+sparrow export snapshot.parquet --query DumpGraph --token $SPARROW_TOKEN
+```
+
+### Response shape
+
+The HQL query must return an object where at least one value is an array of objects. For example:
+
+```
+QUERY GetAllUsers () =>
+    users <- N<User>()
+    RETURN users
+```
+
+The server responds with:
+
+```json
+{ "users": [ { "id": "…", "name": "Alice" }, … ] }
+```
+
+`sparrow export` extracts the `users` array and writes each element as one record. When the response has exactly one key, `--key` can be omitted; if there are multiple keys, specify which one to export with `--key`.
+
+### Supported formats
+
+| Extension | Format |
+|-----------|--------|
+| `.json` | JSON array of objects |
+| `.csv` | CSV with header row derived from the first record's keys |
+| `.parquet` / `.pq` | Apache Parquet |
+
+### Authentication
+
+```bash
+# Flag
+sparrow export users.json --query GetAllUsers --token sk-my-token
+
+# Environment variable (preferred for scripts)
+export SPARROW_TOKEN=sk-my-token
+sparrow export users.json --query GetAllUsers
+```
