@@ -72,17 +72,12 @@ where
             None => Format::default(),
         };
 
-        let api_key = {
-            #[cfg(feature = "api-key")]
-            match headers.get("x-api-key") {
-                Some(v) => match v.to_str() {
-                    Ok(s) => Some(s.to_string()),
-                    Err(_) => return Err(StatusCode::BAD_REQUEST),
-                },
-                None => return Err(StatusCode::BAD_REQUEST),
-            }
-            #[cfg(not(feature = "api-key"))]
-            None::<String>
+        let api_key = match headers.get("x-api-key") {
+            Some(v) => match v.to_str() {
+                Ok(s) => Some(s.to_string()),
+                Err(_) => return Err(StatusCode::BAD_REQUEST),
+            },
+            None => None, // missing key is allowed — auth check happens in the handler
         };
 
         let out_fmt = match headers.get(ACCEPT) {
@@ -272,7 +267,6 @@ mod tests {
     // API Key Tests
     // ============================================================================
 
-    #[cfg(feature = "api-key")]
     #[test]
     fn test_request_with_api_key() {
         let key = "my-secret-api-key".to_string();
@@ -290,7 +284,6 @@ mod tests {
         assert_eq!(request.api_key.unwrap(), key);
     }
 
-    #[cfg(feature = "api-key")]
     #[test]
     fn test_api_key_different_values() {
         let key1 = "api-key-1".to_string();
@@ -334,7 +327,6 @@ mod tests {
         assert!(request.api_key.is_none());
     }
 
-    #[cfg(feature = "api-key")]
     #[test]
     fn test_api_key_clone() {
         let key = "test-api-key".to_string();

@@ -54,6 +54,7 @@ inventory::submit! {
 /// handlers via the worker pool (preserving LMDB single-writer safety).
 pub async fn v1_query_axum_handler(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> axum::http::Response<Body> {
     let start = Instant::now();
@@ -61,6 +62,31 @@ pub async fn v1_query_axum_handler(
     // Cheap check: does the body contain `"write"` as the request_type?
     let is_write = body.windows(b"\"write\"".len()).any(|w| w == b"\"write\"");
     let handler_name = if is_write { "__v1_compat_write" } else { "__v1_compat_read" };
+
+    #[cfg(feature = "lmdb")]
+    {
+        if state.token_store.is_auth_required() {
+            let raw_key = headers
+                .get("x-api-key")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            match state.token_store.verify(raw_key) {
+                Ok(record) => {
+                    if is_write && !record.role.can_write() {
+                        use crate::protocol::SparrowError;
+                        return SparrowError::Forbidden.into_response();
+                    }
+                }
+                Err(_) => {
+                    use crate::protocol::SparrowError;
+                    return SparrowError::InvalidApiKey.into_response();
+                }
+            }
+        }
+    }
+
+    // Suppress unused variable warning when lmdb feature is disabled.
+    let _ = &headers;
 
     let req = crate::protocol::request::Request {
         name: handler_name.to_string(),

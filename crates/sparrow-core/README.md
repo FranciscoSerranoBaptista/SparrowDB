@@ -42,7 +42,7 @@ cargo test -p sparrow-core
 | `vectors` | Enable vector/embedding support (`cosine` + `url`) |
 | `server` | Full server build: `build` + `compiler` + `vectors` + `reqwest` |
 | `dev-instance` | Marker flag for development instances |
-| `production` | Enable API key verification (`api-key`) |
+| `production` | Production build marker (auth enforced via `lmdb` TokenStore) |
 | `bench` | Include Polars for benchmark analytics |
 | `debug-output` | Enable verbose macro debug output |
 | `full` | `build` + `compiler` + `vectors` (no `reqwest`) |

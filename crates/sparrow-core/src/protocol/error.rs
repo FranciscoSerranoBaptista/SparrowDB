@@ -24,6 +24,8 @@ pub enum SparrowError {
     NotFound { ty: RequestType, name: String },
     #[error("Invalid API key")]
     InvalidApiKey,
+    #[error("Insufficient permissions")]
+    Forbidden,
 }
 
 impl Serialize for SparrowError {
@@ -42,6 +44,7 @@ impl SparrowError {
             SparrowError::Vector(_) => "VECTOR_ERROR",
             SparrowError::NotFound { .. } => "NOT_FOUND",
             SparrowError::InvalidApiKey => "INVALID_API_KEY",
+            SparrowError::Forbidden => "FORBIDDEN",
         }
     }
 }
@@ -63,7 +66,8 @@ impl IntoResponse for SparrowError {
             SparrowError::Graph(_) | SparrowError::Vector(_) => {
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
-            SparrowError::InvalidApiKey => axum::http::StatusCode::FORBIDDEN,
+            SparrowError::InvalidApiKey => axum::http::StatusCode::UNAUTHORIZED,
+            SparrowError::Forbidden => axum::http::StatusCode::FORBIDDEN,
         };
 
         let error_response = ErrorResponse {
@@ -261,7 +265,20 @@ mod tests {
     fn test_sparrow_error_invalid_api_key_into_response() {
         let error = SparrowError::InvalidApiKey;
         let response = error.into_response();
+        assert_eq!(response.status(), 401);
+    }
+
+    #[test]
+    fn test_sparrow_error_forbidden_into_response() {
+        let error = SparrowError::Forbidden;
+        let response = error.into_response();
         assert_eq!(response.status(), 403);
+    }
+
+    #[test]
+    fn test_sparrow_error_forbidden_code() {
+        let error = SparrowError::Forbidden;
+        assert_eq!(error.code(), "FORBIDDEN");
     }
 
     #[test]

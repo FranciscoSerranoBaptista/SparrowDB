@@ -374,128 +374,28 @@ fn test_gateway_has_token_store() {
 }
 
 // ============================================================================
-// API Key Verification Integration Tests
+// TokenStore Auth Tests
 // ============================================================================
 
-#[cfg(feature = "api-key")]
-mod api_key_tests {
-    use crate::sparrow_gateway::key_verification::verify_key;
-    use crate::protocol::request::Request;
-    use crate::protocol::{Format, SparrowError};
-    use axum::body::Bytes;
-
-    #[test]
-    fn test_verify_key_wrong_key() {
-        let wrong_key = "wrong-api-key";
-        let result = verify_key(wrong_key);
-
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(matches!(e, SparrowError::InvalidApiKey));
-        }
-    }
-
-    #[test]
-    fn test_verify_key_empty_key() {
-        let empty_key = "";
-        let result = verify_key(empty_key);
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_request_with_api_key() {
-        let api_key = "test-api-key".to_string();
-
-        let request = Request {
-            name: "test_query".to_string(),
-            req_type: crate::protocol::request::RequestType::Query,
-            api_key: Some(api_key.clone()),
-            body: Bytes::from("{}"),
-            in_fmt: Format::Json,
-            out_fmt: Format::Json,
-        };
-
-        assert!(request.api_key.is_some());
-        assert_eq!(request.api_key.unwrap(), api_key);
-    }
-
-    #[test]
-    fn test_request_without_api_key() {
-        let request = Request {
-            name: "test_query".to_string(),
-            req_type: crate::protocol::request::RequestType::Query,
-            api_key: None,
-            body: Bytes::from("{}"),
-            in_fmt: Format::Json,
-            out_fmt: Format::Json,
-        };
-
-        assert!(request.api_key.is_none());
-    }
-
-    #[test]
-    fn test_api_key_hash_consistency() {
-        // Test that SHA-256 produces consistent hashes for the same input
-        use sha2::{Digest, Sha256};
-
-        let test_key = "test-api-key";
-        let hash1 = Sha256::digest(test_key.as_bytes());
-        let hash2 = Sha256::digest(test_key.as_bytes());
-
-        assert_eq!(hash1, hash2);
-    }
-
-    #[test]
-    fn test_sha256_verification_works() {
-        use sha2::{Digest, Sha256};
-        use subtle::ConstantTimeEq;
-
-        // Test that SHA-256 verification works correctly
-        let test_key = "test-api-key-12345";
-        let hash = Sha256::digest(test_key.as_bytes());
-
-        let correct_hash = Sha256::digest(test_key.as_bytes());
-        let wrong_hash = Sha256::digest("wrong-key".as_bytes());
-
-        assert!(bool::from(hash.ct_eq(&correct_hash)));
-        assert!(!bool::from(hash.ct_eq(&wrong_hash)));
-    }
-
-    #[test]
-    fn test_verify_key_error_type() {
-        let wrong_key = "definitely-wrong-key";
-        let result = verify_key(wrong_key);
-
-        assert!(result.is_err());
-        match result {
-            Err(SparrowError::InvalidApiKey) => {
-                // Expected error type
-            }
-            _ => panic!("Expected InvalidApiKey error"),
-        }
-    }
-
-    #[test]
-    fn test_verify_key_error_message() {
-        let wrong_key = "wrong-key";
-        let result = verify_key(wrong_key);
-
-        if let Err(e) = result {
-            assert_eq!(e.to_string(), "Invalid API key");
-        }
-    }
-
-    #[test]
-    fn test_verify_key_error_http_status() {
-        use axum::response::IntoResponse;
-
-        let wrong_key = "wrong-key";
-        let result = verify_key(wrong_key);
-
-        if let Err(e) = result {
-            let response = e.into_response();
-            assert_eq!(response.status(), 403);
-        }
-    }
+#[cfg(feature = "lmdb")]
+#[test]
+fn test_verify_request_no_auth_required() {
+    use crate::sparrow_gateway::auth::TokenStore;
+    let dir = tempfile::tempdir().unwrap();
+    let store = TokenStore::open(dir.path().to_str().unwrap()).unwrap();
+    // No tokens → auth disabled → is_auth_required returns false
+    assert!(!store.is_auth_required());
 }
+
+#[cfg(feature = "lmdb")]
+#[test]
+fn test_verify_request_auth_required_no_key() {
+    use crate::sparrow_gateway::auth::{Role, TokenError, TokenStore};
+    let dir = tempfile::tempdir().unwrap();
+    let store = TokenStore::open(dir.path().to_str().unwrap()).unwrap();
+    store.create("test", Role::ReadWrite).unwrap();
+    // Auth is now required; empty key should fail
+    let err = store.verify("").unwrap_err();
+    assert!(matches!(err, TokenError::Unauthorized));
+}
+

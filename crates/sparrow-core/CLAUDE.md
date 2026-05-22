@@ -108,9 +108,8 @@ build             = compiler
 vectors           = cosine + url  (HNSW + embedding client URLs)
 server            = build + compiler + vectors + reqwest  (full gateway)
 lmdb              = server + heed3  (storage backend — the default)
-api-key           = API key verification middleware
 dev-instance      = exposes debug query handlers (/nodes-edges, /node-details, etc.)
-production        = api-key
+production        = production build marker (auth enforced via lmdb TokenStore)
 bench             = polars  (benchmarking utilities)
 debug-output      = verbose macro output
 ```

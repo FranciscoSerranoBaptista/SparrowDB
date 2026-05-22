@@ -12,7 +12,6 @@ use crate::{
 };
 use axum::body::Bytes;
 use axum::extract::State;
-#[cfg(feature = "api-key")]
 use axum::http::HeaderMap;
 use reqwest::StatusCode;
 use tempfile::TempDir;
@@ -53,26 +52,20 @@ fn create_test_app_state(schema_json: Option<String>) -> Arc<AppState> {
     })
 }
 
-#[cfg(feature = "api-key")]
-fn create_headers_with_api_key(api_key: Option<&str>) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    if let Some(key) = api_key {
-        headers.insert("x-api-key", key.parse().unwrap());
-    }
-    headers
+fn empty_headers() -> HeaderMap {
+    HeaderMap::new()
 }
 
 // ============================================================================
-// Tests without api-key feature (dev mode)
+// Tests (no tokens seeded → auth disabled → handler passes through to schema)
 // ============================================================================
 
-#[cfg(not(feature = "api-key"))]
 #[tokio::test]
 async fn test_introspect_schema_with_valid_schema() {
     let schema_json = r#"{"version":"1.0","tables":[]}"#.to_string();
     let state = create_test_app_state(Some(schema_json.clone()));
 
-    let response = introspect_schema_handler(State(state)).await;
+    let response = introspect_schema_handler(State(state), empty_headers()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -87,12 +80,11 @@ async fn test_introspect_schema_with_valid_schema() {
     assert_eq!(body_str, schema_json);
 }
 
-#[cfg(not(feature = "api-key"))]
 #[tokio::test]
 async fn test_introspect_schema_without_schema() {
     let state = create_test_app_state(None);
 
-    let response = introspect_schema_handler(State(state)).await;
+    let response = introspect_schema_handler(State(state), empty_headers()).await;
 
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
@@ -103,13 +95,12 @@ async fn test_introspect_schema_without_schema() {
     assert_eq!(body_str, "Could not find schema");
 }
 
-#[cfg(not(feature = "api-key"))]
 #[tokio::test]
 async fn test_introspect_schema_with_empty_schema() {
     let schema_json = "".to_string();
     let state = create_test_app_state(Some(schema_json.clone()));
 
-    let response = introspect_schema_handler(State(state)).await;
+    let response = introspect_schema_handler(State(state), empty_headers()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -120,13 +111,12 @@ async fn test_introspect_schema_with_empty_schema() {
     assert_eq!(body_str, "");
 }
 
-#[cfg(not(feature = "api-key"))]
 #[tokio::test]
 async fn test_introspect_schema_with_complex_schema() {
     let schema_json = r#"{"version":"2.0","tables":[{"name":"users","fields":["id","name","email"]},{"name":"posts","fields":["id","title","content"]}]}"#.to_string();
     let state = create_test_app_state(Some(schema_json.clone()));
 
-    let response = introspect_schema_handler(State(state)).await;
+    let response = introspect_schema_handler(State(state), empty_headers()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -137,13 +127,12 @@ async fn test_introspect_schema_with_complex_schema() {
     assert_eq!(body_str, schema_json);
 }
 
-#[cfg(not(feature = "api-key"))]
 #[tokio::test]
 async fn test_introspect_schema_response_format() {
     let schema_json = r#"{"test":"data"}"#.to_string();
     let state = create_test_app_state(Some(schema_json));
 
-    let response = introspect_schema_handler(State(state)).await;
+    let response = introspect_schema_handler(State(state), empty_headers()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
@@ -158,69 +147,50 @@ async fn test_introspect_schema_response_format() {
 }
 
 // ============================================================================
-// Tests with api-key feature (production mode)
+// Auth-enforced tests (lmdb + a token seeded)
 // ============================================================================
 
-#[cfg(feature = "api-key")]
+#[cfg(feature = "lmdb")]
 #[tokio::test]
-async fn test_introspect_schema_missing_api_key() {
+async fn test_introspect_schema_missing_api_key_when_auth_required() {
+    use crate::sparrow_gateway::auth::Role;
+
     let schema_json = r#"{"version":"1.0","tables":[]}"#.to_string();
     let state = create_test_app_state(Some(schema_json));
+    // Seed a token so auth becomes required.
+    state.token_store.create("test-token", Role::ReadOnly).unwrap();
 
-    let headers = create_headers_with_api_key(None);
-    let response = introspect_schema_handler(State(state), headers).await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
-    assert_eq!(body_str, "Missing x-api-key header");
+    // No x-api-key header → should return 401.
+    let response = introspect_schema_handler(State(state), empty_headers()).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
-#[cfg(feature = "api-key")]
+#[cfg(feature = "lmdb")]
 #[tokio::test]
-async fn test_introspect_schema_invalid_api_key() {
+async fn test_introspect_schema_invalid_api_key_when_auth_required() {
+    use crate::sparrow_gateway::auth::Role;
+
     let schema_json = r#"{"version":"1.0","tables":[]}"#.to_string();
     let state = create_test_app_state(Some(schema_json));
+    state.token_store.create("test-token", Role::ReadOnly).unwrap();
 
-    let headers = create_headers_with_api_key(Some("invalid-api-key"));
+    let mut headers = HeaderMap::new();
+    headers.insert("x-api-key", "invalid-key".parse().unwrap());
     let response = introspect_schema_handler(State(state), headers).await;
-
-    // verify_key returns SparrowError::InvalidApiKey which converts to 403 Forbidden
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
-#[cfg(feature = "api-key")]
+#[cfg(feature = "lmdb")]
 #[tokio::test]
-async fn test_introspect_schema_with_valid_schema_and_headers() {
-    // Note: This test verifies the handler works with headers.
-    // In a real test environment with SPARROW_API_KEY set, we'd need to provide
-    // the correct key. Without the env var set, verify_key returns InvalidApiKey.
+async fn test_introspect_schema_valid_api_key_when_auth_required() {
+    use crate::sparrow_gateway::auth::Role;
+
     let schema_json = r#"{"version":"1.0","tables":[]}"#.to_string();
-    let state = create_test_app_state(Some(schema_json));
+    let state = create_test_app_state(Some(schema_json.clone()));
+    let (raw_token, _) = state.token_store.create("test-token", Role::ReadOnly).unwrap();
 
-    let headers = create_headers_with_api_key(Some("test-key"));
+    let mut headers = HeaderMap::new();
+    headers.insert("x-api-key", raw_token.parse().unwrap());
     let response = introspect_schema_handler(State(state), headers).await;
-
-    // Without SPARROW_API_KEY env var set, any key will fail verification
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-}
-
-#[cfg(feature = "api-key")]
-#[tokio::test]
-async fn test_introspect_schema_without_schema_and_with_headers() {
-    let state = create_test_app_state(None);
-
-    // Even with missing schema, API key check happens first
-    let headers = create_headers_with_api_key(None);
-    let response = introspect_schema_handler(State(state), headers).await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
-    assert_eq!(body_str, "Missing x-api-key header");
+    assert_eq!(response.status(), StatusCode::OK);
 }

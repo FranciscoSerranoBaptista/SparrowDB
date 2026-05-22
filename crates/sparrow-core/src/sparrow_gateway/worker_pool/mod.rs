@@ -81,6 +81,11 @@ impl WorkerPool {
         }
     }
 
+    /// Check if a route name is a write operation.
+    pub fn is_write_route(&self, name: &str) -> bool {
+        self.router.is_write_route(name)
+    }
+
     /// Process a request on the Worker Pool
     /// Write operations are routed to a dedicated writer thread to ensure proper LMDB locking
     pub async fn process(&self, mut req: Request) -> Result<Response, SparrowError> {

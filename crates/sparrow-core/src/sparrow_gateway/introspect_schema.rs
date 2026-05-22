@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::State;
-#[cfg(feature = "api-key")]
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 
@@ -11,29 +10,24 @@ use axum::response::IntoResponse;
 
 pub async fn introspect_schema_handler(
     State(state): State<Arc<AppState>>,
-    #[cfg(feature = "api-key")] headers: HeaderMap,
+    headers: HeaderMap,
 ) -> axum::response::Response {
-    // API key verification when feature is enabled
-    #[cfg(feature = "api-key")]
+    #[cfg(feature = "lmdb")]
     {
-        use crate::sparrow_gateway::key_verification::verify_key;
-
-        let api_key = match headers.get("x-api-key") {
-            Some(v) => match v.to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    return (StatusCode::BAD_REQUEST, "Invalid x-api-key header").into_response();
-                }
-            },
-            None => {
-                return (StatusCode::BAD_REQUEST, "Missing x-api-key header").into_response();
+        if state.token_store.is_auth_required() {
+            let raw_key = headers
+                .get("x-api-key")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            if state.token_store.verify(raw_key).is_err() {
+                use crate::protocol::SparrowError;
+                return SparrowError::InvalidApiKey.into_response();
             }
-        };
-
-        if let Err(e) = verify_key(api_key) {
-            return e.into_response(); // Returns 403 Forbidden
         }
     }
+
+    // Suppress unused variable warning when lmdb feature is disabled.
+    let _ = &headers;
 
     match state.schema_json.as_ref() {
         Some(data) => axum::response::Response::builder()

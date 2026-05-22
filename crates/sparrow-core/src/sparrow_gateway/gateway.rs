@@ -25,6 +25,7 @@ use crate::sparrow_gateway::builtin::nodes_by_label::nodes_by_label_handler;
 use crate::sparrow_gateway::introspect_schema::introspect_schema_handler;
 use crate::sparrow_gateway::worker_pool::WorkerPool;
 use crate::protocol;
+use crate::protocol::SparrowError;
 use crate::{
     sparrow_engine::traversal_core::{SparrowGraphEngine, SparrowGraphEngineOpts},
     sparrow_gateway::mcp::mcp::MCPHandlerFn,
@@ -247,19 +248,29 @@ async fn post_handler(
     req: protocol::request::Request,
 ) -> axum::http::Response<Body> {
     let start_time = Instant::now();
-    #[cfg(feature = "api-key")]
+    #[cfg(feature = "lmdb")]
     {
-        use crate::sparrow_gateway::key_verification::verify_key;
-        if let Err(e) = verify_key(req.api_key.as_ref().unwrap()) {
-            info!(?e, "Invalid API key");
-            sparrow_metrics::log_event(
-                sparrow_metrics::events::EventType::InvalidApiKey,
-                sparrow_metrics::events::InvalidApiKeyEvent {
-                    cluster_id: state.cluster_id.clone(),
-                    time_taken_usec: start_time.elapsed().as_micros() as u32,
-                },
-            );
-            return e.into_response();
+        use crate::sparrow_gateway::auth::TokenError;
+        if state.token_store.is_auth_required() {
+            let raw_key = req.api_key.as_deref().unwrap_or("");
+            match state.token_store.verify(raw_key) {
+                Ok(record) => {
+                    if state.worker_pool.is_write_route(&req.name) && !record.role.can_write() {
+                        return SparrowError::Forbidden.into_response();
+                    }
+                }
+                Err(TokenError::InvalidKey) | Err(TokenError::Unauthorized) => {
+                    sparrow_metrics::log_event(
+                        sparrow_metrics::events::EventType::InvalidApiKey,
+                        sparrow_metrics::events::InvalidApiKeyEvent {
+                            cluster_id: state.cluster_id.clone(),
+                            time_taken_usec: start_time.elapsed().as_micros() as u32,
+                        },
+                    );
+                    return SparrowError::InvalidApiKey.into_response();
+                }
+                Err(_) => return SparrowError::InvalidApiKey.into_response(),
+            }
         }
     }
     let input_body = if *sparrow_metrics::METRICS_ENABLED {
