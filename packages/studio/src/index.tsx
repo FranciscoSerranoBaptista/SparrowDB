@@ -1,4 +1,4 @@
 import { render } from "solid-js/web";
+import { App } from "./App";
 
-const root = document.getElementById("root")!;
-render(() => <div>Sparrow Studio loading…</div>, root);
+render(() => <App />, document.getElementById("root")!);
