@@ -1,0 +1,115 @@
+# SparrowDB — docs directory
+
+Documentation for SparrowDB, a graph-vector database written in Rust.
+Primary crate: `crates/sparrow-core`. Server binary: `crates/sparrow-container`.
+
+## Key concepts
+
+SparrowDB stores nodes and edges (graph) alongside embedding vectors (HNSW index) in a single LMDB environment.
+Queries are written in HQL (HelixQL), compiled to named handlers, and called over HTTP.
+The server is single-writer / many-reader; write operations are serialised through a dedicated thread.
+
+## Authentication
+
+Named API tokens with three roles: admin, read_write, read_only.
+Tokens stored as SHA-256 hashes in a separate LMDB env at `{data_parent}/auth/`.
+Auth self-disables when no tokens exist (dev mode).
+`SPARROW_API_KEY` env var is seeded as an admin token on startup for backward compatibility.
+Pass token as `x-api-key` request header.
+Full guide: docs/auth.md
+
+## HTTP API surface
+
+All requests: `Content-Type: application/json`, `x-api-key: <token>` (when auth is enabled).
+Base: `http://localhost:6969` (default port; override with `SPARROW_PORT`).
+
+Compiled query endpoint:
+  POST /<QueryName>          — run a named compiled HQL query
+
+Schema:
+  GET  /introspect           — return schema JSON
+
+HelixDB v1 compatibility:
+  POST /v1/query             — accepts HelixDB JSON DSL, translated to SparrowDB ops
+
+Token management (admin role required):
+  GET    /tokens             — list all tokens
+  POST   /tokens             — create token; body: {"name":"<str>","role":"admin|read_write|read_only"}
+  DELETE /tokens/{id}        — revoke by 8-char short ID
+
+Vector operations (built-in, POST /<name>):
+  vector_soft_delete         — mark vector deleted, exclude from search
+  vector_hard_delete         — delete vector record (HNSW not updated)
+  rebuild_vector_index       — rebuild HNSW from scratch, purge soft-deleted
+  purge_soft_deleted         — reclaim storage without HNSW rebuild
+
+Diagnostics (built-in, no request body):
+  diagnostics                — node/edge/vector counts
+  hnsw_health                — BFS reachability across HNSW graph
+  hnsw_integrity             — bidirectional edge symmetry check
+
+Dev-instance only (GET):
+  /nodes-edges, /nodes-by-label, /node-connections, /node-details
+
+Full reference: docs/HTTP_API.md
+
+## Error codes
+
+401 INVALID_API_KEY  — missing or wrong x-api-key
+403 FORBIDDEN        — token valid but role insufficient
+404 NOT_FOUND        — query name, node, or label not found
+500 GRAPH_ERROR      — storage or traversal failure
+500 VECTOR_ERROR     — HNSW / vector index failure
+
+## Schema migrations
+
+Transitions declared via `#[sparrow_migration]` macro and collected with `inventory`.
+`run_schema_migrations` runs at startup, applies pending transitions in version order.
+Migration log stored in `_migrations_log` LMDB database; crash-safe (marks InProgress before writing).
+CLI: `sparrow migrate status|apply|list`
+Full design: docs/superpowers/specs/2026-05-22-schema-migrations-design.md
+
+## CLI commands
+
+sparrow start <name>           — start an instance (Docker)
+sparrow stop <name>            — stop an instance
+sparrow run                    — run server binary directly (no Docker)
+sparrow push <name>            — compile and push HQL queries
+sparrow data snapshot|clone|restore — database backup and restore
+sparrow migrate status|apply|list   — schema migration management
+sparrow upgrade                — interactive v1→v2 project migration wizard
+
+## Crate layout
+
+crates/sparrow-core            — database engine, gateway, query execution
+crates/sparrow-container       — server binary (wraps sparrow-core)
+crates/sparrow-cli             — `sparrow` CLI tool
+crates/sparrow-macros          — proc-macros (#[sparrow_migration], etc.)
+crates/sparrow-metrics         — metrics and event logging
+crates/sparrow-memory          — episodic memory store (in development)
+crates/sparrow-studio          — embedded web UI (React, served via rust-embed)
+sdks/rust                      — Rust client SDK
+sdks/ts                        — TypeScript client SDK
+
+## Feature flags (sparrow-core)
+
+lmdb        — LMDB storage backend + auth (default)
+compiler    — HQL compiler (pest-based)
+vectors     — HNSW vector index
+server      — build + compiler + vectors + reqwest (HTTP embedding)
+dev-instance — debug/visualization endpoints
+production  — production build (no debug endpoints)
+studio      — embedded Sparrow Studio web UI
+
+## Storage layout (LMDB)
+
+graph_env/          — nodes, edges, secondary indices, BM25, vector index, migration log
+auth/               — token store (separate environment, never included in snapshots)
+
+## Key source files
+
+crates/sparrow-core/src/sparrow_gateway/gateway.rs          — Axum server, AppState, post_handler
+crates/sparrow-core/src/sparrow_gateway/auth/token_store.rs — TokenStore CRUD + verify
+crates/sparrow-core/src/sparrow_engine/storage_core/        — LMDB storage engine
+crates/sparrow-core/src/sparrow_engine/vector_core/         — HNSW implementation
+crates/sparrow-core/src/sparrow_gateway/builtin/            — built-in HTTP handlers

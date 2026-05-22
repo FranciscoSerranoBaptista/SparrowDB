@@ -7,13 +7,29 @@ The server listens on `SPARROW_PORT` (default `6969`).
 
 ## Authentication
 
-When the `api-key` feature is compiled in, every request must include:
+SparrowDB uses named, role-based API tokens. When at least one token exists in the store, every request must include:
 
 ```
-x-api-key: <your-api-key>
+x-api-key: <token>
 ```
 
-Requests missing or with an invalid key return `403 Forbidden`.
+When **no tokens exist** (fresh instance, dev environment) the server runs unauthenticated — every request is allowed through. Auth self-enables the moment the first token is created.
+
+### Roles
+
+| Role        | Compiled query writes | Compiled query reads | Token management |
+|-------------|----------------------|---------------------|-----------------|
+| `admin`     | ✓                    | ✓                   | ✓               |
+| `read_write`| ✓                    | ✓                   | ✗               |
+| `read_only` | ✗                    | ✓                   | ✗               |
+
+### Backward compatibility
+
+If `SPARROW_API_KEY` is set in the environment, it is automatically seeded as an `admin` token on startup. Existing deployments that relied on the single global key continue to work without changes.
+
+### Quickstart
+
+See [`docs/auth.md`](auth.md) for a step-by-step guide to bootstrapping tokens and securing an instance.
 
 ---
 
@@ -30,7 +46,8 @@ All errors return JSON with a consistent shape:
 
 | HTTP status | `code` value      | Meaning                                       |
 |-------------|-------------------|-----------------------------------------------|
-| 403         | `INVALID_API_KEY` | Missing or wrong `x-api-key` header           |
+| 401         | `INVALID_API_KEY` | Missing or wrong `x-api-key` header           |
+| 403         | `FORBIDDEN`       | Token valid but role is insufficient          |
 | 404         | `NOT_FOUND`       | Query name, node, edge, or label not found    |
 | 500         | `GRAPH_ERROR`     | Storage or traversal error                    |
 | 500         | `VECTOR_ERROR`    | HNSW / vector index error                     |
@@ -306,6 +323,72 @@ Removes all soft-deleted vector records without rebuilding the HNSW graph. Cheap
   "purged":   12,
   "remaining": 500
 }
+```
+
+---
+
+## Token management
+
+These endpoints manage API tokens. All three require the caller to hold an `admin` token (or for the instance to have no tokens yet — see bootstrap below).
+
+### `GET /tokens`
+
+List all tokens. Returns records only — raw token strings are never stored and cannot be retrieved after creation.
+
+**Response**
+```json
+[
+  {
+    "id":         "a1b2c3d4",
+    "name":       "ci-deploy",
+    "role":       "ReadWrite",
+    "created_at": 1716393600
+  }
+]
+```
+
+`id` is an 8-character hex short ID used for revocation. `created_at` is a Unix timestamp (seconds).
+
+---
+
+### `POST /tokens`
+
+Create a new named token. The raw token string is returned **once** and never stored — save it immediately.
+
+**Request**
+```json
+{
+  "name": "ci-deploy",
+  "role": "read_write"
+}
+```
+
+`role` must be one of `"admin"`, `"read_write"`, or `"read_only"`.
+
+**Response**
+```json
+{
+  "token": "sparrow_4a7f3b2e9c1d8e5f6a2b0c3d4e5f6a7b",
+  "record": {
+    "id":         "a1b2c3d4",
+    "name":       "ci-deploy",
+    "role":       "ReadWrite",
+    "created_at": 1716393600
+  }
+}
+```
+
+**Bootstrap:** when no tokens exist yet, this endpoint is callable without an `x-api-key` header, allowing the first admin token to be created.
+
+---
+
+### `DELETE /tokens/{id}`
+
+Revoke a token by its short ID. Returns `204 No Content` on success, `404 Not Found` if the ID does not exist.
+
+```
+DELETE /tokens/a1b2c3d4
+x-api-key: <admin-token>
 ```
 
 ---

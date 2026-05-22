@@ -1,0 +1,158 @@
+# Authentication & Access Control
+
+SparrowDB uses named, role-based API tokens stored in a dedicated LMDB environment at `{data_parent}/auth/`. This guide covers bootstrapping, day-to-day token management, and role assignment.
+
+---
+
+## Roles
+
+| Role         | Read queries | Write queries | Manage tokens |
+|--------------|-------------|--------------|---------------|
+| `admin`      | ✓           | ✓            | ✓             |
+| `read_write` | ✓           | ✓            | ✗             |
+| `read_only`  | ✓           | ✗            | ✗             |
+
+"Write queries" means any compiled HQL operation that mutates the graph. The `admin` role is required to call `GET /tokens`, `POST /tokens`, and `DELETE /tokens/{id}`.
+
+---
+
+## Dev mode
+
+When no tokens exist, SparrowDB runs unauthenticated — every request is allowed through without an `x-api-key` header. Auth self-enables the moment the first token is created.
+
+This means a fresh local instance works out of the box with no configuration. To lock it down, create an admin token (see below).
+
+---
+
+## Bootstrapping a new instance
+
+### Option A — use `SPARROW_API_KEY` (recommended for production)
+
+Set the env var before starting the server:
+
+```bash
+export SPARROW_API_KEY=my-secret-key
+sparrow run
+```
+
+On startup, SparrowDB seeds this value as an `admin` token. Use it to create proper named tokens, then optionally rotate it out.
+
+```bash
+# Create a named admin token
+curl -X POST http://localhost:6969/tokens \
+  -H "x-api-key: my-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ops-admin", "role": "admin"}'
+```
+
+Save the returned token string — it is shown once and never stored.
+
+### Option B — unauthenticated bootstrap (no env var)
+
+If no tokens exist and `SPARROW_API_KEY` is not set, the first `POST /tokens` call requires no credentials:
+
+```bash
+# First call when store is empty — no x-api-key needed
+curl -X POST http://localhost:6969/tokens \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ops-admin", "role": "admin"}'
+```
+
+Once that token is created, all subsequent token management calls require it.
+
+---
+
+## Creating tokens
+
+```bash
+# Admin token (full access + token management)
+curl -X POST http://localhost:6969/tokens \
+  -H "x-api-key: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ops-admin", "role": "admin"}'
+
+# Read/write token (queries only, no token management)
+curl -X POST http://localhost:6969/tokens \
+  -H "x-api-key: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ci-deploy", "role": "read_write"}'
+
+# Read-only token
+curl -X POST http://localhost:6969/tokens \
+  -H "x-api-key: $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "analytics-reader", "role": "read_only"}'
+```
+
+Response:
+```json
+{
+  "token": "sparrow_4a7f3b2e9c1d8e5f6a2b0c3d4e5f6a7b",
+  "record": {
+    "id":         "a1b2c3d4",
+    "name":       "ci-deploy",
+    "role":       "ReadWrite",
+    "created_at": 1716393600
+  }
+}
+```
+
+The `token` field is the raw key to put in `x-api-key` headers. The `id` field is the short ID used for revocation.
+
+---
+
+## Listing tokens
+
+```bash
+curl http://localhost:6969/tokens \
+  -H "x-api-key: $ADMIN_TOKEN"
+```
+
+Returns all token records. Raw token strings are never stored and cannot be retrieved after creation.
+
+---
+
+## Revoking a token
+
+```bash
+# Get the short ID from the list, then:
+curl -X DELETE http://localhost:6969/tokens/a1b2c3d4 \
+  -H "x-api-key: $ADMIN_TOKEN"
+```
+
+Returns `204 No Content` on success, `404` if the ID does not exist.
+
+---
+
+## Using a token
+
+Pass it as the `x-api-key` header on every request:
+
+```bash
+curl -X POST http://localhost:6969/GetUserById \
+  -H "x-api-key: sparrow_4a7f3b2e9c1d8e5f6a2b0c3d4e5f6a7b" \
+  -H "Content-Type: application/json" \
+  -d '{"id": "018f2e3a-1234-7abc-8def-000000000001"}'
+```
+
+Missing or invalid token → `401 Unauthorized`.  
+Valid token with insufficient role → `403 Forbidden`.
+
+---
+
+## Token storage
+
+Tokens are stored in a dedicated LMDB environment at `{data_dir_parent}/auth/` — a sibling of the graph data directory. Only the SHA-256 hash of each token is stored; plaintext values are never persisted.
+
+The auth store is independent of the graph data. Snapshots and restores of graph data do not affect tokens.
+
+---
+
+## Rotating `SPARROW_API_KEY`
+
+The env-var key is seeded as an admin token on every startup (idempotent — starting the server twice with the same key does not create duplicates). To rotate:
+
+1. Create a new named admin token via the API.
+2. Update deployments to use the new token.
+3. Revoke the old `SPARROW_API_KEY`-seeded token by its short ID.
+4. Remove or change `SPARROW_API_KEY` in the environment.

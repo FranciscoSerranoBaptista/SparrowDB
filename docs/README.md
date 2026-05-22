@@ -6,7 +6,9 @@ Project documentation for SparrowDB. Contains API references, design plans, comp
 
 | File | Description |
 |---|---|
-| `HTTP_API.md` | HTTP API reference: endpoints, request/response shapes, auth |
+| `HTTP_API.md` | HTTP API reference: endpoints, request/response shapes, auth, token management |
+| `auth.md` | Auth operator guide: bootstrapping, roles, token lifecycle, `SPARROW_API_KEY` |
+| `llms.txt` | LLM-friendly summary of the full project: concepts, API surface, crate layout |
 | `RUNTIME_HQL_INTERPRETER_PLAN.md` | Design plan for the `/__hql_runtime_eval` dynamic HQL interpreter |
 | `TS_CLIENT_GENERATION_PLAN.md` | Plan for TypeScript client/SDK code generation |
 | `V1_COMPAT_ENDPOINT.md` | Notes on the v1-compatibility endpoint |
