@@ -24,7 +24,8 @@ dotenvy = "0.15.7"
 bumpalo = "3.19.0"
 
 [features]
-default = ["lmdb"]
+default = ["lmdb", "studio"]
+studio = ["sparrow-core/studio"]
 lmdb = ["sparrow-core/lmdb"]
-dev = ["sparrow-core/dev-instance"]
+dev = ["sparrow-core/dev-instance", "studio"]
 production = ["sparrow-core/production"]

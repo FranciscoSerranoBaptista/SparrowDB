@@ -69,6 +69,7 @@ fn main() {
                  func,
                  from_version,
                  to_version,
+                 ..
              })| {
                 acc.entry(item_label)
                     .and_modify(|item_info: &mut ItemInfo| {
@@ -134,8 +135,13 @@ fn main() {
         },
     );
 
-    // Runtime HQL eval — opt-in via SPARROW_RUNTIME_HQL=true
-    if std::env::var("SPARROW_RUNTIME_HQL").as_deref() == Ok("true") {
+    // Runtime HQL eval — always on when studio is compiled in; opt-in via env otherwise
+    #[cfg(feature = "studio")]
+    let hql_eval_enabled = true;
+    #[cfg(not(feature = "studio"))]
+    let hql_eval_enabled = std::env::var("SPARROW_RUNTIME_HQL").as_deref() == Ok("true");
+
+    if hql_eval_enabled {
         use sparrow_db::sparrow_gateway::runtime_eval::handler as runtime_handler;
         let rt_handler: HandlerFn = Arc::new(move |input| {
             runtime_handler::handle(input, hql_schema_raw.clone())
