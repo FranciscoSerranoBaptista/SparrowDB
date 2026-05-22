@@ -11,7 +11,7 @@ All notable changes to SparrowDB are documented here.
 **Schema Migrations**
 - On-disk migration log — `_migrations_log` LMDB database records the state of every applied transition
   - `MigrationRecord` stores status (`InProgress` / `Complete`), a `(label, from, to)` checksum, and a Unix timestamp
-  - `read_record` / `write_record` helpers for serialized log access
+  - `read_record` / `write_record` helpers for serialised log access
 - `run_schema_migrations` runs automatically on database startup, after the endianness migration:
   - Groups `Transition` objects by item label and validates chain contiguity (returns an error on gaps)
   - Marks each transition `InProgress` before writing, then `Complete` after all nodes and edges are updated
@@ -26,16 +26,15 @@ All notable changes to SparrowDB are documented here.
 - `sparrow migrate list` — lists all compiled transitions in the binary
 - `sparrow upgrade` — the former `sparrow migrate` v1→v2 project wizard is renamed to `upgrade`; `sparrow migrate` is now the schema-migration subcommand dispatcher
 
-### Bug Fixes
-
-**Schema Migrations**
-- `TransitionFn.func` now uses `MigrationFn` (`HashMap<String, Value>` → `HashMap<String, Value>`) instead of `ImmutablePropertiesMap` — aligns the stored type with the public API and removes a hidden conversion
-- `upgrade_to_node_latest` and `upgrade_to_edge_latest` now bump `node.version` / `edge.version` to `item_info.latest` after applying transitions (was left at the old version number)
-- `storage_migration_tests.rs` and `storage_concurrent_tests.rs` were orphan files never included in the module tree; declared with `#[cfg(test)] mod` in `mod.rs` so their tests now actually run
-- `#[sparrow_migration]` macro path corrected from `graph_core::ops::version_info` to `storage_core::version_info`
-
-**CLI**
-- `sparrow add <name>` now fails with a clear error in non-interactive mode when no instance name is given — previously silently used the project name, which was surprising in scripts
+**Auth / TokenStore**
+- `TokenStore` — LMDB-backed named token registry with role-based access control
+  - Roles: `admin` (full read/write) and `readonly` (read-only queries)
+  - `create_token(name, role)` — generates a random 256-bit token and stores it
+  - `revoke(name)` — deletes a named token; no-ops if the name is unknown
+  - `verify(token) -> Option<Role>` — constant-time lookup returning the role if the token exists
+- `seed_legacy` — on startup, backfills the `SPARROW_API_KEY` environment variable as an `admin` token for backward compatibility with single-key deployments
+- `SparrowGateway` and `AppState` now hold an `Arc<TokenStore>` (gated on the `lmdb` feature)
+- Per-request token verification enforced on all routes when the `api-key` feature is enabled
 
 **Sparrow Studio (embedded web UI)**
 - New `sparrow-studio` crate — pre-built React/TypeScript assets served via `rust-embed` at `GET /studio` and `GET /studio/*`
@@ -48,42 +47,6 @@ All notable changes to SparrowDB are documented here.
 - **Connection settings panel** — configure host and port; live connectivity test shows green/red status indicator
 - `packages/studio` — Vite + React + TypeScript monorepo package; built assets checked in under `sparrow-studio/dist/`
 - pnpm workspace added to the repo root for unified JS dependency management
-
-### Bug Fixes
-
-**Sparrow Studio**
-- Parse `/introspect` JSON response correctly in the Studio API client (was treating the raw string as the schema)
-- Show connection status indicator in the header when the configured instance is unreachable
-
-### Internal
-
-**Sparrow Studio**
-- `sparrow-studio-ci.yml` — runs `pnpm install && pnpm build` on every push that touches `packages/studio/**` or `crates/sparrow-studio/**`
-- Studio router is generic over the axum `State` type so it can be merged into any stateful router without cloning
-
----
-
-**Auth / TokenStore**
-- `TokenStore` — LMDB-backed named token registry with role-based access control
-  - Roles: `admin` (full read/write) and `readonly` (read-only queries)
-  - `create_token(name, role)` — generates a random 256-bit token and stores it
-  - `revoke(name)` — deletes a named token; no-ops if the name is unknown
-  - `verify(token) -> Option<Role>` — constant-time lookup returning the role if the token exists
-- `seed_legacy` — on startup, backfills the `SPARROW_API_KEY` environment variable as an `admin` token for backward compatibility with single-key deployments
-- `SparrowGateway` and `AppState` now hold an `Arc<TokenStore>` (gated on the `lmdb` feature)
-- Per-request token verification enforced on all routes when the `api-key` feature is enabled
-
-### Bug Fixes
-
-**Auth / TokenStore**
-- Constant-time verification loop prevents timing-based token enumeration
-- Complete the full scan before returning `None` — previously short-circuited on the first non-matching entry
-- Serialize all writes with a `Mutex` to prevent concurrent insertions from racing inside LMDB
-- `seed_legacy` is idempotent — calling it multiple times on startup does not create duplicate entries
-- Use the `db.delete` return value in `revoke()` to detect concurrent deletion races
-- `pub mod auth` gated on the `lmdb` feature — previously caused compile errors on non-lmdb builds
-
-### New Features (continued)
 
 **HNSW / Vector Search**
 - Enable PREFILTER mode during HNSW traversal for more accurate filtered vector search
@@ -98,6 +61,24 @@ All notable changes to SparrowDB are documented here.
 
 ### Bug Fixes
 
+**Schema Migrations**
+- `TransitionFn.func` now uses `MigrationFn` (`HashMap<String, Value>` → `HashMap<String, Value>`) instead of `ImmutablePropertiesMap` — aligns the stored type with the public API and removes a hidden conversion
+- `upgrade_to_node_latest` and `upgrade_to_edge_latest` now bump `node.version` / `edge.version` to `item_info.latest` after applying transitions (was left at the old version number)
+- `storage_migration_tests.rs` and `storage_concurrent_tests.rs` were orphan files never included in the module tree; declared with `#[cfg(test)] mod` in `mod.rs` so their tests now actually run
+- `#[sparrow_migration]` macro path corrected from `graph_core::ops::version_info` to `storage_core::version_info`
+
+**Auth / TokenStore**
+- Constant-time verification loop prevents timing-based token enumeration
+- Complete the full scan before returning `None` — previously short-circuited on the first non-matching entry
+- Serialize all writes with a `Mutex` to prevent concurrent insertions from racing inside LMDB
+- `seed_legacy` is idempotent — calling it multiple times on startup does not create duplicate entries
+- Use the `db.delete` return value in `revoke()` to detect concurrent deletion races
+- `pub mod auth` gated on the `lmdb` feature — previously caused compile errors on non-lmdb builds
+
+**Sparrow Studio**
+- Parse `/introspect` JSON response correctly in the Studio API client (was treating the raw string as the schema)
+- Show connection status indicator in the header when the configured instance is unreachable
+
 **Vector / HNSW**
 - Return `ZeroMagnitudeVector` error instead of dividing by zero on zero-magnitude input vectors
 - Propagate non-`EntryPointNotFound` errors in `insert` instead of swallowing them
@@ -111,7 +92,14 @@ All notable changes to SparrowDB are documented here.
 - `is_zero()` guards in `Div` and `Rem` now detect `Value::I128(0)` (previously fell through to a `wrapping_div(0)` panic with no guard message)
 - `min()` and `max()` cross-type integer pairs now use `Ord` comparison instead of `f64` promotion, preserving precision for values outside `f64`'s 53-bit mantissa
 
+**CLI**
+- `sparrow add <name>` now fails with a clear error in non-interactive mode when no instance name is given — previously silently used the project name, which was surprising in scripts
+
 ### Internal
+
+**Sparrow Studio**
+- `sparrow-studio-ci.yml` — runs `pnpm install && pnpm build` on every push that touches `packages/studio/**` or `crates/sparrow-studio/**`
+- Studio router is generic over the axum `State` type so it can be merged into any stateful router without cloning
 
 **Tests**
 - Reduced oversized LMDB map sizes in test helpers: `hnsw_tests` 512 MB → 64 MB, `bm25_tests` 4 GB → 128 MB; tests now run on any machine without requiring excessive free disk space
