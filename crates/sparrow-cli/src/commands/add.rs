@@ -29,7 +29,11 @@ pub async fn run(name: Option<String>) -> Result<()> {
                 .interact()?;
             n
         }
-        None => project_context.config.project.name.clone(),
+        None => {
+            return Err(project_error(
+                "No instance name specified. In non-interactive mode, specify one with 'sparrow add <name>'."
+            ).into());
+        }
     };
 
     if project_context.config.local.contains_key(&instance_name) {
