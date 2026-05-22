@@ -15,6 +15,7 @@ path = "src/lib.rs"
 # SparrowDB dependencies
 sparrow-macros = { path = "../sparrow-macros" }
 sparrow-metrics = { path = "../sparrow-metrics" }
+sparrow-studio = { path = "../sparrow-studio", optional = true }
 
 # external dependencies
 tokio = { version = "1.44.2", features = ["full"] }
@@ -88,6 +89,7 @@ full = ["build", "compiler", "vectors"]
 bench = ["polars"]
 dev = ["debug-output", "server", "bench"]
 dev-instance = []
+studio = ["dep:sparrow-studio"]
 lmdb = ["server", "heed3"]
 default = ["lmdb"]
 production = ["api-key"]

@@ -62,11 +62,14 @@ impl SparrowGateway {
         #[cfg(feature = "lmdb")]
         let token_store = {
             let auth_path = opts.as_ref()
-                .map(|o| {
-                    std::path::Path::new(&o.path)
-                        .parent()
-                        .unwrap_or_else(|| std::path::Path::new("/tmp"))
-                        .join("auth")
+                .and_then(|o| {
+                    let parent = std::path::Path::new(&o.path).parent()?;
+                    // `parent()` returns Some("") for bare filenames — treat as absent.
+                    if parent.as_os_str().is_empty() {
+                        None
+                    } else {
+                        Some(parent.join("auth"))
+                    }
                 })
                 .unwrap_or_else(|| {
                     // Tests: unique temp path per gateway instance avoids conflicts
@@ -166,6 +169,11 @@ impl SparrowGateway {
                 .route("/nodes-by-label", get(nodes_by_label_handler))
                 .route("/node-connections", get(node_connections_handler))
                 .route("/node-details", get(node_details_handler));
+        }
+
+        #[cfg(feature = "studio")]
+        {
+            axum_app = axum_app.merge(sparrow_studio::studio_router().with_state(()));
         }
 
         let axum_app = axum_app.with_state(Arc::new(AppState {
