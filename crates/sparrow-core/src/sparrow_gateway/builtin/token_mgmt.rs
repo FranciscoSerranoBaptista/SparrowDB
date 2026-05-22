@@ -57,6 +57,7 @@ pub struct CreateTokenResponse {
 }
 
 /// Verify the caller holds an Admin token.
+#[cfg(feature = "lmdb")]
 pub fn require_admin(record: &TokenRecord) -> Result<(), SparrowError> {
     if record.role == Role::Admin {
         Ok(())
@@ -70,6 +71,15 @@ fn extract_verified_admin(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<TokenRecord, axum::http::Response<Body>> {
+    // When no tokens exist, auth is disabled server-wide — allow bootstrap.
+    if !state.token_store.is_auth_required() {
+        return Ok(TokenRecord {
+            id: "bootstrap".to_string(),
+            name: "bootstrap".to_string(),
+            role: Role::Admin,
+            created_at: 0,
+        });
+    }
     let raw_key = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
