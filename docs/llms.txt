@@ -79,6 +79,16 @@ sparrow data snapshot|clone|restore — database backup and restore
 sparrow migrate status|apply|list   — schema migration management
 sparrow upgrade                — interactive v1→v2 project migration wizard
 
+sparrow import <FILE> [OPTIONS] — bulk-load records from JSON/CSV/Parquet into a running instance
+  --query <NAME>       HQL query to call for every record (required unless --query-column)
+  --query-column <COL> Column whose value is the per-record query name (stripped before posting)
+  --target <URL>       Server URL (default: http://localhost:6969)
+  --workers <N>        Concurrent HTTP workers (default: 8)
+  --token / SPARROW_TOKEN  Auth token → x-api-key header
+  --dry-run            Parse file and preview routing without sending
+  --on-error continue|abort  Failure policy (default: continue)
+Full guide: docs/import.md
+
 ## Crate layout
 
 crates/sparrow-core            — database engine, gateway, query execution
