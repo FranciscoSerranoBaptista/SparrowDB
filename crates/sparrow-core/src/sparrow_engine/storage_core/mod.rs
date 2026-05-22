@@ -6,6 +6,11 @@ pub mod storage_migration;
 pub mod txn;
 pub mod version_info;
 
+#[cfg(test)]
+mod storage_migration_tests;
+#[cfg(test)]
+mod storage_concurrent_tests;
+
 use crate::sparrow_engine::storage_core::storage_methods::{DBMethods, StorageMethods};
 use crate::{
     sparrow_engine::{
@@ -71,6 +76,7 @@ pub mod lmdb {
         pub vectors: VectorCore,
         pub bm25: Option<HBM25Config>,
         pub metadata_db: Database<Bytes, Bytes>,
+        pub migrations_db: Database<Bytes, Bytes>,
         pub version_info: VersionInfo,
 
         pub storage_config: StorageConfig,
@@ -85,6 +91,7 @@ pub mod lmdb {
         const DB_OUT_EDGES: &str = "out_edges"; // for outgoing edge indices (o:)
         const DB_IN_EDGES: &str = "in_edges"; // for incoming edge indices (i:)
         const DB_STORAGE_METADATA: &str = "storage_metadata"; // for storage metadata key/value pairs
+        const DB_MIGRATIONS_LOG: &str = "_migrations_log"; // for HQL schema migration state
 
         pub fn new(
             path: &str,
@@ -159,6 +166,12 @@ pub mod lmdb {
                 .name(Self::DB_STORAGE_METADATA)
                 .create(&mut wtxn)?;
 
+            let migrations_db: Database<Bytes, Bytes> = graph_env
+                .database_options()
+                .types::<Bytes, Bytes>()
+                .name(Self::DB_MIGRATIONS_LOG)
+                .create(&mut wtxn)?;
+
             let mut secondary_indices = HashMap::new();
             if let Some(indexes) = config.get_graph_config().secondary_indices {
                 for index in indexes {
@@ -225,6 +238,7 @@ pub mod lmdb {
                 vectors,
                 bm25,
                 metadata_db,
+                migrations_db,
                 storage_config,
                 version_info,
             };

@@ -1219,3 +1219,37 @@ fn test_memory_efficiency_batch_processing() {
     let vectors = read_all_vectors(&storage, NATIVE_VECTOR_ENDIANNESS).unwrap();
     assert_eq!(vectors.len(), 5000);
 }
+
+// ============================================================================
+// Migration Log Tests
+// ============================================================================
+
+#[test]
+fn migrations_db_stores_and_retrieves_record() {
+    use crate::sparrow_engine::storage_core::migration_log::{
+        MigrationRecord, MigrationStatus, read_record, write_record,
+    };
+
+    let (storage, _dir) = setup_test_storage();
+    let record = MigrationRecord::in_progress(0xabcd);
+
+    {
+        let mut wtxn = storage.graph_env.write_txn().unwrap();
+        write_record(&mut wtxn, &storage.migrations_db, "User_v1_v2", &record).unwrap();
+        wtxn.commit().unwrap();
+    }
+
+    let rtxn = storage.graph_env.read_txn().unwrap();
+    let loaded = read_record(&rtxn, &storage.migrations_db, "User_v1_v2").unwrap();
+    assert_eq!(loaded, Some(record));
+}
+
+#[test]
+fn migrations_db_returns_none_for_missing_key() {
+    use crate::sparrow_engine::storage_core::migration_log::read_record;
+
+    let (storage, _dir) = setup_test_storage();
+    let rtxn = storage.graph_env.read_txn().unwrap();
+    let result = read_record(&rtxn, &storage.migrations_db, "nonexistent").unwrap();
+    assert!(result.is_none());
+}
