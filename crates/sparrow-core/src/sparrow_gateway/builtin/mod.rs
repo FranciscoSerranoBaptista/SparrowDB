@@ -1,5 +1,6 @@
 pub mod all_nodes_and_edges;
 pub mod diagnostics;
+#[cfg(feature = "dev-instance")]
 pub mod migrate;
 pub mod node_by_id;
 pub mod node_connections;

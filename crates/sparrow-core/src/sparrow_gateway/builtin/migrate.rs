@@ -61,6 +61,7 @@ fn migrate_status(input: HandlerInput) -> Result<protocol::Response, GraphError>
     ))
 }
 
+#[cfg(feature = "dev-instance")]
 inventory::submit! {
     HandlerSubmission(Handler::new("migrate_status", migrate_status, false))
 }
@@ -95,6 +96,7 @@ fn migrate_list(_input: HandlerInput) -> Result<protocol::Response, GraphError> 
     })
 }
 
+#[cfg(feature = "dev-instance")]
 inventory::submit! {
     HandlerSubmission(Handler::new("migrate_list", migrate_list, false))
 }
