@@ -34,6 +34,17 @@ pub fn migrate(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
             StorageMetadata::VectorNativeEndianness {
                 vector_endianness: currently_stored_vector_endianness,
             } => convert_vectors_to_native_endianness(currently_stored_vector_endianness, storage)?,
+            StorageMetadata::WithSchemaVersion {
+                vector_endianness: NATIVE_VECTOR_ENDIANNESS,
+                ..
+            } => {
+                // Vectors are already in native endianness; schema version is informational only
+                break;
+            }
+            StorageMetadata::WithSchemaVersion {
+                vector_endianness: currently_stored_vector_endianness,
+                ..
+            } => convert_vectors_to_native_endianness(currently_stored_vector_endianness, storage)?,
         };
     }
 

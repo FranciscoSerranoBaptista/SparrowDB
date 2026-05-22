@@ -1221,13 +1221,59 @@ fn test_memory_efficiency_batch_processing() {
 }
 
 // ============================================================================
+// WithSchemaVersion Metadata Tests
+// ============================================================================
+
+#[test]
+fn with_schema_version_round_trips() {
+    use crate::sparrow_engine::storage_core::metadata::NATIVE_VECTOR_ENDIANNESS;
+
+    let (storage, _dir) = setup_test_storage();
+
+    let metadata = StorageMetadata::WithSchemaVersion {
+        vector_endianness: NATIVE_VECTOR_ENDIANNESS,
+        schema_version: "v2".to_string(),
+    };
+
+    {
+        let mut wtxn = storage.graph_env.write_txn().unwrap();
+        metadata.save(&mut wtxn, &storage.metadata_db).unwrap();
+        wtxn.commit().unwrap();
+    }
+
+    let rtxn = storage.graph_env.read_txn().unwrap();
+    let loaded = StorageMetadata::read(&rtxn, &storage.metadata_db).unwrap();
+
+    match loaded {
+        StorageMetadata::WithSchemaVersion { schema_version, .. } => {
+            assert_eq!(schema_version, "v2");
+        }
+        other => panic!(
+            "expected WithSchemaVersion, got discriminant {:?}",
+            std::mem::discriminant(&other)
+        ),
+    }
+}
+
+#[test]
+fn new_storage_reads_as_at_least_vector_endianness() {
+    let (storage, _dir) = setup_test_storage();
+    let rtxn = storage.graph_env.read_txn().unwrap();
+    let meta = StorageMetadata::read(&rtxn, &storage.metadata_db).unwrap();
+    match meta {
+        StorageMetadata::PreMetadata => panic!("must not be PreMetadata after open"),
+        StorageMetadata::VectorNativeEndianness { .. } | StorageMetadata::WithSchemaVersion { .. } => {}
+    }
+}
+
+// ============================================================================
 // Migration Log Tests
 // ============================================================================
 
 #[test]
 fn migrations_db_stores_and_retrieves_record() {
     use crate::sparrow_engine::storage_core::migration_log::{
-        MigrationRecord, MigrationStatus, read_record, write_record,
+        MigrationRecord, read_record, write_record,
     };
 
     let (storage, _dir) = setup_test_storage();
