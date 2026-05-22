@@ -230,6 +230,7 @@ pub enum FieldType {
     Array(Box<FieldType>),
     Identifier(String),
     Object(HashMap<String, FieldType>),
+    Vector(usize),
     // Closure(String, HashMap<String, FieldType>),
 }
 
@@ -265,6 +266,7 @@ impl PartialEq for FieldType {
             (FieldType::Array(a), FieldType::Array(b)) => a == b,
             (FieldType::Identifier(a), FieldType::Identifier(b)) => a == b,
             (FieldType::Object(a), FieldType::Object(b)) => a == b,
+            (FieldType::Vector(a), FieldType::Vector(b)) => a == b,
             // (FieldType::Closure(a, b), FieldType::Closure(c, d)) => a == c && b == d,
             _ => false,
         }
@@ -291,6 +293,7 @@ impl Display for FieldType {
             FieldType::Date => write!(f, "Date"),
             FieldType::Array(t) => write!(f, "Array({t})"),
             FieldType::Identifier(s) => write!(f, "{s}"),
+            FieldType::Vector(n) => write!(f, "vector({n})"),
             FieldType::Object(m) => {
                 write!(f, "{{")?;
                 for (k, v) in m {

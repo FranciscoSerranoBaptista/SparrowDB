@@ -207,6 +207,7 @@ impl From<FieldType> for GeneratedType {
                 // Return a placeholder type for now
                 GeneratedType::Variable(GenRef::Std("Value".to_string()))
             }
+            FieldType::Vector(_) => GeneratedType::Variable(GenRef::Std("Vec<f64>".to_string())),
         }
     }
 }
@@ -420,6 +421,7 @@ impl From<FieldType> for Type {
             Array(inner_ft) => Type::Array(Box::new(Type::from(*inner_ft))),
             Object(obj) => Type::Object(obj.into_iter().map(|(k, v)| (k, Type::from(v))).collect()),
             Identifier(id) => Type::Scalar(FieldType::Identifier(id)),
+            Vector(n) => Type::Scalar(FieldType::Vector(n)),
         }
     }
 }
@@ -437,6 +439,7 @@ impl From<&FieldType> for Type {
                     .collect(),
             ),
             Identifier(id) => Type::Scalar(FieldType::Identifier(id.clone())),
+            Vector(n) => Type::Scalar(FieldType::Vector(*n)),
         }
     }
 }

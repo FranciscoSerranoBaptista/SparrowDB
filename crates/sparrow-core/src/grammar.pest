@@ -62,7 +62,7 @@ optional_param = { "?" }
 // Assignments and traversals
 // ---------------------------------------------------------------------
 get_stmt            = { identifier ~ "<-" ~ evaluates_to_anything }
-traversal           = { (start_node | start_edge | search_vector | start_vector) ~ step* ~ last_step? }
+traversal           = { (start_node | start_edge | search_vector | search_node_vector | start_vector) ~ step* ~ last_step? }
 id_traversal        = { identifier ~ ((step+ ~ last_step?) | last_step) }
 anonymous_traversal = { "_"  ~ ((step+ ~ last_step?) | last_step)? }
 step                = { "::" ~ (graph_step | order_by| aggregate | group_by | where_step | intersect_step | closure_step | object_step | exclude_field | count | ID | range_step | AddE | rerank_rrf | rerank_mmr) }
@@ -93,6 +93,7 @@ evaluates_to_anything = {
   | traversal
   | id_traversal
   | search_vector
+  | search_node_vector
   | bm25_search
   | math_function_call
   | string_literal
@@ -225,6 +226,7 @@ rerank_mmr = { "RerankMMR" ~ "(" ~ "lambda" ~ ":" ~ evaluates_to_number ~ ("," ~
 // Vector steps
 // ---------------------------------------------------------------------
 search_vector = { "SearchV" ~ "<" ~ identifier_upper ~ ">" ~ "(" ~ vector_data ~ "," ~ (integer | identifier) ~ ")" }// ~ ("::" ~ pre_filter)? }
+search_node_vector = { "SearchN" ~ "<" ~ type_dot_field ~ ">" ~ "(" ~ vector_data ~ "," ~ (integer | identifier) ~ ")" }
 bm25_search = { "SearchBM25" ~ "<" ~ identifier_upper ~ ">" ~ "(" ~ (string_literal | identifier) ~ "," ~ (integer | identifier) ~ ")" }
 pre_filter = { "PREFILTER" ~ "(" ~ (evaluates_to_bool | anonymous_traversal) ~ ")" }
 BatchAddV = { "BatchAddV" ~ "<" ~ identifier_upper ~ ">" ~ "(" ~ identifier ~ ")" }
@@ -304,8 +306,10 @@ array            = { "[" ~ param_type ~ "]" }
 object           = { "{" ~ field_defs ~ "}" }
 named_type       = { "String" | "Boolean" | "F32" | "F64" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" | "U128" }
 ID_TYPE          = { "ID" }
-date_type       = { "Date" }
-param_type       = { named_type | date_type | ID_TYPE | array | object | identifier  }
+date_type        = { "Date" }
+vector_type      = { "vector" ~ "(" ~ integer ~ ")" }
+type_dot_field   = { identifier_upper ~ "." ~ identifier }
+param_type       = { named_type | date_type | ID_TYPE | array | object | vector_type | identifier  }
 
 // ---------------------------------------------------------------------
 // Literals

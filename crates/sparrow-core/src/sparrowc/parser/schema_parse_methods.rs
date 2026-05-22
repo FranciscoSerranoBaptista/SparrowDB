@@ -445,6 +445,16 @@ impl SparrowParser {
             Rule::identifier => Ok(FieldType::Identifier(field.as_str().to_string())),
             Rule::ID_TYPE => Ok(FieldType::Uuid),
             Rule::date_type => Ok(FieldType::Date),
+            Rule::vector_type => {
+                let dim_str = field.try_inner_next()?.as_str();
+                let dim = dim_str.parse::<usize>().map_err(|e| {
+                    ParserError::from(format!(
+                        "Invalid vector dimension '{}': {e}",
+                        dim_str
+                    ))
+                })?;
+                Ok(FieldType::Vector(dim))
+            }
             other => Err(ParserError::from(format!(
                 "Unexpected rule in parse_field_type: {:?}",
                 other
@@ -1137,5 +1147,41 @@ mod tests {
 
         let parsed = result.unwrap();
         assert_eq!(parsed.schema.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_vector_field_type() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(1536)
+            }
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let result = SparrowParser::parse_source(&content);
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+        let parsed = result.unwrap();
+        let schema = parsed.schema.get(&1).unwrap();
+        assert_eq!(schema.node_schemas[0].fields.len(), 2);
+        assert!(matches!(
+            schema.node_schemas[0].fields[1].field_type,
+            FieldType::Vector(1536)
+        ));
+    }
+
+    #[test]
+    fn test_search_node_vector_parses() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(1536)
+            }
+            QUERY findPeople(q: [F64]) =>
+                results <- SearchN<Person.embedding>(q, 10)
+            RETURN results
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let result = SparrowParser::parse_source(&content);
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
     }
 }
