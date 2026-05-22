@@ -356,8 +356,8 @@ pub fn migration(args: TokenStream, item: TokenStream) -> TokenStream {
         #[used]
         static #static_name: () = {
             inventory::submit! {
-                ::sparrow_db::sparrow_engine::graph_core::ops::version_info::TransitionSubmission(
-                    ::sparrow_db::sparrow_engine::graph_core::ops::version_info::Transition::new(
+                ::sparrow_db::sparrow_engine::storage_core::version_info::TransitionSubmission(
+                    ::sparrow_db::sparrow_engine::storage_core::version_info::Transition::new(
                         stringify!(#item),
                         #from_version,
                         #to_version,
