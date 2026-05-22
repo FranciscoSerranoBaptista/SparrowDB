@@ -30,13 +30,19 @@ async fn studio_asset(Path(path): Path<String>) -> impl IntoResponse {
     serve_file(path)
 }
 
+// All data is compiled into the binary via rust-embed; no disk I/O occurs here.
+// If debug-embed is ever enabled (disk reads at runtime), these callers must become async.
 fn serve_file(path: &str) -> Response<Body> {
     match Assets::get(path) {
         Some(content) => {
-            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            let mime = if path.ends_with(".html") {
+                "text/html; charset=utf-8".to_string()
+            } else {
+                mime_guess::from_path(path).first_or_octet_stream().to_string()
+            };
             let mut builder = Response::builder()
                 .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, mime.as_ref());
+                .header(header::CONTENT_TYPE, mime);
             if path.starts_with("assets/") {
                 builder = builder.header(
                     header::CACHE_CONTROL,
