@@ -16,6 +16,8 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use reqwest::StatusCode;
 use tempfile::TempDir;
+#[cfg(feature = "lmdb")]
+use crate::sparrow_gateway::auth::TokenStore;
 
 fn create_test_app_state(schema_json: Option<String>) -> Arc<AppState> {
     let temp_dir = TempDir::new().unwrap();
@@ -43,6 +45,11 @@ fn create_test_app_state(schema_json: Option<String>) -> Arc<AppState> {
         worker_pool,
         schema_json: schema_json.map(Bytes::from),
         cluster_id: None,
+        #[cfg(feature = "lmdb")]
+        token_store: {
+            let rnd: u64 = rand::random();
+            Arc::new(TokenStore::open(&format!("/tmp/sparrow_auth_{rnd:x}")).unwrap())
+        },
     })
 }
 

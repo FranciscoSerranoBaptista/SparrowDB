@@ -6,6 +6,8 @@ use axum::body::Bytes;
 use core_affinity::CoreId;
 use std::sync::atomic;
 use std::{collections::HashMap, sync::Arc};
+#[cfg(feature = "lmdb")]
+use crate::sparrow_gateway::auth::TokenStore;
 
 use crate::sparrow_engine::traversal_core::config::Config;
 use tempfile::TempDir;
@@ -156,6 +158,11 @@ fn test_app_state_creation() {
         worker_pool,
         schema_json: None,
         cluster_id: None,
+        #[cfg(feature = "lmdb")]
+        token_store: {
+            let rnd: u64 = rand::random();
+            Arc::new(TokenStore::open(&format!("/tmp/sparrow_auth_{rnd:x}")).unwrap())
+        },
     };
 
     assert!(state.schema_json.is_none());
@@ -182,6 +189,11 @@ fn test_app_state_with_schema() {
         worker_pool,
         schema_json: Some(Bytes::from_static(br#"{"schema": "test"}"#)),
         cluster_id: None,
+        #[cfg(feature = "lmdb")]
+        token_store: {
+            let rnd: u64 = rand::random();
+            Arc::new(TokenStore::open(&format!("/tmp/sparrow_auth_{rnd:x}")).unwrap())
+        },
     };
 
     assert!(state.schema_json.is_some());
@@ -211,6 +223,11 @@ fn test_app_state_with_cluster_id() {
         worker_pool,
         schema_json: None,
         cluster_id: Some("cluster-456".to_string()),
+        #[cfg(feature = "lmdb")]
+        token_store: {
+            let rnd: u64 = rand::random();
+            Arc::new(TokenStore::open(&format!("/tmp/sparrow_auth_{rnd:x}")).unwrap())
+        },
     };
 
     assert!(state.cluster_id.is_some());
@@ -341,6 +358,19 @@ fn test_core_setter_index_initial_value() {
 #[test]
 fn test_gateway_opts_default_workers_per_core() {
     assert_eq!(GatewayOpts::DEFAULT_WORKERS_PER_CORE, 8);
+}
+
+// ============================================================================
+// TokenStore Tests
+// ============================================================================
+
+#[cfg(feature = "lmdb")]
+#[test]
+fn test_gateway_has_token_store() {
+    let (graph, _temp_dir) = create_test_graph();
+    let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, None, None, None, None);
+    // TokenStore must have been created — no tokens seeded in tests so auth is disabled
+    assert!(!gateway.token_store.is_auth_required());
 }
 
 // ============================================================================

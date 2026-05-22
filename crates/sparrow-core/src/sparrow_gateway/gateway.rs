@@ -12,6 +12,8 @@ use tracing::{info, trace, warn};
 
 use super::router::router::{HandlerFn, SparrowRouter};
 use crate::sparrow_gateway::v1_compat::v1_query_axum_handler;
+#[cfg(feature = "lmdb")]
+use crate::sparrow_gateway::auth::TokenStore;
 #[cfg(feature = "dev-instance")]
 use crate::sparrow_gateway::builtin::all_nodes_and_edges::nodes_edges_handler;
 #[cfg(feature = "dev-instance")]
@@ -41,6 +43,8 @@ pub struct SparrowGateway {
     pub(crate) router: Arc<SparrowRouter>,
     pub(crate) opts: Option<SparrowGraphEngineOpts>,
     pub(crate) cluster_id: Option<String>,
+    #[cfg(feature = "lmdb")]
+    pub(crate) token_store: Arc<TokenStore>,
 }
 
 impl SparrowGateway {
@@ -55,6 +59,34 @@ impl SparrowGateway {
     ) -> SparrowGateway {
         let router = Arc::new(SparrowRouter::new(routes, mcp_routes, write_routes));
         let cluster_id = std::env::var("SPARROW_CLUSTER_ID").ok();
+        #[cfg(feature = "lmdb")]
+        let token_store = {
+            let auth_path = opts.as_ref()
+                .map(|o| {
+                    std::path::Path::new(&o.path)
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("/tmp"))
+                        .join("auth")
+                })
+                .unwrap_or_else(|| {
+                    // Tests: unique temp path per gateway instance avoids conflicts
+                    let rnd: u64 = rand::random();
+                    std::path::PathBuf::from(format!("/tmp/sparrow_auth_{rnd:x}"))
+                });
+
+            let store = TokenStore::open(
+                auth_path.to_str().expect("auth path is valid UTF-8"),
+            ).expect("failed to open token store");
+
+            // Seed SPARROW_API_KEY as admin token for backward compatibility
+            if let Ok(legacy_key) = std::env::var("SPARROW_API_KEY") {
+                if !legacy_key.is_empty() {
+                    store.seed_legacy(&legacy_key);
+                }
+            }
+
+            Arc::new(store)
+        };
         SparrowGateway {
             address: address.to_string(),
             graph_access,
@@ -62,6 +94,8 @@ impl SparrowGateway {
             workers_per_core,
             opts,
             cluster_id,
+            #[cfg(feature = "lmdb")]
+            token_store,
         }
     }
 
@@ -138,6 +172,8 @@ impl SparrowGateway {
             worker_pool,
             schema_json: self.opts.and_then(|o| o.config.schema.map(Bytes::from)),
             cluster_id: self.cluster_id,
+            #[cfg(feature = "lmdb")]
+            token_store: Arc::clone(&self.token_store),
         }));
 
         rt.block_on(async move {
@@ -273,6 +309,8 @@ pub struct AppState {
     pub worker_pool: WorkerPool,
     pub schema_json: Option<Bytes>,
     pub cluster_id: Option<String>,
+    #[cfg(feature = "lmdb")]
+    pub token_store: Arc<TokenStore>,
 }
 
 pub struct CoreSetter {
