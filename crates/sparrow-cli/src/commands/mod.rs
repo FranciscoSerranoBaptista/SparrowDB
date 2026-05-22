@@ -1,5 +1,6 @@
 pub mod add;
 pub mod backup;
+pub mod import;
 pub mod build;
 pub mod check;
 pub mod compile;

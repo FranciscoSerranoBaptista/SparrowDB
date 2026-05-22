@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 sparrow-metrics = { path = "../sparrow-metrics" }
 sparrow-core = { path = "../sparrow-core" }
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.53", features = ["derive", "env"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 eyre = "0.6.12"
@@ -40,6 +40,8 @@ tui-banner = "0.2.3"
 base64 = "0.22"
 fake = { version = "2.10", features = ["derive"] }
 rand = "0.8"
+csv = "1"
+polars = { version = "0.46.0", features = ["parquet", "lazy", "json"], default-features = false }
 
 
 [dev-dependencies]

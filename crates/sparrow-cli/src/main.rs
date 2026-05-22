@@ -232,6 +232,49 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
+    /// Bulk-import records from a JSON, CSV, or Parquet file into a running SparrowDB instance.
+    ///
+    /// Each record in the file is posted as a JSON object to `POST /<query>`.
+    /// The object keys must match the named parameters of the HQL query.
+    ///
+    /// # Examples
+    ///
+    ///   sparrow import users.json   --query CreateUser
+    ///   sparrow import users.csv    --query CreateUser --workers 16
+    ///   sparrow import data.parquet --query ImportEvent --target http://prod:6969
+    Import {
+        /// Path to the import file (JSON array, CSV with header row, or Parquet)
+        file: std::path::PathBuf,
+
+        /// Name of the compiled HQL query to call for each record
+        #[arg(long, short = 'q')]
+        query: String,
+
+        /// SparrowDB target URL
+        #[arg(long, short = 't', default_value = "http://localhost:6969")]
+        target: String,
+
+        /// Number of concurrent HTTP workers
+        #[arg(long, short = 'w', default_value_t = 8)]
+        workers: usize,
+
+        /// Auth token (or set SPARROW_TOKEN env var)
+        #[arg(long, env = "SPARROW_TOKEN")]
+        token: Option<String>,
+
+        /// Parse the file and print a preview without sending any requests
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Override format detection (json | csv | parquet)
+        #[arg(long, short = 'f')]
+        format: Option<String>,
+
+        /// What to do when a record fails: continue | abort
+        #[arg(long, default_value = "continue")]
+        on_error: String,
+    },
+
     /// Run a pre-production stress test against a running SparrowDB instance
     ///
     /// Requires the instance to be compiled with the People/Company/Jobs schema and queries.
@@ -473,6 +516,23 @@ async fn main() -> Result<()> {
                     .await
             }
             Commands::Backup { instance, output } => commands::backup::run(output, instance).await,
+            Commands::Import {
+                file,
+                query,
+                target,
+                workers,
+                token,
+                dry_run,
+                format,
+                on_error,
+            } => {
+                use commands::import::OnError;
+                let on_error = match on_error.to_ascii_lowercase().as_str() {
+                    "abort" => OnError::Abort,
+                    "continue" | _ => OnError::Continue,
+                };
+                commands::import::run(file, query, target, workers, token, dry_run, format, on_error).await
+            }
             Commands::Stress {
                 endpoint,
                 port,
