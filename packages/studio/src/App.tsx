@@ -1,6 +1,7 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, onMount, Show } from "solid-js";
 import "./App.css";
 import { connection, saveConnection } from "./store/connection";
+import { SparrowClient } from "./api/client";
 import { HqlEditor } from "./views/HqlEditor";
 import { SchemaBrowser } from "./views/SchemaBrowser";
 import { GraphViz } from "./views/GraphViz";
@@ -17,10 +18,25 @@ export function App() {
   const [draftUrl, setDraftUrl] = createSignal(connection.baseUrl);
   const [draftKey, setDraftKey] = createSignal(connection.apiKey);
 
-  function saveSettings() {
-    saveConnection({ baseUrl: draftUrl(), apiKey: draftKey() });
+  async function saveSettings() {
+    saveConnection({ baseUrl: draftUrl(), apiKey: draftKey(), connected: false });
     setSettingsOpen(false);
+    try {
+      await new SparrowClient(draftUrl(), draftKey()).introspect();
+      saveConnection({ connected: true });
+    } catch {
+      // stays false
+    }
   }
+
+  onMount(async () => {
+    try {
+      await new SparrowClient(connection.baseUrl, connection.apiKey).introspect();
+      saveConnection({ connected: true });
+    } catch {
+      saveConnection({ connected: false });
+    }
+  });
 
   function handleGraphResults(results: unknown[]) {
     setGraphData(results);

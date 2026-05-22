@@ -60,22 +60,21 @@ export class SparrowClient {
     return resp.json();
   }
 
-  private async get<T>(path: string): Promise<T> {
-    const resp = await fetch(`${this.baseUrl}${path}`, {
-      method: "GET",
-      headers: this.headers(),
-    });
-    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-    return resp.text() as unknown as T;
-  }
-
   async hqlEval(query: string): Promise<unknown> {
     return this.post("/__hql_runtime_eval", { query, params: {} });
   }
 
   async introspect(): Promise<SchemaResponse> {
-    const raw = await this.get<string>("/introspect");
-    return parseSchema(raw);
+    const resp = await fetch(`${this.baseUrl}/introspect`, {
+      method: "GET",
+      headers: this.headers(),
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    const data = await resp.json() as { schema: { nodes: SchemaNode[]; edges: SchemaEdge[]; vectors?: unknown[] } };
+    return {
+      nodes: data.schema?.nodes ?? [],
+      edges: data.schema?.edges ?? [],
+    };
   }
 
   async diagnostics(): Promise<DiagnosticsResponse> {
