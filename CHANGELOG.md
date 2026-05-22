@@ -8,6 +8,35 @@ All notable changes to SparrowDB are documented here.
 
 ### New Features
 
+**Schema Migrations**
+- On-disk migration log — `_migrations_log` LMDB database records the state of every applied transition
+  - `MigrationRecord` stores status (`InProgress` / `Complete`), a `(label, from, to)` checksum, and a Unix timestamp
+  - `read_record` / `write_record` helpers for serialized log access
+- `run_schema_migrations` runs automatically on database startup, after the endianness migration:
+  - Groups `Transition` objects by item label and validates chain contiguity (returns an error on gaps)
+  - Marks each transition `InProgress` before writing, then `Complete` after all nodes and edges are updated
+  - Batch-writes 1024 items per write transaction; the `node.version == from_version` idempotency guard makes restarts after a crash safe
+  - Updates `StorageMetadata` to `WithSchemaVersion` with the highest `to_version` seen across all transitions
+- `StorageMetadata::WithSchemaVersion` — new metadata variant (storage version tag `2`) that persists the HQL schema version alongside vector endianness
+- `MigrationFn` type alias (`fn(HashMap<String, Value>) -> HashMap<String, Value>`) standardises the property transform signature
+- `POST /migrate_status` *(dev-instance)* — returns per-transition log state (`NotRun`, `InProgress`, `Complete`) for all inventory-registered transitions
+- `POST /migrate_list` *(dev-instance)* — returns all transitions compiled into the binary via `inventory::iter`
+- `sparrow migrate status` — queries the running instance's migration log and pretty-prints JSON
+- `sparrow migrate apply` — restarts the instance so any pending migrations execute on the next startup
+- `sparrow migrate list` — lists all compiled transitions in the binary
+- `sparrow upgrade` — the former `sparrow migrate` v1→v2 project wizard is renamed to `upgrade`; `sparrow migrate` is now the schema-migration subcommand dispatcher
+
+### Bug Fixes
+
+**Schema Migrations**
+- `TransitionFn.func` now uses `MigrationFn` (`HashMap<String, Value>` → `HashMap<String, Value>`) instead of `ImmutablePropertiesMap` — aligns the stored type with the public API and removes a hidden conversion
+- `upgrade_to_node_latest` and `upgrade_to_edge_latest` now bump `node.version` / `edge.version` to `item_info.latest` after applying transitions (was left at the old version number)
+- `storage_migration_tests.rs` and `storage_concurrent_tests.rs` were orphan files never included in the module tree; declared with `#[cfg(test)] mod` in `mod.rs` so their tests now actually run
+- `#[sparrow_migration]` macro path corrected from `graph_core::ops::version_info` to `storage_core::version_info`
+
+**CLI**
+- `sparrow add <name>` now fails with a clear error in non-interactive mode when no instance name is given — previously silently used the project name, which was surprising in scripts
+
 **Sparrow Studio (embedded web UI)**
 - New `sparrow-studio` crate — pre-built React/TypeScript assets served via `rust-embed` at `GET /studio` and `GET /studio/*`
 - `studio` feature flag on `sparrow-core` merges the studio router into the main gateway; enabled by default in `sparrow-container`
