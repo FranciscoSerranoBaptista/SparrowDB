@@ -10,4 +10,5 @@ hack/
 /data
 .cargo/credentials
 **/dist
+**/dist-dev
 **/node_modules

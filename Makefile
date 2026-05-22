@@ -1,6 +1,8 @@
 F = --features lmdb
 
-.PHONY: build check test test-all sweep docker-build docker-up docker-down docker-logs
+.PHONY: build check test test-all sweep \
+        sdk-build sdk-check \
+        docker-build docker-up docker-down docker-logs
 
 build:
 	cargo build --workspace $(F)
@@ -20,6 +22,12 @@ test-all:
 
 sweep:
 	cargo sweep -t 3
+
+sdk-build:
+	pnpm build
+
+sdk-check:
+	pnpm type-check
 
 docker-build:
 	docker compose build
