@@ -1221,6 +1221,113 @@ fn test_memory_efficiency_batch_processing() {
 }
 
 // ============================================================================
+// Schema Migration Execution Tests
+// ============================================================================
+
+fn rename_a_to_b(mut props: HashMap<String, Value>) -> HashMap<String, Value> {
+    if let Some(v) = props.remove("a") {
+        props.insert("b".to_string(), v);
+    }
+    props
+}
+
+fn setup_storage_with_old_node() -> (SparrowGraphStorage, TempDir) {
+    let dir = TempDir::new().unwrap();
+    let storage = SparrowGraphStorage::new(
+        dir.path().to_str().unwrap(),
+        Config::default(),
+        crate::sparrow_engine::storage_core::version_info::VersionInfo::default(),
+    )
+    .unwrap();
+
+    let arena = Bump::new();
+    let label: &str = arena.alloc_str("User");
+    let key: &str = arena.alloc_str("a");
+    let props = ImmutablePropertiesMap::new(
+        1,
+        std::iter::once((key, Value::String("hello".to_string()))),
+        &arena,
+    );
+    let node = crate::utils::items::Node {
+        id: 42u128,
+        label,
+        version: 1,
+        properties: Some(props),
+    };
+    let bytes = node.to_bincode_bytes().unwrap();
+    {
+        let mut wtxn = storage.graph_env.write_txn().unwrap();
+        storage.nodes_db.put(&mut wtxn, &42u128, &bytes).unwrap();
+        wtxn.commit().unwrap();
+    }
+
+    (storage, dir)
+}
+
+#[test]
+fn node_at_old_version_is_migrated() {
+    use crate::sparrow_engine::storage_core::{
+        schema_migration::run_schema_migrations,
+        version_info::Transition,
+    };
+
+    let (mut storage, _dir) = setup_storage_with_old_node();
+    let transitions = vec![Transition::new("User", 1, 2, rename_a_to_b)];
+
+    run_schema_migrations(&mut storage, &transitions).unwrap();
+
+    let arena = Bump::new();
+    let txn = storage.graph_env.read_txn().unwrap();
+    let bytes = storage.nodes_db.get(&txn, &42u128).unwrap().unwrap();
+    let node = crate::utils::items::Node::from_bincode_bytes(42, bytes, &arena).unwrap();
+
+    assert_eq!(node.version, 2, "node version must be updated to 2");
+    assert!(node.properties.as_ref().unwrap().get("b").is_some(), "'b' must exist");
+    assert!(node.properties.as_ref().unwrap().get("a").is_none(), "'a' must be gone");
+}
+
+#[test]
+fn migration_record_marked_complete() {
+    use crate::sparrow_engine::storage_core::{
+        migration_log::{MigrationStatus, read_record},
+        schema_migration::run_schema_migrations,
+        version_info::Transition,
+    };
+
+    let (mut storage, _dir) = setup_storage_with_old_node();
+    let transitions = vec![Transition::new("User", 1, 2, rename_a_to_b)];
+
+    run_schema_migrations(&mut storage, &transitions).unwrap();
+
+    let txn = storage.graph_env.read_txn().unwrap();
+    let record = read_record(&txn, &storage.migrations_db, "User_v1_v2")
+        .unwrap()
+        .unwrap();
+    assert_eq!(record.status, MigrationStatus::Complete);
+    assert!(record.applied_at > 0);
+}
+
+#[test]
+fn second_run_is_idempotent() {
+    use crate::sparrow_engine::storage_core::{
+        schema_migration::run_schema_migrations,
+        version_info::Transition,
+    };
+
+    let (mut storage, _dir) = setup_storage_with_old_node();
+    let transitions = vec![Transition::new("User", 1, 2, rename_a_to_b)];
+
+    run_schema_migrations(&mut storage, &transitions).unwrap();
+    run_schema_migrations(&mut storage, &transitions).unwrap();
+
+    let arena = Bump::new();
+    let txn = storage.graph_env.read_txn().unwrap();
+    let bytes = storage.nodes_db.get(&txn, &42u128).unwrap().unwrap();
+    let node = crate::utils::items::Node::from_bincode_bytes(42, bytes, &arena).unwrap();
+    assert_eq!(node.version, 2);
+}
+
+// ============================================================================
 // WithSchemaVersion Metadata Tests
 // ============================================================================
 
