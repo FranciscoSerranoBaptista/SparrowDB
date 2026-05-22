@@ -8,6 +8,34 @@ All notable changes to SparrowDB are documented here.
 
 ### New Features
 
+**Sparrow Studio (embedded web UI)**
+- New `sparrow-studio` crate — pre-built React/TypeScript assets served via `rust-embed` at `GET /studio` and `GET /studio/*`
+- `studio` feature flag on `sparrow-core` merges the studio router into the main gateway; enabled by default in `sparrow-container`
+- **HQL Editor** — CodeMirror 6 editor with SparrowDB syntax highlighting, query execution, and per-instance history
+- **Schema Browser** — live introspection of all node and edge types with field names and types via `/introspect`
+- **Graph Visualiser** — Cytoscape.js cose-bilkent layout; click any node or edge to explore its properties and connections
+- **Diagnostics view** — node count, edge count, and vector stats (total / active / soft-deleted / HNSW edges) with configurable auto-refresh
+- **Vectors view** — HNSW health (`/hnsw-health`) and bidirectional edge integrity (`/hnsw-integrity`) checks
+- **Connection settings panel** — configure host and port; live connectivity test shows green/red status indicator
+- `packages/studio` — Vite + React + TypeScript monorepo package; built assets checked in under `sparrow-studio/dist/`
+- pnpm workspace added to the repo root for unified JS dependency management
+
+### Bug Fixes
+
+**Sparrow Studio**
+- Parse `/introspect` JSON response correctly in the Studio API client (was treating the raw string as the schema)
+- Show connection status indicator in the header when the configured instance is unreachable
+
+### Internal
+
+**Sparrow Studio**
+- `sparrow-studio-ci.yml` — runs `pnpm install && pnpm build` on every push that touches `packages/studio/**` or `crates/sparrow-studio/**`
+- Studio router is generic over the axum `State` type so it can be merged into any stateful router without cloning
+
+---
+
+### New Features (continued)
+
 **HNSW / Vector Search**
 - Enable PREFILTER mode during HNSW traversal for more accurate filtered vector search
 
