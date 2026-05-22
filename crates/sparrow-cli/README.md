@@ -1,31 +1,48 @@
-# Helix CLI
+# sparrow-cli
 
-Command-line interface for managing Helix projects and deployments.
+The `sparrow` command-line tool. Manages the full project lifecycle: scaffolding, compiling and deploying HQL schemas, running the database, managing data snapshots, and configuring telemetry.
+
+> `sparrow run` starts the database server directly and does not require Docker. `sparrow push` compiles and deploys to a containerised dev instance and does require Docker.
+
+## Install
+
+```bash
+cargo install sparrow-cli
+```
+
+## Build from source
+
+```bash
+cargo build -p sparrow-cli --release
+# binary at: target/release/sparrow
+```
+
+## Test
+
+```bash
+cargo test -p sparrow-cli
+```
 
 ## Commands
 
-- `init`: initialize a new project with `helix.toml`.
-- `add`: add an instance to an existing project.
-- `check`: validate config and queries.
-- `compile`: compile queries into the workspace.
-- `build`: build an instance (local or remote prep).
-- `push`: deploy/start an instance.
-- `sync`: sync source/config from Helix Cloud (standard or enterprise).
-- `start` / `stop` / `status`: manage running instances.
-- `logs`: view or stream logs.
-- `auth`: login/logout/create-key.
-- `prune`: clean containers/images/workspaces.
-- `delete`: remove an instance.
-- `metrics`: manage telemetry level.
-- `dashboard`: manage the Helix Dashboard.
-- `update`: update the CLI.
-- `migrate`: migrate v1 projects to v2.
-- `backup`: back up an instance.
-- `feedback`: send feedback to the Helix team.
-
-Run `helix <command> --help` for command-specific flags and options.
+| Command | Description |
+|---|---|
+| `sparrow init [path]` | Scaffold a new project (creates `sparrow.toml`, `db/schema.hx`, `db/queries.hx`) |
+| `sparrow push [instance]` | Compile schema and deploy to a local Docker dev instance |
+| `sparrow check` | Validate schema and queries without deploying |
+| `sparrow run` | Start the database server directly (no container) |
+| `sparrow data snapshot` | Hot-copy the live database to a directory |
+| `sparrow data clone` | Copy an existing snapshot |
+| `sparrow data restore [--force]` | Restore from a snapshot |
+| `sparrow metrics [basic\|full\|off\|status]` | Configure anonymous telemetry |
 
 ## Error handling
 
-- Recoverable/library errors use `thiserror::Error` (config, project, port).
-- CLI commands return `eyre::Result` and render `CliError` for consistent output.
+Recoverable/library errors use `thiserror::Error` (config, project, port). CLI commands return `eyre::Result` and render errors for consistent output.
+
+## Feature flags
+
+| Feature | Description |
+|---|---|
+| `normal` (default) | Includes `sparrow-core/server` |
+| `ingestion` | Includes `sparrow-core/full` for bulk data ingestion paths |

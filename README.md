@@ -149,14 +149,18 @@ storage_backend  = "lmdb"   # or "rocks"
 ## Architecture
 
 ```
-sparrow-cli         → CLI (push, check, data, run, metrics …)
-sparrow-db          → Core engine
+sparrow-cli         → CLI (init, push, check, run, data, metrics …)
+sparrow-core        → Core engine (lib name: sparrow_db)
   sparrow_engine    → Graph/vector traversal ops (lmdb + rocks backends)
   sparrow_gateway   → HTTP API, MCP server, runtime HQL eval
   sparrowc          → HQL compiler (parser → IR → codegen)
-sparrow-container   → Docker build pipeline
-sparrow-macros      → Derive macros
-metrics             → Anonymous telemetry
+sparrow-container   → Docker container runtime entry point
+sparrow-chef        → One-shot bootstrap tool for coding agents
+sparrow-memory      → Episodic memory layer for AI agents (embedded)
+sparrow-macros      → Proc-derive macros (handler registration)
+sparrow-metrics     → Optional anonymous telemetry
+sdks/rust           → Rust client SDK (package: sparrow-sdk)
+sdks/ts             → TypeScript query-builder DSL (package: sparrow-sdk)
 ```
 
 ---
@@ -187,7 +191,7 @@ Run only the fast unit tests:
 
 ```bash
 cargo test -p sparrow-cli
-cargo test -p sparrow-db
+cargo test -p sparrow-core
 ```
 
 ---
