@@ -180,7 +180,7 @@ impl SparrowGateway {
             use axum::routing::delete;
             axum_app = axum_app
                 .route("/tokens", get(list_tokens_handler).post(create_token_handler))
-                .route("/tokens/:id", delete(revoke_token_handler));
+                .route("/tokens/{id}", delete(revoke_token_handler));
         }
 
         #[cfg(feature = "studio")]
