@@ -34,6 +34,26 @@ All notable changes to SparrowDB are documented here.
 
 ---
 
+**Auth / TokenStore**
+- `TokenStore` — LMDB-backed named token registry with role-based access control
+  - Roles: `admin` (full read/write) and `readonly` (read-only queries)
+  - `create_token(name, role)` — generates a random 256-bit token and stores it
+  - `revoke(name)` — deletes a named token; no-ops if the name is unknown
+  - `verify(token) -> Option<Role>` — constant-time lookup returning the role if the token exists
+- `seed_legacy` — on startup, backfills the `SPARROW_API_KEY` environment variable as an `admin` token for backward compatibility with single-key deployments
+- `SparrowGateway` and `AppState` now hold an `Arc<TokenStore>` (gated on the `lmdb` feature)
+- Per-request token verification enforced on all routes when the `api-key` feature is enabled
+
+### Bug Fixes
+
+**Auth / TokenStore**
+- Constant-time verification loop prevents timing-based token enumeration
+- Complete the full scan before returning `None` — previously short-circuited on the first non-matching entry
+- Serialize all writes with a `Mutex` to prevent concurrent insertions from racing inside LMDB
+- `seed_legacy` is idempotent — calling it multiple times on startup does not create duplicate entries
+- Use the `db.delete` return value in `revoke()` to detect concurrent deletion races
+- `pub mod auth` gated on the `lmdb` feature — previously caused compile errors on non-lmdb builds
+
 ### New Features (continued)
 
 **HNSW / Vector Search**
