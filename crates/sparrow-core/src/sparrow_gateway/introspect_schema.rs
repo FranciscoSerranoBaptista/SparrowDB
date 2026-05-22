@@ -20,6 +20,13 @@ pub async fn introspect_schema_handler(
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("");
             if state.token_store.verify(raw_key).is_err() {
+                sparrow_metrics::log_event(
+                    sparrow_metrics::events::EventType::InvalidApiKey,
+                    sparrow_metrics::events::InvalidApiKeyEvent {
+                        cluster_id: state.cluster_id.clone(),
+                        time_taken_usec: 0u32,
+                    },
+                );
                 use crate::protocol::SparrowError;
                 return SparrowError::InvalidApiKey.into_response();
             }

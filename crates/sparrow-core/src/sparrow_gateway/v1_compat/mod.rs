@@ -59,8 +59,15 @@ pub async fn v1_query_axum_handler(
 ) -> axum::http::Response<Body> {
     let start = Instant::now();
 
-    // Cheap check: does the body contain `"write"` as the request_type?
-    let is_write = body.windows(b"\"write\"".len()).any(|w| w == b"\"write\"");
+    // Check the `request_type` field specifically, not a raw byte scan of the whole body.
+    let is_write = sonic_rs::from_slice::<sonic_rs::Value>(&body)
+        .ok()
+        .and_then(|v| {
+            v.get("request_type")
+                .and_then(|t| t.as_str())
+                .map(|s| s == "write")
+        })
+        .unwrap_or(false);
     let handler_name = if is_write { "__v1_compat_write" } else { "__v1_compat_read" };
 
     #[cfg(feature = "lmdb")]
@@ -77,7 +84,18 @@ pub async fn v1_query_axum_handler(
                         return SparrowError::Forbidden.into_response();
                     }
                 }
-                Err(_) => {
+                Err(e) => {
+                    use crate::sparrow_gateway::auth::TokenError;
+                    if !matches!(e, TokenError::InvalidKey | TokenError::Unauthorized) {
+                        warn!("v1_compat: token store error during auth: {e}");
+                    }
+                    sparrow_metrics::log_event(
+                        sparrow_metrics::events::EventType::InvalidApiKey,
+                        sparrow_metrics::events::InvalidApiKeyEvent {
+                            cluster_id: state.cluster_id.clone(),
+                            time_taken_usec: 0,
+                        },
+                    );
                     use crate::protocol::SparrowError;
                     return SparrowError::InvalidApiKey.into_response();
                 }
