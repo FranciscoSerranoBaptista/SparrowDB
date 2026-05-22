@@ -1659,6 +1659,11 @@ pub(crate) fn infer_expr_type<'a>(
                 })),
             )
         }
+        SearchNodeVector(_snv) => {
+            // SearchNodeVector is parsed but not yet lowered through the analyzer.
+            // Return Unknown until Task 3+ implements full support.
+            (Type::Unknown, None)
+        }
     }
 }
 

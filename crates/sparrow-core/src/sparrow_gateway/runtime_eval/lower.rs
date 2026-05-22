@@ -247,8 +247,10 @@ fn lower_start(
         }
         StartNode::Identifier(name) => Ok((Some(name.clone()), vec![])),
         StartNode::Anonymous => Ok((None, vec![])),
-        StartNode::Vector { .. } | StartNode::SearchVector(_) => Err(RuntimeError::Unsupported(
-            "SearchVector/Vector start nodes not yet supported".to_string(),
+        StartNode::Vector { .. }
+        | StartNode::SearchVector(_)
+        | StartNode::SearchNodeVector(_) => Err(RuntimeError::Unsupported(
+            "SearchVector/Vector/SearchNodeVector start nodes not yet supported".to_string(),
         )),
     }
 }

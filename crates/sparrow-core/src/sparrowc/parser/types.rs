@@ -611,6 +611,7 @@ pub enum ExpressionType {
     And(Vec<Expression>),
     Or(Vec<Expression>),
     SearchVector(SearchVector),
+    SearchNodeVector(SearchNodeVector),
     BM25Search(BM25Search),
     MathFunctionCall(MathFunctionCall),
     Empty,
@@ -642,6 +643,7 @@ impl Debug for ExpressionType {
             ExpressionType::And(exprs) => write!(f, "And({exprs:?})"),
             ExpressionType::Or(exprs) => write!(f, "Or({exprs:?})"),
             ExpressionType::SearchVector(sv) => write!(f, "SearchVector({sv:?})"),
+            ExpressionType::SearchNodeVector(snv) => write!(f, "SearchNodeVector({snv:?})"),
             ExpressionType::BM25Search(bm25) => write!(f, "BM25Search({bm25:?})"),
             ExpressionType::MathFunctionCall(mfc) => write!(f, "MathFunctionCall({mfc:?})"),
             ExpressionType::Empty => write!(f, "Empty"),
@@ -666,6 +668,7 @@ impl Display for ExpressionType {
             ExpressionType::And(exprs) => write!(f, "And({exprs:?})"),
             ExpressionType::Or(exprs) => write!(f, "Or({exprs:?})"),
             ExpressionType::SearchVector(sv) => write!(f, "SearchVector({sv:?})"),
+            ExpressionType::SearchNodeVector(snv) => write!(f, "SearchNodeVector({snv:?})"),
             ExpressionType::BM25Search(bm25) => write!(f, "BM25Search({bm25:?})"),
             ExpressionType::MathFunctionCall(mfc) => {
                 write!(f, "{}({:?})", mfc.function.name(), mfc.args)
@@ -705,6 +708,7 @@ pub enum StartNode {
         ids: Option<Vec<IdType>>,
     },
     SearchVector(SearchVector),
+    SearchNodeVector(SearchNodeVector),   // vector search over N:: nodes
     Identifier(String),
     Anonymous,
 }
@@ -975,6 +979,18 @@ pub struct SearchVector {
     pub data: Option<VectorData>,
     pub k: Option<EvaluatesToNumber>,
     pub pre_filter: Option<Box<Expression>>,
+}
+
+/// AST for `SearchN<NodeType.field>(query, k)`
+#[derive(Debug, Clone)]
+pub struct SearchNodeVector {
+    pub loc: Loc,
+    /// The node type name (e.g. "Person")
+    pub node_type: String,
+    /// The vector field name (e.g. "embedding")
+    pub field_name: String,
+    pub data: Option<VectorData>,
+    pub k: Option<EvaluatesToNumber>,
 }
 
 #[derive(Debug, Clone)]

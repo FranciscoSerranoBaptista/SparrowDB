@@ -716,6 +716,18 @@ pub(crate) fn validate_traversal<'a>(
             // Search returns nodes that contain the vectors
             Type::Vectors(sv.vector_type.clone())
         }
+        StartNode::SearchNodeVector(_snv) => {
+            // SearchNodeVector is parsed but not yet lowered through the analyzer.
+            // Full support will be added in a subsequent task.
+            generate_error!(
+                ctx,
+                original_query,
+                tr.loc.clone(),
+                E601,
+                "SearchNodeVector is not yet supported in traversal validation"
+            );
+            return None;
+        }
     };
 
     // Track excluded fields for property validation
