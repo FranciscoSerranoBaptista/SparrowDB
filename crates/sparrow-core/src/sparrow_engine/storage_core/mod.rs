@@ -1,5 +1,6 @@
 pub mod graph_visualization;
 pub mod metadata;
+pub mod migration_log;
 pub mod storage_methods;
 pub mod storage_migration;
 pub mod txn;
