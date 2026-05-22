@@ -14,7 +14,7 @@ jobs:
     runs-on: macos-15-intel
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get latest release
         id: latest_release
@@ -29,17 +29,20 @@ jobs:
             core.setOutput('release_id', release.data.id);
             console.log(`Found release: ${release.data.tag_name}`);
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
       - name: Build
-        run: |
-          cd helix-cli
-          cargo build --release --target x86_64-apple-darwin
+        run: cargo build --release --package sparrow-cli --target x86_64-apple-darwin
 
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.latest_release.outputs.upload_url }}
-          asset_path: target/x86_64-apple-darwin/release/helix
-          asset_name: helix-x86_64-apple-darwin
+          asset_path: target/x86_64-apple-darwin/release/sparrow
+          asset_name: sparrow-x86_64-apple-darwin
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

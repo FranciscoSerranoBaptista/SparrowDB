@@ -6,10 +6,12 @@ F = --features lmdb
 
 build:
 	cargo build --workspace $(F)
+	pnpm build
 	cargo sweep -t 3
 
 check:
 	cargo check --workspace $(F)
+	pnpm type-check
 	cargo sweep -t 3
 
 test:

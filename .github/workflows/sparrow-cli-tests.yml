@@ -4,9 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'sparrow-cli/**'
-      - 'sparrow-db/**'
-      - 'sparrow-macros/**'
+      - 'crates/sparrow-cli/**'
+      - 'crates/sparrow-core/**'
+      - 'crates/sparrow-macros/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
 
@@ -40,5 +40,5 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - name: Run tests
-      run: cargo test -p sparrow-cli --lib
+    - name: Run unit and integration tests
+      run: cargo test -p sparrow-cli

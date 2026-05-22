@@ -4,9 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'hql-tests/**'
-      - 'sparrow-db/**'
-      - 'sparrow-macros/**'
+      - 'tests/hql-tests/**'
+      - 'crates/sparrow-core/**'
+      - 'crates/sparrow-macros/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
 
@@ -47,10 +47,10 @@ jobs:
           ${{ runner.os }}-cargo-
 
     - name: Make run.sh executable
-      run: chmod +x ./hql-tests/run.sh
+      run: chmod +x ./tests/hql-tests/run.sh
 
     - name: Run HQL tests
-      working-directory: ./hql-tests
+      working-directory: ./tests/hql-tests
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_OWNER: ${{ github.repository_owner }}

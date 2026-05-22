@@ -1,27 +1,25 @@
-name: SparrowDB Core Tests
+name: Sparrow Memory Tests
 
 on:
   pull_request:
     branches: [main]
     paths:
+      - 'crates/sparrow-memory/**'
       - 'crates/sparrow-core/**'
-      - 'crates/sparrow-macros/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
-  SPARROW_API_KEY: "12345678901234567890123456789012"
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, ${{ matrix.features }})
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        features: [lmdb, dev-instance, production]
 
     steps:
     - uses: actions/checkout@v4
@@ -37,12 +35,10 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ matrix.features }}-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-memory-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
-          ${{ runner.os }}-cargo-${{ matrix.features }}-
+          ${{ runner.os }}-cargo-memory-
           ${{ runner.os }}-cargo-
 
     - name: Run tests
-      env:
-        FEATURES: ${{ matrix.features }}
-      run: cargo test --release -p sparrow-core --features "$FEATURES" --lib -- --skip concurrency_tests
+      run: cargo test -p sparrow-memory --features lmdb

@@ -2,8 +2,8 @@
 name = "sparrow-core"
 version = "3.0.0"
 edition = "2024"
-description = "SparrowDB is a powerful, open-source, graph-vector database built in Rust for intelligent data storage for RAG and AI."
-license = "AGPL-3.0"
+description = "SparrowDB is a powerful graph-vector database built in Rust for intelligent data storage for RAG and AI."
+publish = false
 authors = ["SparrowDB Team"]
 repository = "https://github.com/YOUR_ORG/SparrowDB"
 

@@ -2,6 +2,7 @@
 name = "sparrow-container"
 version = "0.1.0"
 edition = "2024"
+publish = false
 
 [dependencies]
 sparrow-core = { path = "../sparrow-core", default-features = false }

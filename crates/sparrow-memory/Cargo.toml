@@ -3,6 +3,7 @@ name = "sparrow-memory"
 version = "0.1.0"
 edition = "2024"
 description = "Lightweight episodic memory for research agents, backed by SparrowDB."
+publish = false
 
 [dependencies]
 sparrow-core = { path = "../sparrow-core", default-features = false, features = ["lmdb", "vectors"] }

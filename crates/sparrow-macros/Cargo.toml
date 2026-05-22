@@ -3,6 +3,7 @@ name = "sparrow-macros"
 version = "0.1.7"
 edition = "2024"
 authors = ["SparrowDB Team"]
+publish = false
 repository = "https://github.com/YOUR_ORG/SparrowDB"
 license = "AGPL-3.0"
 description = "Proc macros for SparrowDB"

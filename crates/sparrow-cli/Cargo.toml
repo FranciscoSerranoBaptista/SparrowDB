@@ -2,6 +2,7 @@
 name = "sparrow-cli"
 version = "3.0.0"
 edition = "2024"
+publish = false
 
 [dependencies]
 sparrow-metrics = { path = "../sparrow-metrics" }
