@@ -234,7 +234,7 @@ async fn test_metrics_basic_enables_collection() {
 #[tokio::test]
 #[serial]
 async fn test_migrate_fails_without_v1_config() {
-    use sparrow_cli::commands::migrate;
+    use sparrow_cli::commands::upgrade as migrate;
 
     let ctx = TestContext::new();
     // Create an empty directory without v1 config
@@ -263,7 +263,7 @@ async fn test_migrate_fails_without_v1_config() {
 #[tokio::test]
 #[serial]
 async fn test_migrate_fails_if_v2_exists() {
-    use sparrow_cli::commands::migrate;
+    use sparrow_cli::commands::upgrade as migrate;
 
     let ctx = TestContext::new();
 
@@ -327,7 +327,7 @@ async fn test_migrate_fails_if_v2_exists() {
 #[tokio::test]
 #[serial]
 async fn test_migrate_dry_run_shows_plan() {
-    use sparrow_cli::commands::migrate;
+    use sparrow_cli::commands::upgrade as migrate;
 
     let ctx = TestContext::new();
 
