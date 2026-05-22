@@ -1374,6 +1374,23 @@ fn new_storage_reads_as_at_least_vector_endianness() {
 }
 
 // ============================================================================
+// Startup Wiring Tests
+// ============================================================================
+
+#[test]
+fn storage_opens_without_panic_with_inventory_wiring() {
+    // Verifies that SparrowGraphStorage::new succeeds with inventory-based migration wiring.
+    // In test binaries with no inventory::submit! migrations, this is a no-op.
+    let dir = TempDir::new().unwrap();
+    let storage = SparrowGraphStorage::new(
+        dir.path().to_str().unwrap(),
+        Config::default(),
+        VersionInfo::default(),
+    );
+    assert!(storage.is_ok(), "SparrowGraphStorage::new must succeed");
+}
+
+// ============================================================================
 // Migration Log Tests
 // ============================================================================
 

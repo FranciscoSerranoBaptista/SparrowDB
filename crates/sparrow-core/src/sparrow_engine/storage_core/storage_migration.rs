@@ -52,6 +52,19 @@ pub fn migrate(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
     remove_orphaned_vector_edges(storage)?;
     migrate_bm25(storage)?;
 
+    // Run HQL schema migrations. Executes before WorkerPool starts so direct write_txn is safe.
+    let compiled_transitions: Vec<_> = inventory::iter::<
+        crate::sparrow_engine::storage_core::version_info::TransitionSubmission,
+    >
+    .into_iter()
+    .map(|s| s.0.clone())
+    .collect();
+
+    crate::sparrow_engine::storage_core::schema_migration::run_schema_migrations(
+        storage,
+        &compiled_transitions,
+    )?;
+
     Ok(())
 }
 
