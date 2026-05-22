@@ -1,3 +1,4 @@
+#[cfg(feature = "lmdb")]
 pub mod auth;
 #[cfg(feature = "dev-instance")]
 pub mod builtin;
