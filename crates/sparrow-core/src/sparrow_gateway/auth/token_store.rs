@@ -30,6 +30,7 @@ fn unix_now() -> u64 {
 pub struct TokenStore {
     env: Env,
     db: Database<Bytes, Bytes>,
+    write_lock: std::sync::Mutex<()>,
 }
 
 impl TokenStore {
@@ -53,7 +54,7 @@ impl TokenStore {
             .create(&mut wtxn)?;
         wtxn.commit()?;
 
-        Ok(Self { env, db })
+        Ok(Self { env, db, write_lock: std::sync::Mutex::new(()) })
     }
 
     /// SHA-256 hash of `raw_key` as a fixed 32-byte array.
@@ -96,22 +97,25 @@ impl TokenStore {
                 return Err(TokenError::InvalidKey);
             }
         }
-        // Fix 1: constant-time comparison — iterate all entries using
-        // subtle::ConstantTimeEq so comparison time does not leak which byte
-        // differs (prevents timing side-channel attacks).
+        // Scan ALL entries using constant-time comparison to avoid early-exit timing channel.
+        // On match, record the value but keep scanning to completion.
         let candidate_hash = Self::hash_key(raw_key);
         let rtxn = self.env.read_txn()?;
+        let mut found_value: Option<Vec<u8>> = None;
         for result in self.db.iter(&rtxn)? {
             let (stored_key, value) = result?;
             if stored_key.len() == 32 {
                 let mut stored = [0u8; 32];
                 stored.copy_from_slice(stored_key);
-                if bool::from(candidate_hash.ct_eq(&stored)) {
-                    return Ok(serde_json::from_slice(value)?);
+                if bool::from(candidate_hash.ct_eq(&stored)) && found_value.is_none() {
+                    found_value = Some(value.to_vec());
                 }
             }
         }
-        Err(TokenError::Unauthorized)
+        match found_value {
+            Some(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            None => Err(TokenError::Unauthorized),
+        }
     }
 
     /// Create a new named token with the given role.
@@ -136,6 +140,7 @@ impl TokenStore {
 
         let value = serde_json::to_vec(&record)?;
 
+        let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut wtxn = self.env.write_txn()?;
         self.db.put(&mut wtxn, &hash, &value)?;
         wtxn.commit()?;
@@ -180,6 +185,7 @@ impl TokenStore {
         match found_key {
             None => Ok(false),
             Some(key) => {
+                let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
                 let mut wtxn = self.env.write_txn()?;
                 self.db.delete(&mut wtxn, &key)?;
                 wtxn.commit()?;
@@ -203,6 +209,7 @@ impl TokenStore {
             created_at: unix_now(),
         };
         if let Ok(value) = serde_json::to_vec(&record) {
+            let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
             if let Ok(mut wtxn) = self.env.write_txn() {
                 let _ = self.db.put(&mut wtxn, &hash, &value);
                 let _ = wtxn.commit();
