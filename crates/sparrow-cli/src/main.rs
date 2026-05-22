@@ -246,9 +246,20 @@ enum Commands {
         /// Path to the import file (JSON array, CSV with header row, or Parquet)
         file: std::path::PathBuf,
 
-        /// Name of the compiled HQL query to call for each record
-        #[arg(long, short = 'q')]
-        query: String,
+        /// Name of the compiled HQL query to call for every record.
+        /// Required unless --query-column is provided.
+        #[arg(long, short = 'q', required_unless_present = "query_column")]
+        query: Option<String>,
+
+        /// Column/field name in the file whose value is the query to call for
+        /// that specific record.  The column is stripped before posting so it
+        /// is not sent as a query parameter.  --query is used as a fallback
+        /// when the column is absent or empty.
+        ///
+        /// Example: a mixed node+edge file where each row has a `_query`
+        /// column set to "CreateUser", "CreateProduct", or "ConnectPurchase".
+        #[arg(long, short = 'c')]
+        query_column: Option<String>,
 
         /// SparrowDB target URL
         #[arg(long, short = 't', default_value = "http://localhost:6969")]
@@ -519,6 +530,7 @@ async fn main() -> Result<()> {
             Commands::Import {
                 file,
                 query,
+                query_column,
                 target,
                 workers,
                 token,
@@ -531,7 +543,10 @@ async fn main() -> Result<()> {
                     "abort" => OnError::Abort,
                     "continue" | _ => OnError::Continue,
                 };
-                commands::import::run(file, query, target, workers, token, dry_run, format, on_error).await
+                commands::import::run(
+                    file, query, query_column, target, workers,
+                    token, dry_run, format, on_error,
+                ).await
             }
             Commands::Stress {
                 endpoint,

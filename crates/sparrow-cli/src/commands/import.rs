@@ -217,6 +217,46 @@ fn normalize_url(raw: &str) -> String {
     }
 }
 
+// ── Per-record query resolution ───────────────────────────────────────────────
+
+/// Determine the HQL query name to use for a single record.
+///
+/// - If `query_column` is set: read the value from that field in the record
+///   and **remove** the field so it is not forwarded as a query parameter.
+///   Falls back to `query` when the column is absent or empty.
+/// - If `query_column` is not set: use `query` directly.
+///
+/// Returns an error when no query name can be determined.
+pub fn resolve_query(
+    record: &mut Map<String, Value>,
+    query: Option<&str>,
+    query_column: Option<&str>,
+) -> Result<String> {
+    if let Some(col) = query_column {
+        let val = record.remove(col).and_then(|v| match v {
+            Value::String(s) if !s.is_empty() => Some(s),
+            _ => None,
+        });
+        match val {
+            Some(q) => Ok(q),
+            None => query
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .ok_or_else(|| {
+                    eyre::eyre!(
+                        "record is missing the '{}' column and no --query fallback was given",
+                        col
+                    )
+                }),
+        }
+    } else {
+        query
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .ok_or_else(|| eyre::eyre!("--query or --query-column is required"))
+    }
+}
+
 // ── Error handling mode ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,7 +272,8 @@ pub enum OnError {
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     file: PathBuf,
-    query: String,
+    query: Option<String>,
+    query_column: Option<String>,
     target: String,
     workers: usize,
     token: Option<String>,
@@ -260,20 +301,38 @@ pub async fn run(
 
     if dry_run {
         println!("(--dry-run: skipping HTTP requests)");
-        // Print a sample so the user can verify column mapping
         let sample_count = total.min(3);
         println!("First {} record(s):", sample_count);
-        for rec in records.iter().take(sample_count) {
-            println!("  {}", serde_json::to_string_pretty(rec).unwrap_or_default());
+        for mut rec in records.into_iter().take(sample_count) {
+            // Show which query would be called for each record
+            match resolve_query(
+                &mut rec,
+                query.as_deref(),
+                query_column.as_deref(),
+            ) {
+                Ok(q) => println!(
+                    "  → {} {}", q,
+                    serde_json::to_string(&rec).unwrap_or_default()
+                ),
+                Err(e) => println!("  ✗ {e}"),
+            }
         }
         return Ok(());
     }
 
-    let base_url = normalize_url(&target);
-    let url = Arc::new(format!("{}/{}", base_url, query));
+    let base_url = Arc::new(normalize_url(&target));
     let client = Arc::new(build_client(token.as_deref())?);
+    let query = Arc::new(query);
+    let query_column = Arc::new(query_column);
 
-    println!("Importing → {} ({} workers)", url, workers);
+    // When using a static query, show the full URL up front.
+    // When per-record routing is active, just show the base.
+    if query_column.is_none() {
+        let static_url = format!("{}/{}", base_url, query.as_deref().unwrap_or(""));
+        println!("Importing → {} ({} workers)", static_url, workers);
+    } else {
+        println!("Importing → {} (<per-record routing>, {} workers)", base_url, workers);
+    }
 
     let ok_count = Arc::new(AtomicU64::new(0));
     let err_count = Arc::new(AtomicU64::new(0));
@@ -296,9 +355,11 @@ pub async fn run(
     let start = Instant::now();
 
     stream::iter(records.into_iter())
-        .map(|record| {
+        .map(|mut record| {
             let client = Arc::clone(&client);
-            let url = Arc::clone(&url);
+            let base_url = Arc::clone(&base_url);
+            let query = Arc::clone(&query);
+            let query_column = Arc::clone(&query_column);
             let ok_count = Arc::clone(&ok_count);
             let err_count = Arc::clone(&err_count);
             let aborted = Arc::clone(&aborted);
@@ -308,7 +369,24 @@ pub async fn run(
                     return;
                 }
 
-                match client.post(url.as_str()).json(&record).send().await {
+                let url = match resolve_query(
+                    &mut record,
+                    query.as_deref(),
+                    query_column.as_deref(),
+                ) {
+                    Ok(q) => format!("{}/{}", base_url, q),
+                    Err(e) => {
+                        err_count.fetch_add(1, Ordering::Relaxed);
+                        pb.println(format!("  ✗ {e}"));
+                        if on_error == OnError::Abort {
+                            aborted.store(true, Ordering::Relaxed);
+                        }
+                        pb.inc(1);
+                        return;
+                    }
+                };
+
+                match client.post(&url).json(&record).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         ok_count.fetch_add(1, Ordering::Relaxed);
                     }
@@ -485,5 +563,76 @@ mod tests {
         assert_eq!(normalize_url("localhost:6969"), "http://localhost:6969");
         assert_eq!(normalize_url("http://localhost:6969/"), "http://localhost:6969");
         assert_eq!(normalize_url("https://prod.example.com"), "https://prod.example.com");
+    }
+
+    // ── resolve_query ────────────────────────────────────────────────────────
+
+    fn make_record(fields: &[(&str, &str)]) -> Map<String, Value> {
+        fields
+            .iter()
+            .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
+            .collect()
+    }
+
+    /// When --query-column names a column present in the record, that value
+    /// becomes the query name.
+    #[test]
+    fn resolve_query_uses_column_value() {
+        let mut rec = make_record(&[("_query", "CreateUser"), ("name", "Alice")]);
+        let q = resolve_query(&mut rec, None, Some("_query")).unwrap();
+        assert_eq!(q, "CreateUser");
+    }
+
+    /// The routing column must be stripped from the record so it is not sent
+    /// as a query parameter.
+    #[test]
+    fn resolve_query_strips_column_from_record() {
+        let mut rec = make_record(&[("_query", "CreateUser"), ("name", "Alice")]);
+        resolve_query(&mut rec, None, Some("_query")).unwrap();
+        assert!(!rec.contains_key("_query"), "_query column should be removed");
+        assert!(rec.contains_key("name"), "other columns must remain");
+    }
+
+    /// When the routing column is absent but --query provides a fallback,
+    /// the fallback is used (no error).
+    #[test]
+    fn resolve_query_falls_back_to_default_query() {
+        let mut rec = make_record(&[("name", "Alice")]);
+        let q = resolve_query(&mut rec, Some("CreateUser"), Some("_query")).unwrap();
+        assert_eq!(q, "CreateUser");
+    }
+
+    /// When the routing column is absent AND there is no --query fallback,
+    /// resolve_query must return an error.
+    #[test]
+    fn resolve_query_errors_when_column_missing_and_no_fallback() {
+        let mut rec = make_record(&[("name", "Alice")]);
+        let result = resolve_query(&mut rec, None, Some("_query"));
+        assert!(result.is_err(), "should error when column missing and no fallback");
+    }
+
+    /// With no --query-column at all, resolve_query returns the static --query.
+    #[test]
+    fn resolve_query_static_when_no_column_flag() {
+        let mut rec = make_record(&[("name", "Alice")]);
+        let q = resolve_query(&mut rec, Some("CreateUser"), None).unwrap();
+        assert_eq!(q, "CreateUser");
+    }
+
+    /// If neither --query nor --query-column is provided, resolve_query errors.
+    #[test]
+    fn resolve_query_errors_when_neither_provided() {
+        let mut rec = make_record(&[("name", "Alice")]);
+        let result = resolve_query(&mut rec, None, None);
+        assert!(result.is_err());
+    }
+
+    /// An empty string in the routing column is treated as missing and falls
+    /// back to --query.
+    #[test]
+    fn resolve_query_treats_empty_column_as_missing() {
+        let mut rec = make_record(&[("_query", ""), ("name", "Alice")]);
+        let q = resolve_query(&mut rec, Some("CreateUser"), Some("_query")).unwrap();
+        assert_eq!(q, "CreateUser");
     }
 }
