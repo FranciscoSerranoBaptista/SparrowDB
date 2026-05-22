@@ -1,20 +1,10 @@
-use crate::CloudDeploymentTypeCommand;
 use crate::cleanup::CleanupTracker;
-use crate::commands::integrations::ecr::{EcrAuthType, EcrManager};
-use crate::commands::integrations::fly::{FlyAuthType, FlyManager, VmSize};
-use crate::commands::workspace_flow::{self, ClusterResult};
-use crate::config::{
-    CloudConfig, CloudInstanceConfig, DbConfig, EnterpriseInstanceConfig, SparrowConfig,
-    LocalInstanceConfig, StorageBackend,
-};
-use crate::docker::DockerManager;
+use crate::config::{DbConfig, LocalInstanceConfig, SparrowConfig, StorageBackend};
 use crate::errors::project_error;
-use crate::output::{Operation, Step};
-use crate::project::ProjectContext;
+use crate::output::Operation;
 use crate::prompts;
 use crate::utils::print_instructions;
 use eyre::Result;
-use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -24,19 +14,12 @@ pub async fn run(
     path: Option<String>,
     _template: String,
     queries_path: String,
-    deployment_type: Option<CloudDeploymentTypeCommand>,
+    name: Option<String>,
 ) -> Result<()> {
     let mut cleanup_tracker = CleanupTracker::new();
 
     // Execute the init logic, capturing any errors
-    let result = run_init_inner(
-        path,
-        _template,
-        queries_path,
-        deployment_type,
-        &mut cleanup_tracker,
-    )
-    .await;
+    let result = run_init_inner(path, queries_path, name, &mut cleanup_tracker).await;
 
     // If there was an error, perform cleanup
     if let Err(ref e) = result
@@ -52,9 +35,8 @@ pub async fn run(
 
 async fn run_init_inner(
     path: Option<String>,
-    _template: String,
     queries_path: String,
-    deployment_type: Option<CloudDeploymentTypeCommand>,
+    name: Option<String>,
     cleanup_tracker: &mut CleanupTracker,
 ) -> Result<()> {
     let project_dir = match path {
@@ -74,7 +56,7 @@ async fn run_init_inner(
             "sparrow.toml already exists in {}",
             project_dir.display()
         ))
-        .with_hint("use 'sparrow add <instance_name>' to add a new instance to the existing project")
+        .with_hint("use 'sparrow add' to add a new instance to the existing project")
         .into());
     }
 
@@ -93,9 +75,32 @@ async fn run_init_inner(
     let mut config = SparrowConfig::default_config(project_name);
     config.project.queries = std::path::PathBuf::from(&queries_path);
 
-    let mut local_instance_name = "dev".to_string();
-    let mut deployment_instance_name: Option<String> = None;
-    let mut is_remote_init = false;
+    // Determine local instance name
+    let local_instance_name = if let Some(n) = name {
+        n
+    } else if interactive {
+        prompts::intro(
+            "sparrow init",
+            Some(
+                "This will create a new Helix project in the current directory.\nYou can configure the project name and other settings below.",
+            ),
+        )?;
+        // If the user didn't pass --name, prompt only for an instance name
+        prompts::input_instance_name("dev")?
+    } else {
+        "dev".to_string()
+    };
+
+    // Rename the default "dev" instance if a custom name was given
+    if local_instance_name != "dev" {
+        let local_cfg = config.local.remove("dev").unwrap_or(LocalInstanceConfig {
+            port: Some(6969),
+            build_mode: crate::config::BuildMode::Dev,
+            storage_backend: StorageBackend::Lmdb,
+            db_config: DbConfig::default(),
+        });
+        config.local.insert(local_instance_name.clone(), local_cfg);
+    }
 
     // Save initial config and track it
     config.save_to_file(&config_path)?;
@@ -104,210 +109,16 @@ async fn run_init_inner(
     // Create project structure
     create_project_structure(&project_dir, &queries_path, interactive, cleanup_tracker)?;
 
-    // Initialize deployment type based on flags or interactive selection
-    // If no deployment type provided and we're in an interactive terminal, prompt the user
-    let deployment_type = if deployment_type.is_none() && interactive {
-        prompts::intro(
-            "sparrow init",
-            Some(
-                "This will create a new Helix project in the current directory.\nYou can configure the project type, name and other settings below.",
-            ),
-        )?;
-
-        prompts::build_init_deployment_command(project_name).await?
-    } else {
-        deployment_type
-    };
-
-    match deployment_type.clone() {
-        Some(deployment) => {
-            match deployment {
-                CloudDeploymentTypeCommand::SparrowCloud { name, .. } => {
-                    is_remote_init = true;
-
-                    // Authenticate and run workspace/project/cluster flow
-                    let credentials = crate::commands::auth::require_auth().await?;
-                    let result = workspace_flow::run_workspace_project_cluster_flow(
-                        project_name,
-                        config.project.id.as_deref(),
-                        &credentials,
-                        name.as_deref(),
-                    )
-                    .await?;
-
-                    config.project.name = result.resolved_project_name;
-                    config.project.id = Some(result.resolved_project_id);
-
-                    // Backup config before saving
-                    cleanup_tracker.backup_config(&config, config_path.clone());
-
-                    match result.cluster {
-                        ClusterResult::Standard(std_result) => {
-                            deployment_instance_name = Some(std_result.instance_name.clone());
-                            let cloud_config = CloudInstanceConfig {
-                                cluster_id: std_result.cluster_id,
-                                region: Some("us-east-1".to_string()),
-                                build_mode: std_result.build_mode,
-                                env_vars: HashMap::new(),
-                                db_config: DbConfig::default(),
-                            };
-                            config
-                                .cloud
-                                .insert(std_result.instance_name, CloudConfig::SparrowCloud(cloud_config));
-                        }
-                        ClusterResult::Enterprise(ent_result) => {
-                            deployment_instance_name = Some(ent_result.instance_name.clone());
-                            let enterprise_config = EnterpriseInstanceConfig {
-                                cluster_id: ent_result.cluster_id,
-                                availability_mode: ent_result.availability_mode,
-                                gateway_node_type: ent_result.gateway_node_type,
-                                db_node_type: ent_result.db_node_type,
-                                min_instances: ent_result.min_instances,
-                                max_instances: ent_result.max_instances,
-                                db_config: DbConfig::default(),
-                            };
-                            config
-                                .enterprise
-                                .insert(ent_result.instance_name, enterprise_config);
-                        }
-                    }
-
-                    config.save_to_file(&config_path)?;
-                    Step::verbose_substep("Helix Cloud configuration saved to sparrow.toml");
-                }
-                CloudDeploymentTypeCommand::Ecr { name } => {
-                    is_remote_init = true;
-                    let instance_name = name.unwrap_or_else(|| project_name.to_string());
-                    deployment_instance_name = Some(instance_name.clone());
-
-                    let project_context = ProjectContext::find_and_load(Some(&project_dir))?;
-
-                    // Create ECR manager
-                    let ecr_manager =
-                        EcrManager::new(&project_context, EcrAuthType::AwsCli).await?;
-
-                    // Create ECR configuration
-                    let ecr_config = ecr_manager
-                        .create_ecr_config(
-                            &instance_name,
-                            None, // Use default region
-                            EcrAuthType::AwsCli,
-                        )
-                        .await?;
-
-                    // Initialize the ECR repository
-                    ecr_manager
-                        .init_repository(&instance_name, &ecr_config)
-                        .await?;
-
-                    // Save configuration to ecr.toml
-                    ecr_manager.save_config(&instance_name, &ecr_config).await?;
-
-                    // Update sparrow.toml with cloud config
-                    config
-                        .cloud
-                        .insert(instance_name, CloudConfig::Ecr(ecr_config.clone()));
-
-                    // Backup config before saving
-                    cleanup_tracker.backup_config(&config, config_path.clone());
-
-                    config.save_to_file(&config_path)?;
-
-                    Step::verbose_substep("AWS ECR repository initialized successfully");
-                }
-                CloudDeploymentTypeCommand::Fly {
-                    auth,
-                    volume_size,
-                    vm_size,
-                    private,
-                    name,
-                } => {
-                    is_remote_init = true;
-                    let instance_name = name.unwrap_or_else(|| project_name.to_string());
-                    deployment_instance_name = Some(instance_name.clone());
-
-                    let project_context = ProjectContext::find_and_load(Some(&project_dir))?;
-                    let docker = DockerManager::new(&project_context);
-
-                    // Parse configuration with proper error handling
-                    let auth_type = FlyAuthType::try_from(auth)?;
-
-                    // Parse vm_size directly using match statement to avoid trait conflicts
-                    let vm_size_parsed = VmSize::try_from(vm_size)?;
-
-                    // Create Fly.io manager
-                    let fly_manager = FlyManager::new(&project_context, auth_type.clone()).await?;
-                    // Create instance configuration
-                    let instance_config = fly_manager.create_instance_config(
-                        &docker,
-                        &instance_name,
-                        volume_size,
-                        vm_size_parsed,
-                        private,
-                        auth_type,
-                    );
-
-                    // Initialize the Fly.io app
-                    fly_manager
-                        .init_app(&instance_name, &instance_config)
-                        .await?;
-
-                    config
-                        .cloud
-                        .insert(instance_name, CloudConfig::FlyIo(instance_config.clone()));
-
-                    // Backup config before saving
-                    cleanup_tracker.backup_config(&config, config_path.clone());
-
-                    config.save_to_file(&config_path)?;
-                }
-                CloudDeploymentTypeCommand::Local { name } => {
-                    local_instance_name = name.unwrap_or_else(|| "dev".to_string());
-
-                    if local_instance_name != "dev" {
-                        let local_cfg = config.local.remove("dev").unwrap_or(LocalInstanceConfig {
-                            port: Some(6969),
-                            build_mode: crate::config::BuildMode::Dev,
-                            storage_backend: StorageBackend::Lmdb,
-                            db_config: DbConfig::default(),
-                        });
-                        config.local.insert(local_instance_name.clone(), local_cfg);
-
-                        config.save_to_file(&config_path)?;
-                    }
-                }
-            }
-        }
-        None => {
-            // Local instance is the default, config already saved above
-        }
-    }
-
     op.success();
     let queries_path_clean = queries_path.trim_end_matches('/');
 
-    let target_instance = deployment_instance_name
-        .clone()
-        .unwrap_or_else(|| local_instance_name.clone());
-
-    let mut next_steps = vec![
+    let next_steps = vec![
         format!("Edit {queries_path_clean}/schema.hx to define your data model"),
         format!("Add queries to {queries_path_clean}/queries.hx"),
         format!(
-            "Run 'sparrow push {target_instance}' to {}",
-            if is_remote_init {
-                "deploy your configured instance"
-            } else {
-                "start your development instance"
-            }
+            "Run 'sparrow push {local_instance_name}' to start your development instance"
         ),
     ];
-
-    if is_remote_init {
-        next_steps.push(format!(
-            "Use 'sparrow logs {target_instance}' to verify deployment output"
-        ));
-    }
 
     let next_step_refs: Vec<&str> = next_steps.iter().map(String::as_str).collect();
     print_instructions("Next steps:", &next_step_refs);

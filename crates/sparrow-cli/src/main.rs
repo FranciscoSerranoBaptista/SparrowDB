@@ -1,10 +1,7 @@
 use clap::{Parser, Subcommand};
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
-pub use sparrow_cli::{
-    AuthAction, CloudDeploymentTypeCommand, ClusterConfigAction, ConfigAction, ConfigOutputFormat,
-    DashboardAction, DataAction, MetricsAction, ProjectConfigAction, WorkspaceConfigAction,
-};
+pub use sparrow_cli::{DataAction, MetricsAction, ProjectConfigAction};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use tui_banner::{Align, Banner, ColorMode, Fill, Gradient, Palette};
@@ -14,13 +11,11 @@ mod commands;
 mod config;
 mod docker;
 mod errors;
-mod github_issue;
 mod metrics_sender;
 mod output;
 mod port;
 mod project;
 mod prompts;
-mod sse_client;
 mod update;
 mod utils;
 
@@ -55,14 +50,16 @@ enum Commands {
         #[arg(short, long = "queries-path", default_value = "./db/")]
         queries_path: String,
 
-        #[command(subcommand)]
-        cloud: Option<CloudDeploymentTypeCommand>,
+        /// Instance name for the default local instance
+        #[arg(short, long)]
+        name: Option<String>,
     },
 
-    /// Add a new instance to an existing Sparrow project
+    /// Add a new local instance to an existing Sparrow project
     Add {
-        #[command(subcommand)]
-        cloud: Option<CloudDeploymentTypeCommand>,
+        /// Instance name
+        #[arg(short, long)]
+        name: Option<String>,
     },
 
     /// Validate project configuration and queries
@@ -96,19 +93,6 @@ enum Commands {
     Push {
         /// Instance name to push (interactive selection if not provided)
         instance: Option<String>,
-        /// Use development profile for faster builds (Sparrow Cloud only)
-        #[arg(long)]
-        dev: bool,
-    },
-
-    /// Sync .hx source files and config from a deployed Sparrow Cloud instance
-    Sync {
-        /// Instance name to sync from (interactive selection if not provided)
-        instance: Option<String>,
-
-        /// Overwrite local files without confirmation prompts
-        #[arg(short = 'y', long)]
-        yes: bool,
     },
 
     /// Start an instance (doesn't rebuild)
@@ -170,18 +154,6 @@ enum Commands {
         end: Option<String>,
     },
 
-    /// Cloud operations (login, keys, etc.)
-    Auth {
-        #[command(subcommand)]
-        action: AuthAction,
-    },
-
-    /// Configure workspace, project, and cluster defaults
-    Config {
-        #[command(subcommand)]
-        action: ConfigAction,
-    },
-
     /// Prune containers, images and workspace (preserves volumes)
     Prune {
         /// Instance to prune (if not specified, prunes unused resources)
@@ -202,12 +174,6 @@ enum Commands {
     Metrics {
         #[command(subcommand)]
         action: MetricsAction,
-    },
-
-    /// Launch the Sparrow Dashboard
-    Dashboard {
-        #[command(subcommand)]
-        action: DashboardAction,
     },
 
     /// Manage database data (snapshot, clone, restore)
@@ -258,12 +224,6 @@ enum Commands {
         /// Output directory for the backup. If omitted, ./backups/backup-<ts>/ will be used
         #[arg(short, long)]
         output: Option<PathBuf>,
-    },
-
-    /// Send feedback to the Sparrow team
-    Feedback {
-        /// Feedback message (opens interactive prompt if not provided)
-        message: Option<String>,
     },
 
     /// Run a pre-production stress test against a running SparrowDB instance
@@ -370,11 +330,6 @@ fn display_welcome(update_available: Option<String>) {
     );
     println!();
     print_command("sparrow init", "Create a new SparrowDB project", use_color);
-    print_command(
-        "sparrow init cloud",
-        "Create a cloud-deployed project",
-        use_color,
-    );
     print_command("sparrow build", "Build your project", use_color);
     print_command("sparrow push", "Deploy/start an instance", use_color);
 
@@ -390,12 +345,6 @@ fn display_welcome(update_available: Option<String>) {
     println!();
     print_command("sparrow status", "Show status of all instances", use_color);
     print_command("sparrow logs", "View logs for an instance", use_color);
-    print_command(
-        "sparrow dashboard start",
-        "Launch the SparrowDB Dashboard",
-        use_color,
-    );
-    print_command("sparrow auth login", "Login to Sparrow Cloud", use_color);
 
     println!();
     println!(
@@ -470,9 +419,9 @@ async fn main() -> Result<()> {
                 path,
                 template,
                 queries_path,
-                cloud,
-            } => commands::init::run(path, template, queries_path, cloud).await,
-            Commands::Add { cloud } => commands::add::run(cloud).await,
+                name,
+            } => commands::init::run(path, template, queries_path, name).await,
+            Commands::Add { name } => commands::add::run(name).await,
             Commands::Check { instance } => commands::check::run(instance, &metrics_sender).await,
             Commands::Compile { output, path } => commands::compile::run(output, path).await,
             Commands::Build { instance, bin } => {
@@ -480,10 +429,9 @@ async fn main() -> Result<()> {
                     .await
                     .map(|_| ())
             }
-            Commands::Push { instance, dev } => {
-                commands::push::run(instance, dev, &metrics_sender).await
+            Commands::Push { instance } => {
+                commands::push::run(instance, &metrics_sender).await
             }
-            Commands::Sync { instance, yes } => commands::sync::run(instance, yes).await,
             Commands::Start { instance } => commands::start::run(instance).await,
             Commands::Run {
                 bin,
@@ -501,12 +449,9 @@ async fn main() -> Result<()> {
                 start,
                 end,
             } => commands::logs::run(instance, live, range, start, end).await,
-            Commands::Auth { action } => commands::auth::run(action).await,
-            Commands::Config { action } => commands::config::run(action).await,
             Commands::Prune { instance, all } => commands::prune::run(instance, all).await,
             Commands::Delete { instance } => commands::delete::run(instance).await,
             Commands::Metrics { action } => commands::metrics::run(action).await,
-            Commands::Dashboard { action } => commands::dashboard::run(action).await,
             Commands::Data { action } => commands::data::run(action).await,
             Commands::Update { force } => commands::update::run(force).await,
             Commands::Migrate {
@@ -521,7 +466,6 @@ async fn main() -> Result<()> {
                     .await
             }
             Commands::Backup { instance, output } => commands::backup::run(output, instance).await,
-            Commands::Feedback { message } => commands::feedback::run(message).await,
             Commands::Stress {
                 endpoint,
                 port,

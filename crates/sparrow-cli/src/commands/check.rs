@@ -1,14 +1,13 @@
 //! Check command - validates project configuration, queries, and generated Rust code.
 
 use crate::commands::build;
-use crate::github_issue::{GitHubIssueBuilder, filter_errors_only};
 use crate::metrics_sender::MetricsSender;
 use crate::output::{Operation, Step};
 use crate::project::ProjectContext;
 use crate::utils::sparrowc_utils::{
-    analyze_source, collect_hx_contents, collect_hx_files, generate_content, parse_content,
+    analyze_source, collect_hx_files, generate_content, parse_content,
 };
-use crate::utils::{print_confirm, print_error, print_warning};
+use crate::utils::{print_error, print_warning};
 use eyre::Result;
 use std::fs;
 use std::path::Path;
@@ -182,52 +181,25 @@ fn run_cargo_check(sparrow_container_dir: &Path) -> Result<CargoCheckOutput> {
     // stderr contains the actual errors, stdout has JSON if using message-format
     let full_output = format!("{}\n{}", stderr, stdout);
 
-    let errors_only = filter_errors_only(&full_output);
-
     Ok(CargoCheckOutput {
         success: output.status.success(),
-        full_output,
-        errors_only,
+        full_output: full_output.clone(),
+        errors_only: full_output,
     })
 }
 
 /// Handle cargo check failure - print errors and offer GitHub issue creation.
 fn handle_cargo_check_failure(
-    cargo_output: &CargoCheckOutput,
-    generated_rust: &str,
-    project: &ProjectContext,
+    _cargo_output: &CargoCheckOutput,
+    _generated_rust: &str,
+    _project: &ProjectContext,
 ) -> Result<()> {
     print_error("Cargo check failed on generated Rust code");
     println!();
     println!("This may indicate a bug in the Helix code generator.");
     println!();
 
-    // Offer to create GitHub issue
-    print_warning("You can report this issue to help improve Helix.");
-    println!();
-
-    let should_create =
-        print_confirm("Would you like to create a GitHub issue with diagnostic information?")?;
-
-    if !should_create {
-        return Ok(());
-    }
-
-    // Collect .hx content
-    let hx_content = collect_hx_contents(&project.root, &project.config.project.queries)
-        .unwrap_or_else(|_| String::from("[Could not read .hx files]"));
-
-    // Build and open GitHub issue
-    let issue = GitHubIssueBuilder::new(cargo_output.errors_only.clone())
-        .with_hx_content(hx_content)
-        .with_generated_rust(generated_rust.to_string());
-
-    crate::output::info("Opening GitHub issue page...");
-    println!("Please review the content before submitting.");
-
-    issue.open_in_browser()?;
-
-    crate::output::success("GitHub issue page opened in your browser");
+    print_warning("Please report this issue at https://github.com/SparrowDB/sparrowdb/issues");
 
     Ok(())
 }

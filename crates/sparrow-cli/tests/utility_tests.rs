@@ -35,7 +35,6 @@ async fn test_add_fails_without_sparrow_project() {
 #[tokio::test]
 #[serial]
 async fn test_add_local_instance_succeeds() {
-    use sparrow_cli::CloudDeploymentTypeCommand;
     use sparrow_cli::commands::add;
 
     let ctx = TestContext::new();
@@ -44,10 +43,7 @@ async fn test_add_local_instance_succeeds() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
 
     // Add a local instance with explicit name
-    let result = add::run(Some(CloudDeploymentTypeCommand::Local {
-        name: Some("staging".to_string()),
-    }))
-    .await;
+    let result = add::run(Some("staging".to_string())).await;
 
     assert!(
         result.is_ok(),
@@ -67,7 +63,6 @@ async fn test_add_local_instance_succeeds() {
 #[tokio::test]
 #[serial]
 async fn test_add_rejects_duplicate_instance_name() {
-    use sparrow_cli::CloudDeploymentTypeCommand;
     use sparrow_cli::commands::add;
 
     let ctx = TestContext::new();
@@ -76,10 +71,7 @@ async fn test_add_rejects_duplicate_instance_name() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
 
     // Try to add instance with name 'dev' which already exists in default config
-    let result = add::run(Some(CloudDeploymentTypeCommand::Local {
-        name: Some("dev".to_string()),
-    }))
-    .await;
+    let result = add::run(Some("dev".to_string())).await;
 
     assert!(
         result.is_err(),

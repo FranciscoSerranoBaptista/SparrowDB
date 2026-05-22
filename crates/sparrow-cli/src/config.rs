@@ -11,70 +11,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::commands::integrations::ecr::EcrConfig;
-use crate::commands::integrations::fly::FlyInstanceConfig;
-
-/// Global workspace configuration stored in ~/.sparrow/config
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct WorkspaceConfig {
-    pub workspace_id: Option<String>,
-}
-
-impl WorkspaceConfig {
-    /// Get the path to the global config file
-    pub fn config_path() -> Result<PathBuf, ConfigError> {
-        let home = dirs::home_dir().ok_or(ConfigError::HomeDirNotFound)?;
-        Ok(home.join(".sparrow").join("config"))
-    }
-
-    /// Load the workspace config from ~/.sparrow/config
-    pub fn load() -> Result<Self, ConfigError> {
-        let path = Self::config_path()?;
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-
-        let content =
-            fs::read_to_string(&path).map_err(|source| ConfigError::ReadWorkspaceConfig {
-                path: path.clone(),
-                source,
-            })?;
-
-        toml::from_str(&content)
-            .map_err(|source| ConfigError::ParseWorkspaceConfig { path, source })
-    }
-
-    /// Save the workspace config to ~/.sparrow/config
-    pub fn save(&self) -> Result<(), ConfigError> {
-        let path = Self::config_path()?;
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|source| ConfigError::CreateWorkspaceDir {
-                path: parent.to_path_buf(),
-                source,
-            })?;
-        }
-
-        let content = toml::to_string_pretty(self)
-            .map_err(|source| ConfigError::SerializeWorkspaceConfig { source })?;
-
-        fs::write(&path, content)
-            .map_err(|source| ConfigError::WriteWorkspaceConfig { path, source })?;
-
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparrowConfig {
     pub project: ProjectConfig,
     #[serde(default)]
     pub local: HashMap<String, LocalInstanceConfig>,
-    #[serde(default)]
-    pub cloud: HashMap<String, CloudConfig>,
-    #[serde(default)]
-    pub enterprise: HashMap<String, EnterpriseInstanceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,9 +49,9 @@ where
     D: serde::Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    // Normalize path separators for cross-platform compatibility
     Ok(PathBuf::from(s.replace('\\', "/")))
 }
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ContainerRuntime {
@@ -120,7 +61,6 @@ pub enum ContainerRuntime {
 }
 
 impl ContainerRuntime {
-    /// Get the CLI command name for this runtime
     pub fn binary(&self) -> &'static str {
         match self {
             Self::Docker => "docker",
@@ -139,6 +79,7 @@ impl ContainerRuntime {
 fn default_container_runtime() -> ContainerRuntime {
     ContainerRuntime::Docker
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VectorConfig {
     #[serde(default = "default_m")]
@@ -190,66 +131,8 @@ pub struct LocalInstanceConfig {
     pub db_config: DbConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CloudInstanceConfig {
-    pub cluster_id: String,
-    #[serde(default)]
-    pub region: Option<String>,
-    #[serde(default = "default_dev_build_mode")]
-    pub build_mode: BuildMode,
-    #[serde(default)]
-    pub env_vars: HashMap<String, String>,
-    #[serde(flatten)]
-    pub db_config: DbConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-//lowercase all fields
-#[serde(rename_all = "lowercase")]
-pub enum CloudConfig {
-    SparrowCloud(CloudInstanceConfig),
-    #[serde(rename = "fly")]
-    FlyIo(FlyInstanceConfig),
-    Ecr(EcrConfig),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnterpriseInstanceConfig {
-    pub cluster_id: String,
-    pub availability_mode: AvailabilityMode,
-    pub gateway_node_type: String,
-    pub db_node_type: String,
-    #[serde(default = "default_min_instances")]
-    pub min_instances: u64,
-    #[serde(default = "default_min_instances")]
-    pub max_instances: u64,
-    #[serde(flatten)]
-    pub db_config: DbConfig,
-}
-
-fn default_min_instances() -> u64 {
-    1
-}
-
-impl CloudConfig {
-    pub fn get_cluster_id(&self) -> Option<&str> {
-        match self {
-            CloudConfig::SparrowCloud(config) => Some(&config.cluster_id),
-            CloudConfig::FlyIo(_) => Some("flyio"),
-            CloudConfig::Ecr(_) => Some("ecr"), // ECR doesn't use cluster_id
-        }
-    }
-
-    pub fn build_mode(&self) -> BuildMode {
-        match self {
-            Self::SparrowCloud(CloudInstanceConfig { build_mode, .. })
-            | Self::FlyIo(FlyInstanceConfig { build_mode, .. })
-            | Self::Ecr(EcrConfig { build_mode, .. }) => *build_mode,
-        }
-    }
-}
-
 impl DbConfig {
+    #[allow(dead_code)]
     pub fn to_runtime_config(&self) -> RuntimeConfig {
         let secondary_indices = if self.graph_config.secondary_indices.is_empty() {
             None
@@ -282,44 +165,12 @@ impl DbConfig {
     }
 }
 
-impl CloudInstanceConfig {
-    pub fn runtime_config(&self) -> RuntimeConfig {
-        self.db_config.to_runtime_config()
-    }
-}
-
-impl EnterpriseInstanceConfig {
-    #[allow(dead_code)]
-    pub fn runtime_config(&self) -> RuntimeConfig {
-        self.db_config.to_runtime_config()
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum AvailabilityMode {
-    Dev,
-    Ha,
-}
-
-impl std::fmt::Display for AvailabilityMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AvailabilityMode::Dev => write!(f, "dev"),
-            AvailabilityMode::Ha => write!(f, "ha"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BuildMode {
     #[default]
     Dev,
     Release,
-
-    // Validates that this is not used, and all previous code matching it now
-    // has an unreachable!("Please report as a bug. BuildMode::Debug should have been caught in validation.")
     Debug,
 }
 
@@ -327,6 +178,7 @@ pub fn default_dev_build_mode() -> BuildMode {
     BuildMode::Dev
 }
 
+#[allow(dead_code)]
 pub fn default_release_build_mode() -> BuildMode {
     BuildMode::Release
 }
@@ -343,21 +195,10 @@ fn default_true() -> bool {
     true
 }
 
-fn default_m() -> u32 {
-    16
-}
-
-fn default_ef_construction() -> u32 {
-    128
-}
-
-fn default_ef_search() -> u32 {
-    768
-}
-
-fn default_db_max_size_gb() -> u32 {
-    20
-}
+fn default_m() -> u32 { 16 }
+fn default_ef_construction() -> u32 { 128 }
+fn default_ef_search() -> u32 { 768 }
+fn default_db_max_size_gb() -> u32 { 20 }
 
 fn default_embedding_model() -> Option<String> {
     Some("text-embedding-ada-002".to_string())
@@ -367,9 +208,7 @@ fn is_default_embedding_model(value: &Option<String>) -> bool {
     *value == default_embedding_model()
 }
 
-fn is_true(value: &bool) -> bool {
-    *value
-}
+fn is_true(value: &bool) -> bool { *value }
 
 fn is_default_vector_config(value: &VectorConfig) -> bool {
     *value == VectorConfig::default()
@@ -407,76 +246,46 @@ impl Default for DbConfig {
 #[derive(Debug, Clone)]
 pub enum InstanceInfo<'a> {
     Local(&'a LocalInstanceConfig),
-    SparrowCloud(&'a CloudInstanceConfig),
-    FlyIo(&'a FlyInstanceConfig),
-    Ecr(&'a EcrConfig),
-    Enterprise(&'a EnterpriseInstanceConfig),
 }
 
 impl<'a> InstanceInfo<'a> {
     pub fn build_mode(&self) -> BuildMode {
         match self {
-            InstanceInfo::Local(LocalInstanceConfig { build_mode, .. })
-            | InstanceInfo::SparrowCloud(CloudInstanceConfig { build_mode, .. })
-            | InstanceInfo::FlyIo(FlyInstanceConfig { build_mode, .. })
-            | InstanceInfo::Ecr(EcrConfig { build_mode, .. }) => *build_mode,
-            InstanceInfo::Enterprise(_) => BuildMode::Release,
+            InstanceInfo::Local(LocalInstanceConfig { build_mode, .. }) => *build_mode,
         }
     }
 
     pub fn storage_backend(&self) -> StorageBackend {
         match self {
             InstanceInfo::Local(LocalInstanceConfig { storage_backend, .. }) => *storage_backend,
-            _ => StorageBackend::Lmdb,
         }
     }
 
     pub fn port(&self) -> Option<u16> {
         match self {
             InstanceInfo::Local(config) => config.port,
-            InstanceInfo::SparrowCloud(_)
-            | InstanceInfo::FlyIo(_)
-            | InstanceInfo::Ecr(_)
-            | InstanceInfo::Enterprise(_) => None,
-        }
-    }
-
-    pub fn cluster_id(&self) -> Option<&str> {
-        match self {
-            InstanceInfo::Local(_) => None,
-            InstanceInfo::SparrowCloud(config) => Some(&config.cluster_id),
-            InstanceInfo::FlyIo(_) => Some("flyio"),
-            InstanceInfo::Ecr(_) => Some("ecr"),
-            InstanceInfo::Enterprise(config) => Some(&config.cluster_id),
         }
     }
 
     pub fn db_config(&self) -> &DbConfig {
         match self {
-            InstanceInfo::Local(LocalInstanceConfig { db_config, .. })
-            | InstanceInfo::SparrowCloud(CloudInstanceConfig { db_config, .. })
-            | InstanceInfo::FlyIo(FlyInstanceConfig { db_config, .. })
-            | InstanceInfo::Ecr(EcrConfig { db_config, .. })
-            | InstanceInfo::Enterprise(EnterpriseInstanceConfig { db_config, .. }) => db_config,
+            InstanceInfo::Local(LocalInstanceConfig { db_config, .. }) => db_config,
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_local(&self) -> bool {
-        matches!(self, InstanceInfo::Local(_))
+        true
     }
 
     pub fn should_build_docker_image(&self) -> bool {
-        matches!(self, InstanceInfo::Local(_) | InstanceInfo::FlyIo(_))
+        true
     }
 
     pub fn docker_build_target(&self) -> Option<&str> {
-        match self {
-            InstanceInfo::Local(_) | InstanceInfo::SparrowCloud(_) | InstanceInfo::Enterprise(_) => None,
-            InstanceInfo::FlyIo(_) | InstanceInfo::Ecr(_) => Some("linux/amd64"),
-        }
+        None
     }
 
-    /// Convert instance config to the legacy config.hx.json format
     pub fn to_legacy_json(&self) -> serde_json::Value {
         let db_config = self.db_config();
 
@@ -495,31 +304,17 @@ impl<'a> InstanceInfo<'a> {
             "bm25": db_config.bm25
         });
 
-        // Add optional fields if they exist
         if let Some(schema) = &db_config.schema {
             json["schema"] = serde_json::Value::String(schema.clone());
         }
-
         if let Some(embedding_model) = &db_config.embedding_model {
             json["embedding_model"] = serde_json::Value::String(embedding_model.clone());
         }
-
         if let Some(graphvis_node_label) = &db_config.graphvis_node_label {
             json["graphvis_node_label"] = serde_json::Value::String(graphvis_node_label.clone());
         }
 
         json
-    }
-}
-
-impl From<InstanceInfo<'_>> for CloudConfig {
-    fn from(instance_info: InstanceInfo<'_>) -> Self {
-        match instance_info {
-            InstanceInfo::SparrowCloud(config) => CloudConfig::SparrowCloud(config.clone()),
-            InstanceInfo::FlyIo(config) => CloudConfig::FlyIo(config.clone()),
-            InstanceInfo::Ecr(config) => CloudConfig::Ecr(config.clone()),
-            InstanceInfo::Local(_) | InstanceInfo::Enterprise(_) => unimplemented!(),
-        }
     }
 }
 
@@ -553,76 +348,26 @@ impl SparrowConfig {
     }
 
     fn validate(&self, path: &Path) -> Result<(), ConfigError> {
-        // Compute relative path for error messages
         let relative_path = std::env::current_dir()
             .ok()
             .and_then(|cwd| path.strip_prefix(&cwd).ok())
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| path.to_path_buf());
 
-        // Validate project config
         if self.project.name.is_empty() {
-            return Err(ConfigError::EmptyProjectName {
-                path: relative_path.clone(),
-            });
+            return Err(ConfigError::EmptyProjectName { path: relative_path.clone() });
         }
 
-        // Validate instances
-        if self.local.is_empty() && self.cloud.is_empty() && self.enterprise.is_empty() {
-            return Err(ConfigError::MissingInstances {
-                path: relative_path.clone(),
-            });
+        if self.local.is_empty() {
+            return Err(ConfigError::MissingInstances { path: relative_path.clone() });
         }
 
-        // Validate local instances
         for (name, config) in &self.local {
             if name.is_empty() {
-                return Err(ConfigError::EmptyInstanceName {
-                    path: relative_path.clone(),
-                });
+                return Err(ConfigError::EmptyInstanceName { path: relative_path.clone() });
             }
-
             if config.build_mode == BuildMode::Debug {
-                return Err(ConfigError::DeprecatedBuildMode {
-                    path: relative_path.clone(),
-                });
-            }
-        }
-
-        // Validate cloud instances
-        for (name, config) in &self.cloud {
-            if name.is_empty() {
-                return Err(ConfigError::EmptyInstanceName {
-                    path: relative_path.clone(),
-                });
-            }
-
-            if config.get_cluster_id().is_none() {
-                return Err(ConfigError::MissingClusterId {
-                    name: name.clone(),
-                    path: relative_path.clone(),
-                });
-            }
-
-            if config.build_mode() == BuildMode::Debug {
-                return Err(ConfigError::DeprecatedBuildMode {
-                    path: relative_path.clone(),
-                });
-            }
-        }
-
-        for (name, config) in &self.enterprise {
-            if name.is_empty() {
-                return Err(ConfigError::EmptyInstanceName {
-                    path: relative_path.clone(),
-                });
-            }
-
-            if config.cluster_id.is_empty() {
-                return Err(ConfigError::MissingClusterId {
-                    name: name.clone(),
-                    path: relative_path.clone(),
-                });
+                return Err(ConfigError::DeprecatedBuildMode { path: relative_path.clone() });
             }
         }
 
@@ -634,59 +379,15 @@ impl SparrowConfig {
             return Ok(InstanceInfo::Local(local_config));
         }
 
-        if let Some(cloud_config) = self.cloud.get(name) {
-            match cloud_config {
-                CloudConfig::SparrowCloud(config) => {
-                    return Ok(InstanceInfo::SparrowCloud(config));
-                }
-                CloudConfig::FlyIo(config) => {
-                    return Ok(InstanceInfo::FlyIo(config));
-                }
-                CloudConfig::Ecr(config) => {
-                    return Ok(InstanceInfo::Ecr(config));
-                }
-            }
-        }
-
-        if let Some(enterprise_config) = self.enterprise.get(name) {
-            return Ok(InstanceInfo::Enterprise(enterprise_config));
-        }
-
-        Err(ConfigError::InstanceNotFound {
-            name: name.to_string(),
-        })
+        Err(ConfigError::InstanceNotFound { name: name.to_string() })
     }
 
     pub fn list_instances(&self) -> Vec<&String> {
-        let mut instances = Vec::new();
-        instances.extend(self.local.keys());
-        instances.extend(self.cloud.keys());
-        instances.extend(self.enterprise.keys());
-        instances
+        self.local.keys().collect()
     }
 
-    /// List all instances with their type labels for display
-    /// Returns tuples of (name, type_hint) e.g. ("dev", "local"), ("prod", "Helix Cloud")
     pub fn list_instances_with_types(&self) -> Vec<(&String, &'static str)> {
-        let mut instances = Vec::new();
-
-        for name in self.local.keys() {
-            instances.push((name, "local"));
-        }
-
-        for (name, config) in &self.cloud {
-            let type_hint = match config {
-                CloudConfig::SparrowCloud(_) => "Helix Cloud",
-                CloudConfig::FlyIo(_) => "Fly.io",
-                CloudConfig::Ecr(_) => "AWS ECR",
-            };
-            instances.push((name, type_hint));
-        }
-
-        for name in self.enterprise.keys() {
-            instances.push((name, "Enterprise"));
-        }
-
+        let mut instances: Vec<_> = self.local.keys().map(|name| (name, "local")).collect();
         instances.sort_by(|a, b| a.0.cmp(b.0));
         instances
     }
@@ -711,8 +412,6 @@ impl SparrowConfig {
                 container_runtime: default_container_runtime(),
             },
             local,
-            cloud: HashMap::new(),
-            enterprise: HashMap::new(),
         }
     }
 }

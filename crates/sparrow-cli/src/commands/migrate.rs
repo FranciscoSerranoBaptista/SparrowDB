@@ -494,8 +494,6 @@ fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
     let helix_config = SparrowConfig {
         project: project_config,
         local,
-        cloud: HashMap::new(),
-        enterprise: HashMap::new(),
     };
 
     // Save to file
@@ -509,9 +507,6 @@ fn create_v2_config(ctx: &MigrationContext) -> Result<()> {
 }
 
 fn provide_post_migration_guidance(ctx: &MigrationContext) -> Result<()> {
-    // Check if user has Helix Cloud credentials
-    let has_cloud_credentials = check_cloud_credentials();
-
     print_instructions(
         "Next steps:",
         &[
@@ -525,31 +520,6 @@ fn provide_post_migration_guidance(ctx: &MigrationContext) -> Result<()> {
             ),
         ],
     );
-
-    if has_cloud_credentials {
-        output::info("You're authenticated with Helix Cloud");
-        output::info("The CLI v2 has enhanced cloud features with better instance management");
-        print_instructions(
-            "To set up cloud instances:",
-            &[
-                "Run 'sparrow add cloud --name production' to add a production instance",
-                "Run 'sparrow add cloud --name staging' to add a staging instance",
-                "Run 'sparrow build production' to build for your cloud instance",
-                "Run 'sparrow push production' to deploy to Helix Cloud",
-            ],
-        );
-    } else {
-        output::info("Ready for Helix Cloud?");
-        output::info("Take your project to production with managed infrastructure");
-        print_instructions(
-            "To get started with Helix Cloud:",
-            &[
-                "Run 'sparrow auth login' to authenticate with Helix Cloud",
-                "Run 'sparrow add cloud --name production' to add a cloud instance",
-                "Run 'sparrow push production' to deploy to the cloud",
-            ],
-        );
-    }
 
     Ok(())
 }
@@ -714,12 +684,3 @@ fn cleanup_dockerdev() -> Result<()> {
     Ok(())
 }
 
-fn check_cloud_credentials() -> bool {
-    let home = match dirs::home_dir() {
-        Some(dir) => dir,
-        None => return false,
-    };
-
-    let credentials_path = home.join(".sparrow").join("credentials");
-    credentials_path.exists()
-}

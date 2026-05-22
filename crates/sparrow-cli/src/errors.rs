@@ -151,6 +151,7 @@ impl fmt::Display for CliError {
 impl std::error::Error for CliError {}
 
 #[derive(Debug, Error)]
+#[allow(dead_code)]
 pub enum ConfigError {
     #[error("cannot find home directory")]
     HomeDirNotFound,

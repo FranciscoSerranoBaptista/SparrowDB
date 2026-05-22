@@ -943,35 +943,6 @@ networks:
         Ok(())
     }
 
-    pub fn tag(&self, image_name: &str, registry_url: &str) -> Result<()> {
-        let registry_image = format!("{registry_url}/{image_name}");
-        Command::new(self.runtime.binary())
-            .arg("tag")
-            .arg(image_name)
-            .arg(&registry_image)
-            .output()?;
-
-        Ok(())
-    }
-
-    pub fn push(&self, image_name: &str, registry_url: &str) -> Result<()> {
-        let registry_image = format!("{registry_url}/{image_name}");
-        Step::verbose_substep(&format!(
-            "{}: Pushing image: {registry_image}",
-            self.runtime.label()
-        ));
-        let output = Command::new(self.runtime.binary())
-            .arg("push")
-            .arg(&registry_image)
-            .output()?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(eyre!("Failed to push image: {}", stderr));
-        }
-
-        Ok(())
-    }
 }
 
 #[derive(Debug)]

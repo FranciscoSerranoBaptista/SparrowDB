@@ -1560,17 +1560,6 @@ dependencies = [
 
 [[package]]
 name = "helix-dsl-macros"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8ce6987f5eae966b7956d4b9f0cd4ddb01fcbbbfb709b45b20ab5054fa24d7b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "helix-dsl-macros"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4708418e04e017cf1f4169591923697f270382f7cc86e53a2d44838218164354"
@@ -1578,18 +1567,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "helix-enterprise-ql"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d8222d99d65571532eab4ec16af81c9aff450cb1c6316c83c010b210fa7e7f5"
-dependencies = [
- "helix-dsl-macros 0.1.0",
- "inventory",
- "serde",
- "sonic-rs",
 ]
 
 [[package]]
@@ -4656,7 +4633,6 @@ dependencies = [
  "flume",
  "futures-util",
  "heed3",
- "helix-enterprise-ql",
  "indicatif 0.18.3",
  "iota",
  "open",
@@ -4797,7 +4773,7 @@ name = "sparrow-sdk"
 version = "1.0.0"
 dependencies = [
  "chrono",
- "helix-dsl-macros 0.2.0",
+ "helix-dsl-macros",
  "inventory",
  "reqwest 0.13.3",
  "serde",

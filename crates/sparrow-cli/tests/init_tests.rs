@@ -1,4 +1,3 @@
-use sparrow_cli::CloudDeploymentTypeCommand;
 use sparrow_cli::commands::init::run;
 use std::fs;
 use std::path::PathBuf;
@@ -305,21 +304,19 @@ async fn test_init_failure_cleanup_keeps_existing_gitignore() {
     let gitignore_path = project_path.join(".gitignore");
     fs::write(&gitignore_path, "node_modules\n").expect("Failed to seed .gitignore");
 
+    // Seed a sparrow.toml so the second init fails with "already exists"
+    fs::write(project_path.join("sparrow.toml"), "[project]\nname = \"x\"\n")
+        .expect("Failed to seed sparrow.toml");
+
     let result = run(
         Some(project_path.to_str().unwrap().to_string()),
         "default".to_string(),
         "queries".to_string(),
-        Some(CloudDeploymentTypeCommand::Fly {
-            auth: "not-a-valid-auth".to_string(),
-            volume_size: 20,
-            vm_size: "shared-cpu-4x".to_string(),
-            private: false,
-            name: None,
-        }),
+        None,
     )
     .await;
 
-    assert!(result.is_err(), "Init should fail with invalid Fly auth");
+    assert!(result.is_err(), "Init should fail when sparrow.toml already exists");
     assert!(
         gitignore_path.exists(),
         "Existing .gitignore should not be deleted"
@@ -530,9 +527,7 @@ async fn test_init_local_name_is_honored() {
         Some(project_path.to_str().unwrap().to_string()),
         "default".to_string(),
         "queries".to_string(),
-        Some(sparrow_cli::CloudDeploymentTypeCommand::Local {
-            name: Some("localdev".to_string()),
-        }),
+        Some("localdev".to_string()),
     )
     .await;
 

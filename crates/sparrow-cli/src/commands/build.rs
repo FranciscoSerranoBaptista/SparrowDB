@@ -1,14 +1,13 @@
 use crate::config::{BuildMode, InstanceInfo, StorageBackend};
 use crate::docker::{DockerBuildError, DockerManager};
-use crate::github_issue::{GitHubIssueBuilder, filter_errors_only};
 use crate::metrics_sender::MetricsSender;
 use crate::output::{Operation, Step};
 use crate::project::{ProjectContext, get_sparrow_repo_cache};
 use crate::prompts;
 use crate::utils::{
     copy_dir_recursive_excluding, diagnostic_source,
-    sparrowc_utils::{collect_hx_contents, collect_hx_files},
-    print_confirm, print_error, print_warning,
+    sparrowc_utils::collect_hx_files,
+    print_error, print_warning,
 };
 use eyre::{Result, eyre};
 use std::process::Command;
@@ -535,41 +534,15 @@ fn read_config(instance_src_dir: &std::path::Path) -> Result<Config> {
 
 /// Handle Rust compilation failure during Docker build - print errors and offer GitHub issue creation.
 fn handle_docker_rust_compilation_failure(
-    docker_output: &str,
-    project: &ProjectContext,
+    _docker_output: &str,
+    _project: &ProjectContext,
 ) -> Result<()> {
     print_error("Rust compilation failed during Docker build");
     println!();
     println!("This may indicate a bug in the Helix code generator.");
     println!();
 
-    // Offer to create GitHub issue
-    print_warning("You can report this issue to help improve Helix.");
-    println!();
-
-    let should_create =
-        print_confirm("Would you like to create a GitHub issue with diagnostic information?")?;
-
-    if !should_create {
-        return Ok(());
-    }
-
-    // Filter to get just cargo errors from the Docker output
-    let cargo_errors = filter_errors_only(docker_output);
-
-    // Collect .hx content
-    let hx_content = collect_hx_contents(&project.root, &project.config.project.queries)
-        .unwrap_or_else(|_| String::from("[Could not read .hx files]"));
-
-    // Build and open GitHub issue (no generated Rust available from Docker build)
-    let issue = GitHubIssueBuilder::new(cargo_errors).with_hx_content(hx_content);
-
-    crate::output::info("Opening GitHub issue page...");
-    println!("Please review the content before submitting.");
-
-    issue.open_in_browser()?;
-
-    crate::output::success("GitHub issue page opened in your browser");
+    print_warning("Please report this issue at https://github.com/SparrowDB/sparrowdb/issues");
 
     Ok(())
 }

@@ -3,7 +3,7 @@ use dirs::home_dir;
 use eyre::{OptionExt, Result, eyre};
 use flume::{Receiver, Sender, unbounded};
 use sparrow_metrics::events::{
-    CompileEvent, DeployCloudEvent, DeployLocalEvent, EventData, EventType, RawEvent,
+    CompileEvent, DeployLocalEvent, EventData, EventType, RawEvent,
     RedeployLocalEvent, TestEvent,
 };
 use reqwest::Client;
@@ -326,32 +326,6 @@ impl MetricsSender {
         self.send_event(event);
     }
 
-    pub fn send_deploy_cloud_event(
-        &self,
-        cluster_id: String,
-        queries_string: String,
-        num_of_queries: u32,
-        time_taken_sec: u32,
-        success: bool,
-        error_messages: Option<String>,
-    ) {
-        let event = RawEvent {
-            os: get_os_string(),
-            event_type: EventType::DeployCloud,
-            event_data: EventData::DeployCloud(DeployCloudEvent {
-                cluster_id,
-                queries_string,
-                num_of_queries,
-                time_taken_sec,
-                success,
-                error_messages,
-            }),
-            user_id: get_user_id(),
-            email: get_email(),
-            timestamp: get_current_timestamp(),
-        };
-        self.send_event(event);
-    }
 
     #[allow(unused)]
     pub fn send_test_event(
