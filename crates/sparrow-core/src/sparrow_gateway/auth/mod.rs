@@ -33,7 +33,9 @@ pub enum TokenError {
     Forbidden,
     #[cfg(feature = "lmdb")]
     Storage(heed3::Error),
+    #[cfg(feature = "lmdb")]
     Io(std::io::Error),
+    #[cfg(feature = "lmdb")]
     Json(serde_json::Error),
 }
 
@@ -45,7 +47,9 @@ impl std::fmt::Display for TokenError {
             TokenError::Forbidden => write!(f, "forbidden"),
             #[cfg(feature = "lmdb")]
             TokenError::Storage(e) => write!(f, "storage error: {e}"),
+            #[cfg(feature = "lmdb")]
             TokenError::Io(e) => write!(f, "io error: {e}"),
+            #[cfg(feature = "lmdb")]
             TokenError::Json(e) => write!(f, "json error: {e}"),
         }
     }
@@ -58,12 +62,14 @@ impl From<heed3::Error> for TokenError {
     }
 }
 
+#[cfg(feature = "lmdb")]
 impl From<std::io::Error> for TokenError {
     fn from(e: std::io::Error) -> Self {
         TokenError::Io(e)
     }
 }
 
+#[cfg(feature = "lmdb")]
 impl From<serde_json::Error> for TokenError {
     fn from(e: serde_json::Error) -> Self {
         TokenError::Json(e)

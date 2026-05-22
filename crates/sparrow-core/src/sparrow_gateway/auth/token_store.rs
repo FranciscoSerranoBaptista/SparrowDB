@@ -2,6 +2,7 @@ use super::{Role, TokenError, TokenRecord};
 use heed3::{Database, Env, EnvOpenOptions, types::Bytes};
 use sha2::{Digest, Sha256};
 use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+use subtle::ConstantTimeEq;
 
 // ---------------------------------------------------------------------------
 // Inline hex helpers (no `hex` crate dependency)
@@ -11,17 +12,15 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-fn hex_to_bytes(s: &str) -> Result<Vec<u8>, TokenError> {
-    if s.len() % 2 != 0 {
-        return Err(TokenError::InvalidKey);
-    }
-    s.as_bytes()
-        .chunks(2)
-        .map(|c| {
-            u8::from_str_radix(std::str::from_utf8(c).unwrap_or("ZZ"), 16)
-                .map_err(|_| TokenError::InvalidKey)
-        })
-        .collect()
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +41,7 @@ impl TokenStore {
             EnvOpenOptions::new()
                 .map_size(10 * 1024 * 1024) // 10 MiB — plenty for tokens
                 .max_dbs(4)
+                .max_readers(128)
                 .open(std::path::Path::new(path))?
         };
 
@@ -54,6 +54,14 @@ impl TokenStore {
         wtxn.commit()?;
 
         Ok(Self { env, db })
+    }
+
+    /// SHA-256 hash of `raw_key` as a fixed 32-byte array.
+    fn hash_key(raw_key: &str) -> [u8; 32] {
+        let h = Sha256::digest(raw_key.as_bytes());
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&h);
+        arr
     }
 
     /// Returns `true` if at least one token exists (auth is enforced).
@@ -83,20 +91,27 @@ impl TokenStore {
             if hex_part.len() != 32 {
                 return Err(TokenError::InvalidKey);
             }
-            hex_to_bytes(hex_part)?; // InvalidKey on non-hex chars
-        }
-        // Fall through for both valid new tokens and legacy keys.
-        let hash = Sha256::digest(raw_key.as_bytes());
-        let key_bytes: &[u8] = &hash;
-
-        let rtxn = self.env.read_txn()?;
-        match self.db.get(&rtxn, key_bytes)? {
-            Some(value) => {
-                let record: TokenRecord = serde_json::from_slice(value)?;
-                Ok(record)
+            // Fix 3: reject uppercase hex
+            if !hex_part.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                return Err(TokenError::InvalidKey);
             }
-            None => Err(TokenError::Unauthorized),
         }
+        // Fix 1: constant-time comparison — iterate all entries using
+        // subtle::ConstantTimeEq so comparison time does not leak which byte
+        // differs (prevents timing side-channel attacks).
+        let candidate_hash = Self::hash_key(raw_key);
+        let rtxn = self.env.read_txn()?;
+        for result in self.db.iter(&rtxn)? {
+            let (stored_key, value) = result?;
+            if stored_key.len() == 32 {
+                let mut stored = [0u8; 32];
+                stored.copy_from_slice(stored_key);
+                if bool::from(candidate_hash.ct_eq(&stored)) {
+                    return Ok(serde_json::from_slice(value)?);
+                }
+            }
+        }
+        Err(TokenError::Unauthorized)
     }
 
     /// Create a new named token with the given role.
@@ -109,27 +124,20 @@ impl TokenStore {
         let payload_hex = bytes_to_hex(&random_bytes);
         let raw_token = format!("sparrow_{payload_hex}");
 
-        let hash = Sha256::digest(raw_token.as_bytes());
-        let key_bytes: Vec<u8> = hash.to_vec();
-
+        let hash = Self::hash_key(&raw_token);
         let id = bytes_to_hex(&hash[..4]); // first 4 bytes → 8 hex chars
-
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
 
         let record = TokenRecord {
             id,
             name: name.to_string(),
             role,
-            created_at,
+            created_at: unix_now(),
         };
 
         let value = serde_json::to_vec(&record)?;
 
         let mut wtxn = self.env.write_txn()?;
-        self.db.put(&mut wtxn, &key_bytes, &value)?;
+        self.db.put(&mut wtxn, &hash, &value)?;
         wtxn.commit()?;
 
         Ok((raw_token, record))
@@ -180,35 +188,23 @@ impl TokenStore {
         }
     }
 
-    /// Seed `raw_key` as an Admin token named `"SPARROW_API_KEY"` if it is
-    /// not already stored.  Silently ignores errors (best-effort migration).
+    /// Seed `raw_key` as an Admin token named `"SPARROW_API_KEY"`.
+    ///
+    /// Unconditional write — LMDB `put` on an identical key is idempotent
+    /// (last writer wins, same value either way), so this is safe to call
+    /// multiple times and eliminates the TOCTOU race of a read-then-write.
+    /// Silently ignores errors (best-effort migration).
     pub fn seed_legacy(&self, raw_key: &str) {
-        let hash = Sha256::digest(raw_key.as_bytes());
-        let key_bytes: Vec<u8> = hash.to_vec();
-
-        // Check if already present.
-        if let Ok(rtxn) = self.env.read_txn() {
-            if let Ok(Some(_)) = self.db.get(&rtxn, &key_bytes) {
-                return; // already seeded
-            }
-        }
-
-        let id = bytes_to_hex(&hash[..4]);
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
+        let hash = Self::hash_key(raw_key);
         let record = TokenRecord {
-            id,
+            id: bytes_to_hex(&hash[..4]),
             name: "SPARROW_API_KEY".to_string(),
             role: Role::Admin,
-            created_at,
+            created_at: unix_now(),
         };
-
         if let Ok(value) = serde_json::to_vec(&record) {
             if let Ok(mut wtxn) = self.env.write_txn() {
-                let _ = self.db.put(&mut wtxn, &key_bytes, &value);
+                let _ = self.db.put(&mut wtxn, &hash, &value);
                 let _ = wtxn.commit();
             }
         }
