@@ -187,9 +187,9 @@ impl TokenStore {
             Some(key) => {
                 let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
                 let mut wtxn = self.env.write_txn()?;
-                self.db.delete(&mut wtxn, &key)?;
+                let deleted = self.db.delete(&mut wtxn, &key)?;
                 wtxn.commit()?;
-                Ok(true)
+                Ok(deleted)
             }
         }
     }
