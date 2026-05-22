@@ -11,7 +11,7 @@ check:
 	cargo sweep -t 3
 
 test:
-	cargo test --package sparrow-db $(F) -- --test-threads=2
+	cargo test --package sparrow-core $(F) -- --test-threads=2
 	cargo sweep -t 3
 
 test-all:

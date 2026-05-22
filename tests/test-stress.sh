@@ -2,12 +2,13 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SPARROW_BIN="$REPO_ROOT/target/debug/sparrow"
 CONTAINER_BIN="$REPO_ROOT/target/debug/sparrow-container"
 PROJECT_DIR="/tmp/sparrow-stress-project"
 DATA_DIR="/tmp/sparrow-stress-data"
-QUERIES_RS="$REPO_ROOT/sparrow-container/src/queries.rs"
+QUERIES_RS="$REPO_ROOT/crates/sparrow-container/src/queries.rs"
 QUERIES_RS_BAK="/tmp/sparrow-stress-queries.rs.bak"
 PORT=6969
 SERVER_PID=""
