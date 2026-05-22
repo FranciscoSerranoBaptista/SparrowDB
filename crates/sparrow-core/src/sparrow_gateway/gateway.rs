@@ -172,6 +172,17 @@ impl SparrowGateway {
                 .route("/node-details", get(node_details_handler));
         }
 
+        #[cfg(feature = "lmdb")]
+        {
+            use crate::sparrow_gateway::builtin::token_mgmt::{
+                create_token_handler, list_tokens_handler, revoke_token_handler,
+            };
+            use axum::routing::delete;
+            axum_app = axum_app
+                .route("/tokens", get(list_tokens_handler).post(create_token_handler))
+                .route("/tokens/:id", delete(revoke_token_handler));
+        }
+
         #[cfg(feature = "studio")]
         {
             axum_app = axum_app.merge(sparrow_studio::studio_router());

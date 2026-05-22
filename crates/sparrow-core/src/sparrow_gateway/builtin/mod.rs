@@ -5,5 +5,6 @@ pub mod migrate;
 pub mod node_by_id;
 pub mod node_connections;
 pub mod nodes_by_label;
+pub mod token_mgmt;
 pub mod vector_ops;
 pub mod vector_rebuild;
