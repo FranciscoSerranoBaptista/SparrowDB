@@ -173,7 +173,7 @@ impl SparrowGateway {
 
         #[cfg(feature = "studio")]
         {
-            axum_app = axum_app.merge(sparrow_studio::studio_router().with_state(()));
+            axum_app = axum_app.merge(sparrow_studio::studio_router());
         }
 
         let axum_app = axum_app.with_state(Arc::new(AppState {

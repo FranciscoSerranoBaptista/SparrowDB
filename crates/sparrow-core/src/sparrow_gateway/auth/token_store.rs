@@ -3,6 +3,7 @@ use heed3::{Database, Env, EnvOpenOptions, types::Bytes};
 use sha2::{Digest, Sha256};
 use std::{fs, time::{SystemTime, UNIX_EPOCH}};
 use subtle::ConstantTimeEq;
+use tracing::warn;
 
 // ---------------------------------------------------------------------------
 // Inline hex helpers (no `hex` crate dependency)
@@ -199,7 +200,8 @@ impl TokenStore {
     /// Unconditional write — LMDB `put` on an identical key is idempotent
     /// (last writer wins, same value either way), so this is safe to call
     /// multiple times and eliminates the TOCTOU race of a read-then-write.
-    /// Silently ignores errors (best-effort migration).
+    /// Errors are logged as warnings; a failure here means the server may
+    /// start unauthenticated if no other token exists.
     pub fn seed_legacy(&self, raw_key: &str) {
         let hash = Self::hash_key(raw_key);
         let record = TokenRecord {
@@ -208,12 +210,27 @@ impl TokenStore {
             role: Role::Admin,
             created_at: unix_now(),
         };
-        if let Ok(value) = serde_json::to_vec(&record) {
-            let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
-            if let Ok(mut wtxn) = self.env.write_txn() {
-                let _ = self.db.put(&mut wtxn, &hash, &value);
-                let _ = wtxn.commit();
+        let value = match serde_json::to_vec(&record) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("seed_legacy: failed to serialize SPARROW_API_KEY record; server may start unauthenticated: {e}");
+                return;
             }
+        };
+        let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut wtxn = match self.env.write_txn() {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("seed_legacy: failed to open write txn; SPARROW_API_KEY not seeded, server may start unauthenticated: {e}");
+                return;
+            }
+        };
+        if let Err(e) = self.db.put(&mut wtxn, &hash, &value) {
+            warn!("seed_legacy: LMDB put failed; SPARROW_API_KEY not seeded, server may start unauthenticated: {e}");
+            return;
+        }
+        if let Err(e) = wtxn.commit() {
+            warn!("seed_legacy: LMDB commit failed; SPARROW_API_KEY not seeded, server may start unauthenticated: {e}");
         }
     }
 }

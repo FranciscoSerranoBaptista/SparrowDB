@@ -2,12 +2,15 @@ use axum::body::Body;
 use axum::http::{Response, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::{Router, extract::Path};
+use axum::extract::Path;
 
 use crate::embed::Assets;
 
-pub fn router() -> Router {
-    Router::new()
+pub fn router<S>() -> axum::Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    axum::Router::new()
         .route("/__studio", get(studio_redirect))
         .route("/__studio/", get(studio_index))
         .route("/__studio/{*path}", get(studio_asset))
