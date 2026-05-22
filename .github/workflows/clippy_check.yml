@@ -24,6 +24,17 @@ jobs:
       with:
         components: clippy
 
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+
+    - name: Install Studio dependencies
+      run: pnpm --filter @sparrowdb/studio install
+
+    - name: Build Studio frontend
+      run: pnpm --filter @sparrowdb/studio build
+
     - name: Cache cargo dependencies
       uses: actions/cache@v4
       continue-on-error: true
