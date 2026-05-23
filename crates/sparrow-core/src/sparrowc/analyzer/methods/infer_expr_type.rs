@@ -28,7 +28,7 @@ use crate::{
                 ShouldCollect, Step as GeneratedStep, Traversal as GeneratedTraversal,
                 TraversalType, Where, WhereRef,
             },
-            utils::{GenRef, GeneratedValue, Separator, VecData},
+            utils::{GenRef, GeneratedType, GeneratedValue, Separator, VecData},
         },
         parser::types::*,
     },
@@ -389,11 +389,29 @@ pub(crate) fn infer_expr_type<'a>(
                     ),
                 };
 
+                // Build vector_fields for any VectorF32 fields in the schema
+                let vector_fields = {
+                    let vf: Vec<(String, GeneratedValue)> = node_in_schema
+                        .properties
+                        .iter()
+                        .filter(|p| matches!(p.field_type, GeneratedType::VectorF32(_)))
+                        .map(|p| {
+                            let hnsw_label = format!("{}.{}", ty, p.name);
+                            let accessor = properties
+                                .get(p.name.as_str())
+                                .cloned()
+                                .unwrap_or(GeneratedValue::Unknown);
+                            (hnsw_label, accessor)
+                        })
+                        .collect();
+                    if vf.is_empty() { None } else { Some(vf) }
+                };
+
                 let add_n = AddN {
                     label,
                     properties: Some(properties.into_iter().collect()),
                     secondary_indices,
-                    vector_fields: None, // will be populated in Task 10
+                    vector_fields,
                 };
 
                 let stmt = GeneratedStatement::Traversal(GeneratedTraversal {
@@ -1713,6 +1731,35 @@ mod tests {
         assert!(result.is_ok());
         let (diagnostics, _) = result.unwrap();
         assert!(diagnostics.iter().any(|d| d.error_code == ErrorCode::E101));
+    }
+
+    #[test]
+    fn test_add_node_with_vector_field_generates_vector_fields() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(4)
+            }
+            QUERY addPerson(name: String, emb: vector(4)) =>
+                result <- AddN<Person>({name: name, embedding: emb})
+                RETURN result
+        "#;
+
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+        let (diagnostics, generated) = result.unwrap();
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got: {:?}",
+            diagnostics
+        );
+        let query_code = format!("{}", generated.queries[0]);
+        assert!(
+            query_code.contains("add_n_with_vectors"),
+            "expected add_n_with_vectors in generated code, got:\n{query_code}"
+        );
     }
 
     // ============================================================================
