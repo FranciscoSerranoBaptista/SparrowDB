@@ -157,6 +157,74 @@ mod tests {
     use crate::sparrowc::generator::utils::RustType;
 
     // ============================================================================
+    // Full compile pipeline: vector(N) field on N:: node
+    // ============================================================================
+
+    #[test]
+    fn test_vector_field_codegen() {
+        use crate::sparrowc::{
+            analyzer::analyze,
+            generator::tsdisplay::ToTypeScript,
+            parser::{SparrowParser, write_to_temp_file},
+        };
+
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(1536)
+            }
+            QUERY addPerson(name: String, emb: vector(1536)) =>
+                result <- AddN<Person>({name: name, embedding: emb})
+                RETURN result
+        "#;
+
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content)
+            .expect("HQL parse should succeed for vector(N) node field");
+
+        let (diagnostics, generated) =
+            analyze(&parsed).expect("analysis should succeed for vector(N) node field");
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got: {diagnostics:?}"
+        );
+
+        // Verify the Person NodeSchema was generated
+        let person_schema = generated
+            .nodes
+            .iter()
+            .find(|n| n.name == "Person")
+            .expect("Person NodeSchema should exist in generated output");
+
+        // Check the embedding property exists and has the right GeneratedType
+        let embedding_prop = person_schema
+            .properties
+            .iter()
+            .find(|p| p.name == "embedding")
+            .expect("embedding property should exist on Person schema");
+
+        assert!(
+            matches!(embedding_prop.field_type, GeneratedType::VectorF32(1536)),
+            "expected VectorF32(1536) for the embedding property"
+        );
+
+        // Verify Rust Display renders Vec<f32>
+        let rust_output = format!("{person_schema}");
+        assert!(
+            rust_output.contains("Vec<f32>"),
+            "Rust struct for Person should contain Vec<f32>, got:\n{rust_output}"
+        );
+
+        // Verify TypeScript output contains Array<number> /* vector(1536) */
+        let ts_output = person_schema.to_typescript();
+        assert!(
+            ts_output.contains("Array<number> /* vector(1536) */"),
+            "TypeScript for Person should contain Array<number> /* vector(1536) */, got:\n{ts_output}"
+        );
+    }
+
+    // ============================================================================
     // NodeSchema Tests
     // ============================================================================
 
