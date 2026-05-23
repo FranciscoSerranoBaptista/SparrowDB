@@ -24,6 +24,8 @@ pub enum ErrorCode {
     E109,
     /// `E110` – `schema item name is a reserved type name`
     E110,
+    /// `E111` – `vector(N) field is only valid on N:: node types, not E:: edges`
+    E111,
 
     // TYPE ERRORS
     /// `E201` – `item type not in schema`
@@ -159,6 +161,7 @@ impl ErrorCode {
             ErrorCode::E108 => "invalid schema version",
             ErrorCode::E109 => "duplicate field name in schema",
             ErrorCode::E110 => "schema item name is a reserved type name",
+            ErrorCode::E111 => "vector(N) field is only valid on N:: node types, not E:: edges",
             // Type errors
             ErrorCode::E201 => "item type not in schema",
             ErrorCode::E202 => "invalid field for item type",
@@ -237,6 +240,7 @@ impl std::fmt::Display for ErrorCode {
             ErrorCode::E108 => write!(f, "E108"),
             ErrorCode::E109 => write!(f, "E109"),
             ErrorCode::E110 => write!(f, "E110"),
+            ErrorCode::E111 => write!(f, "E111"),
             ErrorCode::E201 => write!(f, "E201"),
             ErrorCode::E202 => write!(f, "E202"),
             ErrorCode::E203 => write!(f, "E203"),
@@ -323,6 +327,7 @@ implement_error_code!(E106, "use of undeclared node or vector type `{}` in schem
 implement_error_code!(E107, "duplicate {} definition `{}`" => { schema_type, name }, "rename the {} or remove the duplicate definition" => { schema_type });
 implement_error_code!(E109, "duplicate field `{}` in {} `{}`" => { field_name, schema_type, schema_name }, "rename the field or remove the duplicate" => {});
 implement_error_code!(E110, "`{}` is a reserved type name and cannot be used as a {} name" => { name, schema_type }, "rename the {} to something else" => { schema_type });
+implement_error_code!(E111, "vector property `{}` is not allowed on edge type `{}`; use N:: nodes instead" => { field_name, edge_name }, "move the vector field to an N:: node type" => {});
 
 // Type errors
 implement_error_code!(E201, "item type not in schema `{}`" => { item_type }, "check the schema field names" => {});

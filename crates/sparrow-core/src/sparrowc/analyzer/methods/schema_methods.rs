@@ -361,6 +361,18 @@ pub(crate) fn check_schema(ctx: &mut Ctx) -> Result<(), ParserError> {
                         Some("use built-in types only (String, U32, etc.)".to_string()),
                     );
                 }
+                if matches!(f.field_type, FieldType::Vector(_)) {
+                    push_schema_err(
+                        ctx,
+                        f.loc.clone(),
+                        ErrorCode::E111,
+                        format!(
+                            "vector property `{}` is not allowed on edge type `{}`; use N:: nodes instead",
+                            f.name, edge.name.1
+                        ),
+                        Some("move the vector field to an N:: node type".to_string()),
+                    );
+                }
             }
         }
         ctx.output.edges.push(edge.clone().into());
@@ -1228,5 +1240,52 @@ mod tests {
         let (diagnostics, _) = result.unwrap();
         // Should not have any E110 errors for valid names
         assert!(!diagnostics.iter().any(|d| d.error_code == ErrorCode::E110));
+    }
+
+    // ============================================================================
+    // Vector field on edge/node Tests (E111)
+    // ============================================================================
+
+    #[test]
+    fn test_vector_field_rejected_on_edge() {
+        let source = r#"
+            N::Person { name: String }
+            N::Company { name: String }
+            E::WorksAt {
+                From: Person,
+                To: Company,
+                Properties: {
+                    embedding: vector(512)
+                }
+            }
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok());
+        let (diagnostics, _) = result.unwrap();
+        assert!(
+            diagnostics.iter().any(|d| d.error_code == ErrorCode::E111),
+            "expected E111 diagnostic for vector field on edge"
+        );
+    }
+
+    #[test]
+    fn test_vector_field_valid_on_node() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(1536)
+            }
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok(), "expected Ok for vector field on node, got Err: {:?}", result.err());
+        let (diagnostics, _) = result.unwrap();
+        assert!(
+            !diagnostics.iter().any(|d| d.error_code == ErrorCode::E111),
+            "unexpected E111 diagnostic for vector field on node"
+        );
     }
 }
