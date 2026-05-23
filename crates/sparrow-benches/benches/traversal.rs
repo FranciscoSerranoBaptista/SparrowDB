@@ -1,12 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn traversal_benchmark(c: &mut Criterion) {
-    c.bench_function("traversal_stub", |b| {
-        b.iter(|| {
-            black_box(1 + 1)
-        });
-    });
-}
-
-criterion_group!(benches, traversal_benchmark);
+use criterion::{Criterion, criterion_group, criterion_main};
+fn placeholder(_c: &mut Criterion) {}
+criterion_group!(benches, placeholder);
 criterion_main!(benches);
