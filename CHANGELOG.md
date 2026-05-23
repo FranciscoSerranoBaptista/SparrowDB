@@ -56,6 +56,17 @@ All notable changes to SparrowDB are documented here.
 - `packages/studio` — Vite + React + TypeScript monorepo package; built assets checked in under `sparrow-studio/dist/`
 - pnpm workspace added to the repo root for unified JS dependency management
 
+**Vector Fields on Nodes (`vector(N)`)**
+- `vector(N)` is now a first-class property type on `N::` node schemas — declare embedding fields inline without a separate `V::` type or manual index calls
+  - Grammar: `vector_type`, `type_dot_field`, and `search_node_vector` rules added to the PEG grammar
+  - Parser: `FieldType::Vector(usize)` variant; `SearchNodeVector` AST node with `StartNode::SearchNodeVector` and `ExpressionType::SearchNodeVector` variants
+  - Analyzer: `GeneratedType::VectorF32(usize)` — renders `Vec<f32>` in generated Rust structs and `Array<number> /* vector(N) */` in TypeScript
+  - E111 compile error if `vector(N)` is used on an `E::` edge type
+- **`add_n_with_vectors`** — new engine method that stores a node in LMDB and auto-inserts each `vector(N)` field into the HNSW index in one operation, using the node's UUID as the HNSW entry ID (so no separate ID mapping is needed)
+- **`SearchN<Type.field>(query, k)`** — new traversal entry point that performs HNSW nearest-neighbour search over a node's vector field and returns hydrated `N::` nodes ranked by cosine similarity; soft-deleted nodes are silently skipped; an empty index returns zero results rather than an error
+- Code generation: `AddN` emits `add_n_with_vectors` when the schema has `vector(N)` fields; `SearchN` emits `search_n` calls
+- Docs: `vector(N)` field type and `SearchN` fully documented in `docs/HQL.md`
+
 **HNSW / Vector Search**
 - Enable PREFILTER mode during HNSW traversal for more accurate filtered vector search
 
