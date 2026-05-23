@@ -118,8 +118,18 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                 let error = GraphError::VectorError(format!("vector core error: {e}"));
                 once(Err(error)).collect::<Vec<_>>().into_iter()
             }
-            Err(id) => {
+            Err(VectorError::VectorAlreadyDeleted(id)) => {
                 let error = GraphError::VectorError(format!("vector already deleted for id {id}"));
+                once(Err(error)).collect::<Vec<_>>().into_iter()
+            }
+            Err(VectorError::VectorDeleted) => {
+                let error = GraphError::VectorError("vector was deleted".to_string());
+                once(Err(error)).collect::<Vec<_>>().into_iter()
+            }
+            Err(VectorError::ZeroMagnitudeVector) => {
+                let error = GraphError::VectorError(
+                    "zero magnitude vector cannot be searched".to_string(),
+                );
                 once(Err(error)).collect::<Vec<_>>().into_iter()
             }
         };
