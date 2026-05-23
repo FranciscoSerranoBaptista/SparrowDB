@@ -36,6 +36,8 @@ pub enum SourceStep {
     SearchVector(SearchVector),
     /// Search for vectors using BM25
     SearchBM25(SearchBM25),
+    /// Search for nearest-neighbor nodes via HNSW
+    SearchN(SearchNStep),
     /// Traversal starts from an anonymous node
     Anonymous,
     Empty,
@@ -49,16 +51,34 @@ pub struct AddN {
     pub properties: Option<Vec<(String, GeneratedValue)>>,
     /// Names of properties to index on
     pub secondary_indices: Option<Vec<String>>,
+    /// When Some, vector field labels and their accessor expressions to insert into HNSW
+    pub vector_fields: Option<Vec<(String, GeneratedValue)>>,
 }
 impl Display for AddN {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let properties = write_properties(&self.properties);
         let secondary_indices = write_secondary_indices(&self.secondary_indices);
-        write!(
-            f,
-            "add_n({}, {}, {})",
-            self.label, properties, secondary_indices
-        )
+        match &self.vector_fields {
+            Some(vf) if !vf.is_empty() => {
+                let vec_inserts: Vec<String> = vf
+                    .iter()
+                    .map(|(label, accessor)| format!("(\"{label}\", {accessor}.as_slice())"))
+                    .collect();
+                let vec_arg = format!("Some(&[{}])", vec_inserts.join(", "));
+                write!(
+                    f,
+                    "add_n_with_vectors({}, {}, {}, {})",
+                    self.label, properties, secondary_indices, vec_arg
+                )
+            }
+            _ => {
+                write!(
+                    f,
+                    "add_n({}, {}, {})",
+                    self.label, properties, secondary_indices
+                )
+            }
+        }
     }
 }
 
@@ -268,11 +288,35 @@ impl Display for SourceStep {
             SourceStep::EFromType(e_from_type) => write!(f, "{e_from_type}"),
             SourceStep::SearchVector(search_vector) => write!(f, "{search_vector}"),
             SourceStep::SearchBM25(search_bm25) => write!(f, "{search_bm25}"),
+            SourceStep::SearchN(s) => write!(f, "{s}"),
             SourceStep::Anonymous => write!(f, ""),
             SourceStep::Empty => panic!("Should not be empty"),
             SourceStep::VFromID(v_from_id) => write!(f, "{v_from_id}"),
             SourceStep::VFromType(v_from_type) => write!(f, "{v_from_type}"),
         }
+    }
+}
+
+/// Code-generator node for `SearchN<TypeName.field>(vec, k)` queries
+#[derive(Clone, Debug)]
+pub struct SearchNStep {
+    /// The HNSW label — format is "TypeName.fieldname" (e.g. "Person.embedding")
+    pub label: GenRef<String>,
+    /// The query vector
+    pub vec: VecData,
+    /// Number of nearest neighbors
+    pub k: GeneratedValue,
+}
+
+impl Display for SearchNStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "search_n::<fn(&HVector, &RTxn) -> bool, _>({vec}, {k}, \"{label}\", None)",
+            vec = self.vec,
+            k = self.k,
+            label = self.label,
+        )
     }
 }
 

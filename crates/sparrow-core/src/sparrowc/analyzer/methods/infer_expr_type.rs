@@ -393,6 +393,7 @@ pub(crate) fn infer_expr_type<'a>(
                     label,
                     properties: Some(properties.into_iter().collect()),
                     secondary_indices,
+                    vector_fields: None, // will be populated in Task 10
                 };
 
                 let stmt = GeneratedStatement::Traversal(GeneratedTraversal {
