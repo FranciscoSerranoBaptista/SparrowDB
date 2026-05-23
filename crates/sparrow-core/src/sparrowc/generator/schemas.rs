@@ -34,6 +34,14 @@ impl ToTypeScript for NodeSchema {
                 property.name,
                 match &property.field_type {
                     GeneratedType::RustType(t) => t.to_ts(),
+                    GeneratedType::VectorF32(n) => format!("Array<number> /* vector({n}) */"),
+                    GeneratedType::Vec(inner) => format!(
+                        "Array<{}>",
+                        match inner.as_ref() {
+                            GeneratedType::RustType(t) => t.to_ts(),
+                            _ => "unknown".to_string(),
+                        }
+                    ),
                     _ => {
                         debug_assert!(false, "NodeSchema property has unexpected type");
                         format!("/* ERROR: unsupported type for {} */", property.name)
@@ -78,6 +86,7 @@ impl ToTypeScript for VectorSchema {
                 property.name,
                 match &property.field_type {
                     GeneratedType::RustType(t) => t.to_ts(),
+                    GeneratedType::VectorF32(n) => format!("Array<number> /* vector({n}) */"),
                     _ => {
                         debug_assert!(false, "VectorSchema property has unexpected type");
                         format!("/* ERROR: unsupported type for {} */", property.name)
@@ -115,6 +124,7 @@ impl ToTypeScript for EdgeSchema {
                     p.name,
                     match &p.field_type {
                         GeneratedType::RustType(t) => t.to_ts(),
+                        GeneratedType::VectorF32(n) => format!("Array<number> /* vector({n}) */"),
                         _ => {
                             debug_assert!(false, "EdgeSchema property has unexpected type");
                             format!("/* ERROR: unsupported type for {} */", p.name)

@@ -308,6 +308,8 @@ pub enum GeneratedType {
     Vec(Box<GeneratedType>),
     Object(GenRef<String>),
     Variable(GenRef<String>),
+    /// vector(N) field — renders as Vec<f32> in Rust
+    VectorF32(usize),
 }
 
 impl Display for GeneratedType {
@@ -317,6 +319,7 @@ impl Display for GeneratedType {
             GeneratedType::Vec(t) => write!(f, "Vec<{t}>"),
             GeneratedType::Variable(v) => write!(f, "{v}"),
             GeneratedType::Object(o) => write!(f, "{o}"),
+            GeneratedType::VectorF32(_) => write!(f, "Vec<f32>"),
         }
     }
 }

@@ -207,7 +207,7 @@ impl From<FieldType> for GeneratedType {
                 // Return a placeholder type for now
                 GeneratedType::Variable(GenRef::Std("Value".to_string()))
             }
-            FieldType::Vector(_) => GeneratedType::Variable(GenRef::Std("Vec<f64>".to_string())),
+            FieldType::Vector(n) => GeneratedType::VectorF32(n),
         }
     }
 }
