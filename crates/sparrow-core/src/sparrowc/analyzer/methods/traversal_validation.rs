@@ -3,7 +3,7 @@ use crate::sparrowc::analyzer::utils::{
     DEFAULT_VAR_NAME, VariableInfo, check_identifier_is_fieldtype, validate_embed_string_type,
 };
 use crate::sparrowc::generator::bool_ops::{Contains, IsIn, PropertyEq, PropertyNeq};
-use crate::sparrowc::generator::source_steps::{SearchVector, VFromID, VFromType};
+use crate::sparrowc::generator::source_steps::{SearchNStep, SearchVector, VFromID, VFromType};
 use crate::sparrowc::generator::traversal_steps::{AggregateBy, GroupBy};
 use crate::sparrowc::generator::utils::{EmbedData, VecData};
 use crate::{
@@ -716,17 +716,148 @@ pub(crate) fn validate_traversal<'a>(
             // Search returns nodes that contain the vectors
             Type::Vectors(sv.vector_type.clone())
         }
-        StartNode::SearchNodeVector(_snv) => {
-            // SearchNodeVector is parsed but not yet lowered through the analyzer.
-            // Full support will be added in a subsequent task.
-            generate_error!(
-                ctx,
-                original_query,
-                tr.loc.clone(),
-                E601,
-                "SearchNodeVector is not yet supported in traversal validation"
-            );
-            return None;
+        StartNode::SearchNodeVector(snv) => {
+            // 1. Validate the node type exists (E101)
+            if !ctx.node_set.contains(snv.node_type.as_str()) {
+                generate_error!(ctx, original_query, snv.loc.clone(), E101, &snv.node_type);
+                return None;
+            }
+
+            // 2. Look up the field and verify it is a vector field (E202)
+            let field_set = ctx.node_fields.get(snv.node_type.as_str());
+            let field = field_set.and_then(|fs| fs.get(snv.field_name.as_str()));
+
+            match field {
+                None => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E202,
+                        &snv.field_name,
+                        "node",
+                        &snv.node_type
+                    );
+                    return None;
+                }
+                Some(f) if !matches!(f.field_type, FieldType::Vector(_)) => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E202,
+                        &snv.field_name,
+                        "node",
+                        &snv.node_type
+                    );
+                    return None;
+                }
+                _ => {}
+            }
+
+            // 3. Build the HNSW label: "TypeName.fieldname"
+            let label = GenRef::Literal(format!("{}.{}", snv.node_type, snv.field_name));
+
+            // 4. Resolve the query vector
+            let vec: VecData = match &snv.data {
+                Some(VectorData::Vector(v)) => {
+                    VecData::Standard(GeneratedValue::Literal(GenRef::Ref(format!(
+                        "[{}]",
+                        v.iter()
+                            .map(|f| f.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    ))))
+                }
+                Some(VectorData::Identifier(i)) => {
+                    is_valid_identifier(ctx, original_query, snv.loc.clone(), i.as_str());
+                    let _ =
+                        type_in_scope(ctx, original_query, snv.loc.clone(), scope, i.as_str());
+                    VecData::Standard(gen_identifier_or_param(
+                        original_query,
+                        i.as_str(),
+                        true,
+                        false,
+                    ))
+                }
+                _ => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E601,
+                        "SearchN requires a query vector"
+                    );
+                    return None;
+                }
+            };
+
+            // 5. Resolve k
+            let k = match &snv.k {
+                Some(k) => match &k.value {
+                    EvaluatesToNumberType::I8(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::I16(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::I32(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::I64(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U8(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U16(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U32(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U64(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U128(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::Identifier(i) => {
+                        is_valid_identifier(ctx, original_query, snv.loc.clone(), i.as_str());
+                        type_in_scope(ctx, original_query, snv.loc.clone(), scope, i.as_str());
+                        gen_identifier_or_param(original_query, i, false, true)
+                    }
+                    _ => {
+                        generate_error!(
+                            ctx,
+                            original_query,
+                            snv.loc.clone(),
+                            E601,
+                            "SearchN requires a numeric k (number of results)"
+                        );
+                        GeneratedValue::Unknown
+                    }
+                },
+                None => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E601,
+                        "SearchN requires a k (number of results)"
+                    );
+                    GeneratedValue::Unknown
+                }
+            };
+
+            // 6. Generate the SourceStep and set traversal settings
+            gen_traversal.traversal_type = TraversalType::Ref;
+            gen_traversal.should_collect = ShouldCollect::ToVec;
+            gen_traversal.source_step =
+                Separator::Period(SourceStep::SearchN(SearchNStep { label, vec, k }));
+
+            // Return type: the nodes of the searched type
+            Type::Nodes(Some(snv.node_type.clone()))
         }
     };
 
@@ -3658,6 +3789,102 @@ mod tests {
             !create_defaults
                 .iter()
                 .any(|(field_name, _)| field_name == "content")
+        );
+    }
+
+    // ============================================================================
+    // SearchN (SearchNodeVector) Tests
+    // ============================================================================
+
+    #[test]
+    fn test_search_node_vector_compiles() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(4)
+            }
+            QUERY findPeople(q: [F64]) =>
+                results <- SearchN<Person.embedding>(q, 5)
+                RETURN results
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok());
+        let (diagnostics, _) = result.unwrap();
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_search_node_vector_unknown_type_emits_e101() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(4)
+            }
+            QUERY findPeople(q: [F64]) =>
+                results <- SearchN<Unknown.embedding>(q, 5)
+                RETURN results
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok());
+        let (diagnostics, _) = result.unwrap();
+        assert!(
+            diagnostics.iter().any(|d| d.error_code == ErrorCode::E101),
+            "expected E101, got: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_search_node_vector_unknown_field_emits_e202() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(4)
+            }
+            QUERY findPeople(q: [F64]) =>
+                results <- SearchN<Person.nonexistent>(q, 5)
+                RETURN results
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok());
+        let (diagnostics, _) = result.unwrap();
+        assert!(
+            diagnostics.iter().any(|d| d.error_code == ErrorCode::E202),
+            "expected E202, got: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_search_node_vector_non_vector_field_emits_e202() {
+        let source = r#"
+            N::Person {
+                name: String,
+                embedding: vector(4)
+            }
+            QUERY findPeople(q: [F64]) =>
+                results <- SearchN<Person.name>(q, 5)
+                RETURN results
+        "#;
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+        assert!(result.is_ok());
+        let (diagnostics, _) = result.unwrap();
+        assert!(
+            diagnostics.iter().any(|d| d.error_code == ErrorCode::E202),
+            "expected E202, got: {:?}",
+            diagnostics
         );
     }
 }
