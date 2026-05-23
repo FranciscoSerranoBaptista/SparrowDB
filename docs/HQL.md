@@ -159,6 +159,34 @@ N::User {
 
 Nodes are identified by an auto-generated `ID`. They can have zero or more typed fields.
 
+#### Vector fields on nodes
+
+Use `vector(N)` to declare an embedding field directly on a node type. On every `AddN`, the embedding is automatically indexed into the HNSW index under the label `TypeName.fieldName`, making it queryable via `SearchN`.
+
+```hql
+N::Article {
+    title: String,
+    body: String,
+    embedding: vector(1536),
+}
+
+// Insert a node with its embedding
+QUERY AddArticle (title: String, body: String, emb: [F32]) =>
+    a <- AddN<Article>({title: title, body: body, embedding: emb})
+    RETURN a
+
+// Semantic search — returns Article nodes ranked by similarity
+QUERY FindSimilar (query: [F64], k: I32) =>
+    results <- SearchN<Article.embedding>(query, k)
+    RETURN results
+```
+
+**Constraints:**
+- `N` must be a positive integer (the embedding dimension).
+- Values must be arrays of `F32` floats with exactly `N` elements.
+- `vector(N)` fields are only valid on `N::` node types — using them on `E::` edges is a compile error (E111).
+- Only literal float arrays and `[F32]` / `[F64]` parameters are supported. `Embed()` in `AddN` is not yet supported.
+
 ### Edge types
 
 Edges are directed and connect two named node (or vector) types. Edge properties are optional.
@@ -740,7 +768,7 @@ QUERY SearchPeople (query: [F64], k: I32) =>
     RETURN people
 ```
 
-> **Note:** `SearchN` is parsed and compiled, but runtime execution support is still being finalized. Check release notes for current status.
+Results are `N::NodeType` nodes ranked by cosine similarity. The query vector must match the declared dimension of the field.
 
 ### Full-text search — `SearchBM25`
 
