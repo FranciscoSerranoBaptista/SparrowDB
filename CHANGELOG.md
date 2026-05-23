@@ -131,6 +131,29 @@ All notable changes to SparrowDB are documented here.
 **CLI**
 - `sparrow add <name>` now fails with a clear error in non-interactive mode when no instance name is given — previously silently used the project name, which was surprising in scripts
 
+### Documentation
+
+- `docs/HQL.md` — comprehensive HQL language reference (2 000+ lines, 21 sections):
+  - Key concepts: `::` step separator, anonymous traversal `_`, identifier naming
+  - Quick start with a complete social-network schema + query set
+  - Schema definition: `N::`, `E::`, `V::`, `INDEX`, `UNIQUE INDEX`, `UNIQUE` edges, `DEFAULT` values, `vector(N)` node fields, schema versioning
+  - Query definitions: `QUERY`, typed and optional parameters, `#[mcp]` and `#[model()]` macros
+  - Node operations: `N<T>` (by ID, by index), `AddN`, `UPDATE`, `UpsertN`, `DROP`
+  - Edge operations: `E<T>`, `AddE`, `UpsertE`
+  - Vector operations: `AddV`, `BatchAddV`, `SearchV`, `SearchN`, `SearchBM25`, `Embed()`, `UpsertV`
+  - Graph traversal: `Out`, `In`, `OutE`, `InE`, `FromN`, `ToN`, `FromV`, `ToV`
+  - Filtering: `WHERE`, `EXISTS` / `!EXISTS`, `AND`/`OR`, all comparison operators (`GT`, `GTE`, `LT`, `LTE`, `EQ`, `NEQ`, `CONTAINS`, `IS_IN`), `INTERSECT`
+  - Aggregation and sorting: `COUNT`, `RANGE`, `ORDER<Asc|Desc>`, `FIRST`, `GROUP_BY`, `AGGREGATE_BY`
+  - Shortest path: `ShortestPath` (BFS), `ShortestPathDijkstras`, `ShortestPathAStar`
+  - Mathematical functions: all arithmetic, unary, trigonometric, aggregate functions and constants
+  - Vector reranking: `RerankRRF`, `RerankMMR` (all distance metrics), chaining
+  - Field remapping: `::{}`, `::!{}`, spread `..`, `ID` step, closure `|x|{}`
+  - Loops: `FOR...IN`, destructuring, object access, nested loops
+  - Return values: all forms — literals, tuples, arrays, objects, inline remapped expressions
+  - Type reference: all scalar types, `ID`, `Date`, `NOW`, `vector(N)`, arrays, objects, literals
+  - Migrations syntax
+  - Appendix: parser notes for contributors (grammar rules, module layout, feature flags)
+
 ### Internal
 
 **Sparrow Studio**
