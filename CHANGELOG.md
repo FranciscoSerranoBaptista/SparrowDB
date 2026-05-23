@@ -193,6 +193,15 @@ All notable changes to SparrowDB are documented here.
 - Dropped Windows from all matrices; replaced deprecated `actions-rs/toolchain@v1` with `dtolnay/rust-toolchain@stable`
 - Fixed `hql_tests.yml` path triggers (`helix-*` → `sparrow-*`)
 
+**Benchmarks (`sparrow-benches`)**
+- New `sparrow-benches` workspace crate — Criterion-based performance benchmark suite for `sparrow-core`
+  - **Write-pipeline benchmarks** — `add_n` / `add_e` / `upsert` throughput at various batch sizes; measures single-writer LMDB commit latency end-to-end
+  - **Graph traversal benchmarks** — `Out`, `In`, multi-hop traversals, and secondary-index lookups; baseline established at initial merge
+  - **Compiler benchmarks** — end-to-end HQL compile time for a representative query set
+  - Shared `graph_fixture` / `schema_fixture` helpers make benchmark setup idiomatic and consistent across suites
+- `benchmark-diff.yml` — GitHub Actions workflow that runs the suite on every PR and posts a performance diff comment comparing against the `main` baseline; regressions flagged with `⚠`
+- `make bench` / `make bench-update` / `make bench-diff` — Makefile targets for local benchmark workflows
+
 ---
 
 ## [3.0.0] — 2026-05-20
