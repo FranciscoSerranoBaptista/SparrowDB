@@ -1,6 +1,7 @@
 packages:
   - 'sdks/ts'
   - 'packages/studio'
+  - 'packages/docs'
 
 onlyBuiltDependencies:
   - esbuild

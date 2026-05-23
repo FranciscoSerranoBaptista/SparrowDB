@@ -1,0 +1,123 @@
+---
+title: CLI Reference
+description: All sparrow CLI commands — init, push, check, run, data management, and metrics.
+---
+
+The `sparrow` CLI manages the full lifecycle of a SparrowDB project: scaffolding, compilation, deployment, data operations, and telemetry.
+
+## Install
+
+```bash
+cargo install sparrow-cli
+```
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `sparrow init [path]` | Scaffold a new SparrowDB project |
+| `sparrow push [instance]` | Compile and deploy to a local instance |
+| `sparrow check` | Validate schema and queries without deploying |
+| `sparrow run` | Start the database server directly (no container) |
+| `sparrow data snapshot` | Hot-copy the live database to a directory |
+| `sparrow data clone` | Copy an existing snapshot |
+| `sparrow data restore [--force]` | Restore from a snapshot |
+| `sparrow import <FILE>` | Bulk-import records into a running instance |
+| `sparrow export <FILE>` | Export query results to a file |
+| `sparrow metrics [basic\|full\|off\|status]` | Configure anonymous telemetry |
+
+## `sparrow init`
+
+Scaffolds a new project directory.
+
+```bash
+sparrow init my-project
+```
+
+Creates:
+
+```
+my-project/
+  sparrow.toml        # instance configuration
+  queries/
+    schema.hx         # node and edge type definitions
+    queries.hx        # query definitions
+  .sparrow/           # local instance state (git-ignored)
+```
+
+## `sparrow push`
+
+Compiles `.hx` files and deploys them to a running local instance.
+
+```bash
+sparrow push           # pushes to the default instance
+sparrow push dev       # pushes to the "dev" instance defined in sparrow.toml
+```
+
+This is the primary workflow command. Run it after every change to your schema or queries.
+
+## `sparrow check`
+
+Validates schema and queries without starting a server or container.
+
+```bash
+sparrow check
+```
+
+Useful in CI to catch type errors and syntax mistakes before deployment.
+
+## `sparrow run`
+
+Starts the database server directly (no Docker container required). Useful for embedded or single-binary deployments.
+
+```bash
+sparrow run
+```
+
+Listens on `SPARROW_PORT` (default `6969`). Set `SPARROW_DATA_DIR` to control the data directory.
+
+## `sparrow data`
+
+Live data management commands. All operate on a running instance without downtime.
+
+### `sparrow data snapshot`
+
+Hot-copies the live database to a target directory.
+
+```bash
+sparrow data snapshot ./backup-2026-05-23
+```
+
+### `sparrow data clone`
+
+Copies an existing snapshot to a new location.
+
+```bash
+sparrow data clone ./backup-2026-05-23 ./backup-copy
+```
+
+### `sparrow data restore`
+
+Restores from a snapshot.
+
+```bash
+sparrow data restore ./backup-2026-05-23
+sparrow data restore ./backup-2026-05-23 --force  # overwrite without confirmation
+```
+
+## `sparrow metrics`
+
+Configures anonymous telemetry collection.
+
+```bash
+sparrow metrics basic   # enable basic usage stats
+sparrow metrics full    # enable full telemetry
+sparrow metrics off     # disable telemetry
+sparrow metrics status  # show current telemetry setting
+```
+
+Telemetry is opt-in. No data is sent without explicit configuration.
+
+## `sparrow import` / `sparrow export`
+
+See [Data Import & Export](/docs/import) for the full reference.

@@ -1,0 +1,61 @@
+---
+title: Configuration
+description: sparrow.toml project configuration and environment variables.
+---
+
+## `sparrow.toml`
+
+Every SparrowDB project has a `sparrow.toml` at its root.
+
+```toml
+[project]
+name    = "my-project"
+queries = "queries"          # directory containing .hx files
+
+[local.dev]
+port             = 6969
+build_mode       = "dev"
+storage_backend  = "lmdb"   # or "rocks"
+```
+
+### `[project]`
+
+| Key | Description |
+|-----|-------------|
+| `name` | Project name (used as the container/image name) |
+| `queries` | Path (relative to `sparrow.toml`) to the directory containing `.hx` files |
+
+### `[local.<instance>]`
+
+Defines a named local instance. You can have multiple instances (e.g. `dev`, `staging`).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `port` | `6969` | Port the HTTP gateway listens on |
+| `build_mode` | `"dev"` | `"dev"` or `"release"` — controls optimization level |
+| `storage_backend` | `"lmdb"` | `"lmdb"` (default) or `"rocks"` |
+
+## Environment variables
+
+These override `sparrow.toml` settings and are read at server startup.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SPARROW_DATA_DIR` | `~/.sparrow/` | Override the data directory for graph storage |
+| `SPARROW_HOME` | `~/.sparrow/` | Override the config/cache home |
+| `SPARROW_CACHE_DIR` | `~/.sparrow/repo` | Override the build cache directory |
+| `SPARROW_PORT` | `6969` | Port the HTTP gateway listens on |
+| `SPARROW_API_KEY` | unset | Seeded as an `admin` token on startup (see [auth](/docs/auth)) |
+| `SPARROW_RUNTIME_EVAL` | unset | Enable `/__hql_runtime_eval` endpoint when set to any value |
+| `SPARROW_TOKEN` | unset | Default auth token for `sparrow import` / `sparrow export` CLI commands |
+
+## Storage backends
+
+SparrowDB ships with two storage backends, selectable via `storage_backend` in `sparrow.toml`:
+
+| Backend | Feature flag | Strengths |
+|---|---|---|
+| **LMDB** (default) | `lmdb` | Zero-copy reads, crash-safe, low latency |
+| **RocksDB** | `rocks` | High write throughput, compaction, column families |
+
+Switch backends by changing `storage_backend` in `sparrow.toml`. The feature flag determines which backend is compiled into the binary — `lmdb` is the default.

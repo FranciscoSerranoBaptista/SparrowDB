@@ -1,0 +1,207 @@
+---
+title: Data Import & Export
+description: Bulk-load records from JSON, CSV, or Parquet files and export query results back to files.
+---
+
+## Import
+
+`sparrow import` reads records from a JSON, CSV, or Parquet file and posts each one to a compiled HQL query on a running SparrowDB instance. It is the standard path for seeding a database, migrating data, or loading graph snapshots.
+
+### Quick start
+
+```bash
+# Import nodes
+sparrow import users.csv      --query CreateUser
+sparrow import products.json  --query CreateProduct
+
+# Import edges (after nodes)
+sparrow import purchases.csv  --query CreatePurchase
+```
+
+### File formats
+
+**JSON** — top-level array of objects. Each object's keys map directly to the named parameters of the HQL query.
+
+```json
+[
+  { "name": "Alice", "age": 30, "email": "alice@example.com" },
+  { "name": "Bob",   "age": 25, "email": "bob@example.com" }
+]
+```
+
+**CSV** — first row is the header. Column names become query parameter names. Cell values are type-inferred at import time:
+
+| Cell value | Inferred type |
+|-----------|---------------|
+| `42`, `-7` | integer (`Number`) |
+| `3.14`, `-0.5` | float (`Number`) |
+| `true`, `false` (case-insensitive) | boolean (`Bool`) |
+| `null`, `none` (case-insensitive) | null (`Null`) |
+| empty | null (`Null`) |
+| anything else | string (`String`) |
+
+```csv
+name,age,active,score
+Alice,30,true,9.5
+Bob,25,false,7.2
+```
+
+**Parquet** — column names become query parameter names. Types are preserved from the Parquet schema and converted to JSON equivalents. Suitable for large datasets and pipeline outputs.
+
+```bash
+sparrow import analytics.parquet --query ImportEvent
+```
+
+Format is auto-detected from the file extension (`.json`, `.csv`, `.parquet` / `.pq`). Override with `--format json|csv|parquet` when the extension is non-standard.
+
+### Command reference
+
+```
+sparrow import <FILE> [OPTIONS]
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--query <NAME>` | `-q` | — | HQL query to call for every record. Required unless `--query-column` is given. |
+| `--query-column <COL>` | `-c` | — | Column/field name whose value is the query for that record. Stripped before posting. |
+| `--target <URL>` | `-t` | `http://localhost:6969` | SparrowDB server URL. |
+| `--workers <N>` | `-w` | `8` | Number of concurrent HTTP requests. |
+| `--token <TOKEN>` | | — | Auth token. Also read from `SPARROW_TOKEN` env var. |
+| `--dry-run` | | off | Parse the file and print a preview. No requests are sent. |
+| `--format <FMT>` | `-f` | auto | Override format detection: `json`, `csv`, `parquet`. |
+| `--on-error <MODE>` | | `continue` | `continue` — skip failed records. `abort` — stop after first failure. |
+
+### Authentication
+
+When auth is enabled, pass a `read_write` or `admin` token:
+
+```bash
+# Flag
+sparrow import users.csv --query CreateUser --token sk-my-token
+
+# Environment variable (preferred for scripts)
+export SPARROW_TOKEN=sk-my-token
+sparrow import users.csv --query CreateUser
+```
+
+### Importing a graph
+
+SparrowDB edge queries look up both endpoint nodes before creating the edge. An edge record must be imported **after** both of its endpoint nodes exist.
+
+**Pattern A — two separate files (simplest)**
+
+```bash
+# 1. Nodes first
+sparrow import users.csv    --query CreateUser
+sparrow import products.csv --query CreateProduct
+
+# 2. Edges after
+sparrow import purchases.csv --query CreatePurchase
+```
+
+**Pattern B — single file with `--query-column`**
+
+Add a routing column (e.g. `_query`) to each record:
+
+```json
+[
+  { "_query": "CreateUser",    "name": "Alice",   "age": 30 },
+  { "_query": "CreateUser",    "name": "Bob",     "age": 25 },
+  { "_query": "CreateProduct", "title": "Widget", "price": 9.99 },
+  { "_query": "CreatePurchase","user_id": "u-1",  "product_id": "p-1", "qty": 2 }
+]
+```
+
+```bash
+sparrow import graph.json --query-column _query
+```
+
+The column is removed from the record before the HTTP call — it will not appear as a query parameter.
+
+### Idempotent imports
+
+When re-running an import, use `UpsertN` / `UpsertE` in your HQL query to avoid duplicate-key errors:
+
+```hql
+QUERY UpsertUser (user_id: String, name: String, age: U8) =>
+    user <- UpsertN<User>({user_id: user_id}, {name: name, age: age})
+    RETURN user
+```
+
+### Dry-run preview
+
+```bash
+sparrow import graph.json --query-column _query --dry-run
+```
+
+```
+Reading graph.json (json)
+  4 records parsed
+(--dry-run: skipping HTTP requests)
+First 3 record(s):
+  → CreateUser    {"age":30,"name":"Alice"}
+  → CreateUser    {"age":25,"name":"Bob"}
+  → CreateProduct {"price":9.99,"title":"Widget"}
+```
+
+### Performance
+
+| Concern | Guidance |
+|---------|----------|
+| **Concurrency** | Default `--workers 8` is a good starting point. Increase for large files on high-core servers. |
+| **Write throughput** | SparrowDB serialises writes through a single LMDB writer thread. Workers help by keeping the pipeline full (network latency hidden by concurrency). |
+| **Large files** | Records are read entirely into memory before import begins. For very large Parquet files (> a few GB), split them beforehand. |
+| **Error reporting** | With `--on-error continue` (the default), failed records are logged and the final summary shows the failure count. |
+
+---
+
+## Export
+
+`sparrow export` calls a compiled HQL query and writes the response records to a file. Output format is inferred from the file extension.
+
+```
+sparrow export <FILE> --query <NAME> [OPTIONS]
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--query <NAME>` | `-q` | — | Compiled HQL query to call. Required. |
+| `--key <KEY>` | `-k` | auto | JSON key in the response whose array is the data. Auto-detected when the response has exactly one key. |
+| `--target <URL>` | `-t` | `http://localhost:6969` | SparrowDB server URL. |
+| `--token <TOKEN>` | | — | Auth token. Also read from `SPARROW_TOKEN` env var. |
+| `--params <JSON>` | `-p` | `{}` | JSON object sent as the request body. |
+| `--pretty` | | off | Pretty-print JSON output. |
+| `--format <FMT>` | `-f` | auto | Override format detection. |
+
+### Quick start
+
+```bash
+# Export all users to JSON
+sparrow export users.json --query GetAllUsers
+
+# Export a filtered set to CSV
+sparrow export active_users.csv --query GetActiveUsers --params '{"active":true}'
+
+# Export a large snapshot to Parquet
+sparrow export snapshot.parquet --query DumpGraph --token $SPARROW_TOKEN
+```
+
+### Response shape
+
+The HQL query must return an object where at least one value is an array of objects:
+
+```hql
+QUERY GetAllUsers () =>
+    users <- N<User>()
+    RETURN users
+```
+
+`sparrow export` extracts the array and writes each element as one record. When the response has exactly one key, `--key` can be omitted.
+
+### Supported formats
+
+| Extension | Format |
+|-----------|--------|
+| `.json` | JSON array of objects |
+| `.csv` | CSV with header row |
+| `.parquet` / `.pq` | Apache Parquet |

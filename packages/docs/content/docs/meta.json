@@ -1,0 +1,25 @@
+{
+  "title": "SparrowDB",
+  "pages": [
+    "index",
+    "quickstart",
+    "---",
+    "HQL",
+    "hql",
+    "---",
+    "HTTP API & Auth",
+    "http-api",
+    "auth",
+    "---",
+    "Data",
+    "import",
+    "---",
+    "CLI & Configuration",
+    "cli",
+    "configuration",
+    "---",
+    "Reference",
+    "architecture",
+    "sdks"
+  ]
+}

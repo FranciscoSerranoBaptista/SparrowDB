@@ -1,0 +1,41 @@
+---
+title: Rust SDK
+description: The official Rust client SDK for SparrowDB.
+---
+
+The Rust SDK (`sparrow-sdk`) provides a typed client for calling compiled HQL queries over HTTP.
+
+## Install
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+sparrow-sdk = "0.1"
+```
+
+## Usage
+
+```rust
+use sparrow_sdk::SparrowClient;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let client = SparrowClient::new("http://localhost:6969")
+        .with_api_key("sparrow_your_token_here");
+
+    // Call a compiled HQL query
+    let response = client
+        .query("GetUserById")
+        .body(serde_json::json!({"id": "018f2e3a-1234-7abc-8def-000000000001"}))
+        .send()
+        .await?;
+
+    println!("{response:#?}");
+    Ok(())
+}
+```
+
+## Source
+
+The SDK lives in `sdks/rust/` in the SparrowDB monorepo and is published to crates.io as `sparrow-sdk`. It has zero dependency on internal SparrowDB crates and can be used in any Rust project.

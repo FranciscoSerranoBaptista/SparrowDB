@@ -1,0 +1,91 @@
+---
+title: Architecture
+description: How SparrowDB's crates fit together — the engine, gateway, compiler, and CLI.
+---
+
+## Crate layout
+
+```
+sparrow-cli         → CLI (init, push, check, run, data, metrics …)
+sparrow-core        → Core engine (lib name: sparrow_db)
+  sparrow_engine    → Graph/vector traversal ops (lmdb + rocks backends)
+  sparrow_gateway   → HTTP API, MCP server, runtime HQL eval
+  sparrowc          → HQL compiler (parser → IR → codegen)
+sparrow-container   → Docker container runtime entry point
+sparrow-chef        → One-shot bootstrap tool for coding agents
+sparrow-memory      → Episodic memory layer for AI agents (embedded)
+sparrow-macros      → Proc-derive macros (handler registration)
+sparrow-metrics     → Optional anonymous telemetry
+sdks/rust           → Rust client SDK (package: sparrow-sdk)
+sdks/ts             → TypeScript query-builder DSL (package: sparrow-sdk)
+```
+
+## Single-writer model
+
+LMDB enforces a single write transaction at the OS level. SparrowDB enforces this in Rust too: **all mutations go through the dedicated writer thread** in `WorkerPool`. There is exactly one `_writer_worker` that holds the `write_rx` channel.
+
+This means:
+- Concurrent reads are fully parallel (zero-copy LMDB reads)
+- Writes are serialised and never block reads
+- You never need to think about transaction isolation — it's handled automatically
+
+## Request flow
+
+```
+HTTP client
+    │
+    ▼
+sparrow_gateway (axum)
+    │
+    ├── Read route → reader thread pool → LMDB env (zero-copy read)
+    │
+    └── Write route → write_rx channel → single writer thread → LMDB write_txn
+```
+
+## HQL compilation
+
+HQL source files go through a standard compiler pipeline:
+
+```
+.hx source
+    │
+    ▼
+Parser (pest grammar)
+    │
+    ▼
+AST → Type checker → IR
+    │
+    ▼
+Codegen → Rust handler functions
+    │
+    ▼
+Registered in WorkerPool dispatch table
+```
+
+Named handlers are registered at startup. When `POST /MyQuery` arrives, the gateway looks up `MyQuery` in the dispatch table and calls the corresponding handler.
+
+## Vector index
+
+SparrowDB uses a custom HNSW (Hierarchical Navigable Small World) implementation. Key properties:
+
+- Stored inside the same LMDB environment as graph data
+- Supports `SearchV` (pure vector search) and hybrid graph+vector traversal
+- Soft-delete preserves the HNSW graph structure; `rebuild_vector_index` cleans up
+- `hnsw_health` and `hnsw_integrity` diagnostics endpoints expose BFS reachability and edge symmetry
+
+## Memory layer
+
+`sparrow-memory` is an episodic memory layer for AI agents. It is embedded alongside the graph and provides structured memory storage, retrieval, and pruning — without requiring a separate database or service.
+
+## MCP server
+
+The gateway includes a built-in Model Context Protocol server. AI agents using MCP-compatible clients can discover the schema, list node types, and execute HQL queries without writing raw HTTP calls.
+
+## Licensing
+
+| Location | License |
+|----------|---------|
+| `crates/` | AGPL-3.0 |
+| `sdks/` | Apache-2.0 |
+
+The Rust and TypeScript SDKs are publishable to `crates.io` and `npm` as standalone packages with zero dependency on internal crates.

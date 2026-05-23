@@ -1,0 +1,102 @@
+---
+title: Quick Start
+description: Install SparrowDB and run your first graph query in under five minutes.
+---
+
+## Install
+
+```bash
+cargo install sparrow-cli
+```
+
+## Initialize a project
+
+```bash
+sparrow init my-project
+cd my-project
+```
+
+This creates:
+
+```
+my-project/
+  sparrow.toml        # instance configuration
+  queries/
+    schema.hx         # node and edge type definitions
+    queries.hx        # query definitions
+  .sparrow/           # local instance state (git-ignored)
+```
+
+## Define a schema
+
+Edit `queries/schema.hx`:
+
+```hql
+N::User {
+    name: String,
+    age:  U32,
+    email: String,
+}
+
+E::Follows {
+    From: User,
+    To:   User,
+}
+```
+
+## Write your first queries
+
+Edit `queries/queries.hx`:
+
+```hql
+QUERY createUser (name: String, age: U32, email: String) =>
+    user <- AddN<User>({name: name, age: age, email: email})
+    RETURN user
+
+QUERY getUser (id: ID) =>
+    user <- N<User>(id)
+    RETURN user
+```
+
+## Start the database
+
+```bash
+sparrow push dev
+```
+
+This compiles your `.hx` files and starts a local container. The server listens on `http://localhost:6969` by default.
+
+## Run a query
+
+```bash
+curl -X POST http://localhost:6969/createUser \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice", "age": 30, "email": "alice@example.com"}'
+```
+
+Response:
+
+```json
+{
+  "user": {
+    "id": "018f2e3a-1234-7abc-8def-000000000001",
+    "name": "Alice",
+    "age": 30,
+    "email": "alice@example.com"
+  }
+}
+```
+
+## Validate without deploying
+
+```bash
+sparrow check
+```
+
+Parses and type-checks your `.hx` files without starting a server.
+
+## Next steps
+
+- [HQL Reference](/docs/hql) — learn the full query language
+- [Authentication](/docs/auth) — secure your instance with API tokens
+- [CLI Reference](/docs/cli) — all available commands

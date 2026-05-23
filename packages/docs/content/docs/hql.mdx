@@ -1,0 +1,1221 @@
+---
+title: HQL Language Reference
+description: Complete reference for HQL (Hypergraph Query Language) — schema definitions, queries, traversals, vectors, aggregations, and more.
+---
+
+**HQL** (Hypergraph Query Language) is the query and schema definition language for SparrowDB. It is imperative and statement-based: each query is a sequence of variable assignments that are executed top-to-bottom, terminated by a `RETURN` statement. Operations are composed by chaining steps with the `::` operator.
+
+HQL source files use the `.hx` extension. A `.hx` file can contain schema definitions, migration definitions, and query definitions in any order.
+
+## Table of Contents
+
+1. [Key Concepts](#key-concepts)
+2. [Quick Start](#quick-start)
+3. [Schema Definition](#schema-definition)
+4. [Query Definitions](#query-definitions)
+5. [Variables and Assignment](#variables-and-assignment)
+6. [Node Operations](#node-operations)
+7. [Edge Operations](#edge-operations)
+8. [Vector Operations](#vector-operations)
+9. [Graph Traversal](#graph-traversal)
+10. [Filtering](#filtering)
+11. [Aggregation and Sorting](#aggregation-and-sorting)
+12. [Shortest Path](#shortest-path)
+13. [Mathematical Functions](#mathematical-functions)
+14. [Vector Reranking](#vector-reranking)
+15. [Field Remapping and Object Construction](#field-remapping-and-object-construction)
+16. [Loops](#loops)
+17. [Return Values](#return-values)
+18. [Type Reference](#type-reference)
+19. [Migrations](#migrations)
+20. [Comments](#comments)
+21. [Appendix: Parser Notes](#appendix-parser-notes)
+
+---
+
+## Key Concepts
+
+### The `::` operator
+
+The double-colon `::` is the **step separator**. It is used to chain operations on a value — traversal steps, filters, remappings, aggregations, and mutations — into a pipeline.
+
+```hql
+// Each :: advances the pipeline one step
+result <- N<User>(id)::Out<Follows>::WHERE(_::{age}::GT(18))::RANGE(0, 10)
+```
+
+### Anonymous traversal `_`
+
+Inside filter predicates and remapping expressions, `_` refers to the **current element** being iterated. `_::{}` accesses a property of the current element. `_::Out<Edge>` traverses from the current element.
+
+```hql
+// _ means "the current node being examined"
+adults <- N<User>::WHERE(_::{age}::GT(18))
+```
+
+### Identifiers and type names
+
+- **Variable names** and **field names**: start with a lowercase letter or underscore, followed by alphanumeric or `_`. Example: `user`, `user_id`, `my_field`.
+- **Type names** (node, edge, vector type identifiers): start with an uppercase letter. Example: `User`, `Follows`, `Document`.
+
+### Mutability
+
+HQL has no "update in place" concept at the language level. `UPDATE`, `UpsertN`, `UpsertE`, and `UpsertV` are explicit mutation steps that return the mutated entity.
+
+---
+
+## Quick Start
+
+A complete social network example demonstrating schema + queries:
+
+**schema.hx**
+```hql
+N::User {
+    name: String,
+    age: U32,
+    email: String,
+    created_at: Date DEFAULT NOW,
+}
+
+N::Post {
+    content: String,
+    created_at: Date DEFAULT NOW,
+}
+
+E::Follows {
+    From: User,
+    To: User,
+    Properties: {
+        since: Date DEFAULT NOW,
+    }
+}
+
+E::Created {
+    From: User,
+    To: Post,
+}
+```
+
+**queries.hx**
+```hql
+// Create a user
+QUERY createUser (name: String, age: U32, email: String) =>
+    user <- AddN<User>({name: name, age: age, email: email})
+    RETURN user
+
+// Follow another user
+QUERY createFollow (follower_id: ID, followed_id: ID) =>
+    follower <- N<User>(follower_id)
+    followed <- N<User>(followed_id)
+    AddE<Follows>::From(follower)::To(followed)
+    RETURN "success"
+
+// Get posts from users a given user follows, with remapped fields
+QUERY getFollowedUsersPosts (user_id: ID) =>
+    following <- N<User>(user_id)::Out<Follows>
+    posts <- following::Out<Created>::RANGE(0, 40)
+    RETURN posts::{
+        post: _::{content},
+        creatorID: _::In<Created>::ID,
+    }
+```
+
+Deploy with `sparrow push`, then call over HTTP:
+
+```
+POST /createUser
+{"name": "Alice", "age": 30, "email": "alice@example.com"}
+```
+
+---
+
+## Schema Definition
+
+Schemas declare the node types, edge types, and vector types that exist in the database.
+
+### Node types
+
+```hql
+N::TypeName {
+    fieldName: FieldType,
+    ...
+}
+```
+
+```hql
+N::User {
+    name: String,
+    age: U8,
+    email: String,
+}
+```
+
+#### Vector fields on nodes
+
+Use `vector(N)` to declare an embedding field directly on a node type. On every `AddN`, the embedding is automatically indexed into the HNSW index under the label `TypeName.fieldName`, making it queryable via `SearchN`.
+
+```hql
+N::Article {
+    title: String,
+    body: String,
+    embedding: vector(1536),
+}
+
+QUERY AddArticle (title: String, body: String, emb: [F32]) =>
+    a <- AddN<Article>({title: title, body: body, embedding: emb})
+    RETURN a
+
+QUERY FindSimilar (query: [F64], k: I32) =>
+    results <- SearchN<Article.embedding>(query, k)
+    RETURN results
+```
+
+**Constraints:**
+- `N` must be a positive integer (the embedding dimension).
+- Values must be arrays of `F32` floats with exactly `N` elements.
+- `vector(N)` fields are only valid on `N::` node types — using them on `E::` edges is a compile error (E111).
+
+### Edge types
+
+Edges are directed and connect two named node (or vector) types. Edge properties are optional.
+
+```hql
+E::TypeName {
+    From: SourceType,
+    To: TargetType,
+    Properties: {
+        fieldName: FieldType,
+    }
+}
+```
+
+```hql
+// Edge without properties
+E::Follows {
+    From: User,
+    To: User,
+}
+
+// Edge with properties
+E::Friends {
+    From: User,
+    To: User,
+    Properties: {
+        since: Date,
+        strength: F64,
+    }
+}
+```
+
+### Vector types
+
+Vectors hold floating-point embeddings alongside optional metadata fields.
+
+```hql
+V::Document {
+    content: String,
+    created_at: Date,
+}
+```
+
+### Indexes
+
+Add `INDEX` before a field declaration to create a lookup index on that field. Indexed fields enable O(1) lookup by value.
+
+```hql
+N::User {
+    INDEX email: String,
+    name: String,
+    age: U32,
+}
+```
+
+### Unique indexes
+
+`UNIQUE INDEX` enforces uniqueness — an insert that would create a duplicate indexed value will fail.
+
+```hql
+N::Account {
+    UNIQUE INDEX username: String,
+    email: String,
+}
+```
+
+### Unique edges
+
+A `UNIQUE` modifier on an edge type prevents duplicate edges between the same pair of nodes.
+
+```hql
+E::Follows UNIQUE {
+    From: User,
+    To: User,
+}
+```
+
+### Default values
+
+```hql
+N::Post {
+    content: String,
+    created_at: Date DEFAULT NOW,
+    views: U32 DEFAULT 0,
+    published: Boolean DEFAULT false,
+    title: String DEFAULT "Untitled",
+}
+```
+
+| Default | Meaning |
+|---------|---------|
+| `NOW` | Current UTC timestamp (for `Date` fields) |
+| `0`, `42`, `-1` | Integer literal |
+| `3.14` | Float literal |
+| `true` / `false` | Boolean literal |
+| `"text"` | String literal |
+| `NONE` | Null / absent value |
+
+### Schema versioning
+
+For managed migrations, wrap schema definitions in a version block:
+
+```hql
+schema::1 {
+    N::User {
+        name: String,
+        age: U32,
+    }
+}
+```
+
+---
+
+## Query Definitions
+
+Queries are named, callable procedures. They accept typed parameters and return a value.
+
+### Basic syntax
+
+```hql
+QUERY queryName (param1: Type, param2: Type) =>
+    variable <- expression
+    RETURN variable
+```
+
+### Optional parameters
+
+Append `?` after a parameter name to make it optional. If not provided, the parameter is `NONE`.
+
+```hql
+QUERY SearchUsers (name?: String, min_age?: U32) =>
+    users <- N<User>
+    RETURN users
+```
+
+### Macros
+
+#### `#[mcp]`
+
+Exposes the query as an MCP (Model Context Protocol) tool, making it callable by LLM agents.
+
+```hql
+#[mcp]
+QUERY get_user_name (user_id: ID) =>
+    user <- N<User>(user_id)
+    RETURN user
+```
+
+#### `#[model(name)]`
+
+Specifies the embedding model to use for `Embed()` calls within this query.
+
+```hql
+#[model(text-embedding-3-small)]
+QUERY SearchDocuments (query: String, limit: I64) =>
+    docs <- SearchV<Document>(Embed(query), limit)
+    RETURN docs
+```
+
+---
+
+## Variables and Assignment
+
+Variables are assigned using `<-`:
+
+```hql
+QUERY GetFriendsOfFriends (user_id: ID) =>
+    user    <- N<User>(user_id)
+    friends <- user::Out<Knows>
+    fof     <- friends::Out<Knows>
+    RETURN fof
+```
+
+An assignment result can be discarded for side-effects:
+
+```hql
+QUERY CreateFollow (from_id: ID, to_id: ID) =>
+    from_user <- N<User>(from_id)
+    to_user   <- N<User>(to_id)
+    AddE<Follows>::From(from_user)::To(to_user)   // no assignment needed
+    RETURN "success"
+```
+
+---
+
+## Node Operations
+
+### Select all nodes of a type
+
+```hql
+users <- N<User>
+```
+
+### Select a node by ID
+
+```hql
+node <- N<TypeName>(id)
+```
+
+### Select a node by indexed field value
+
+```hql
+node <- N<TypeName>({indexedField: value})
+```
+
+Requires that `indexedField` is declared with `INDEX` in the schema.
+
+```hql
+QUERY GetUserByEmail (email: String) =>
+    user <- N<User>({email: email})
+    RETURN user
+```
+
+### Select multiple nodes by multiple IDs
+
+```hql
+nodes <- N<TypeName>(id1, id2, id3)
+```
+
+### Create a node — `AddN`
+
+```hql
+node <- AddN<TypeName>({field: value, ...})
+```
+
+```hql
+QUERY CreateUser (name: String, age: U8, email: String) =>
+    user <- AddN<User>({name: name, age: age, email: email})
+    RETURN user
+```
+
+### Update a node — `UPDATE`
+
+`UPDATE` is a chained step that modifies fields and returns the updated node.
+
+```hql
+QUERY UpdateUserAge (user_id: ID, new_age: U32) =>
+    updated <- N<User>(user_id)::UPDATE({age: new_age})
+    RETURN updated
+```
+
+### Upsert a node — `UpsertN`
+
+`UpsertN` creates the node if it does not exist, or updates it if it does.
+
+```hql
+QUERY UpsertUser (name: String, age: U32) =>
+    existing <- N<User>::WHERE(_::{name}::EQ(name))
+    user <- existing::UpsertN({name: name, age: age})
+    RETURN user
+```
+
+### Delete — `DROP`
+
+```hql
+// Delete a node by ID
+QUERY DeleteUser (user_id: ID) =>
+    DROP N<User>(user_id)
+    RETURN "Removed"
+
+// Delete all outgoing neighbors
+QUERY DeleteFollowing (user_id: ID) =>
+    DROP N<User>(user_id)::Out<Follows>
+    RETURN "Removed outgoing neighbors"
+
+// Delete outgoing edges only (not neighbor nodes)
+QUERY DeleteFollowEdges (user_id: ID) =>
+    DROP N<User>(user_id)::OutE<Follows>
+    RETURN "Removed edges"
+```
+
+---
+
+## Edge Operations
+
+### Select edges
+
+```hql
+edges <- E<TypeName>
+edge  <- E<TypeName>(id)
+edges <- E<TypeName>({propertyField: value})
+```
+
+### Create an edge — `AddE`
+
+```hql
+edge <- AddE<TypeName>::From(fromNode)::To(toNode)
+edge <- AddE<TypeName>({prop: value})::From(fromNode)::To(toNode)
+```
+
+`From` and `To` accept a node variable, an edge variable, a vector variable, or an `ID` value. The `From::To` and `To::From` orderings are both valid.
+
+```hql
+// Simple edge without properties
+QUERY CreateFollow (user1_id: ID, user2_id: ID) =>
+    edge <- AddE<Follows>::From(user1_id)::To(user2_id)
+    RETURN edge
+
+// Edge with properties
+QUERY CreateFriendship (user1_id: ID, user2_id: ID) =>
+    edge <- AddE<Friends>({since: "2024-01-15", strength: 0.85})::From(user1_id)::To(user2_id)
+    RETURN edge
+```
+
+### Upsert an edge — `UpsertE`
+
+```hql
+QUERY UpsertFriendship (id1: ID, id2: ID, since: String, strength: F32) =>
+    person1  <- N<Person>(id1)
+    person2  <- N<Person>(id2)
+    existing <- E<Friends>
+    edge     <- existing::UpsertE({since: since, strength: strength})::From(person1)::To(person2)
+    RETURN edge
+```
+
+---
+
+## Vector Operations
+
+### Create a vector — `AddV`
+
+```hql
+vec <- AddV<TypeName>(vectorData)
+vec <- AddV<TypeName>(vectorData, {field: value, ...})
+```
+
+`vectorData` is one of:
+- A variable of type `[F64]`
+- A literal float array: `[1.0, 0.5, -0.3]`
+- `Embed(text)` — auto-embed a string using the configured embedding provider
+
+```hql
+// From a float array parameter
+QUERY InsertVector (vector: [F64], content: String, created_at: Date) =>
+    doc <- AddV<Document>(vector, {content: content, created_at: created_at})
+    RETURN doc
+
+// Auto-embed text
+QUERY InsertText (content: String) =>
+    doc <- AddV<Document>(Embed(content), {content: content})
+    RETURN doc
+```
+
+### Batch insert vectors — `BatchAddV`
+
+```hql
+QUERY BatchInsert (embeddings: [{ vector: [F64], content: String }]) =>
+    BatchAddV<Document>(embeddings)
+    RETURN "done"
+```
+
+### Vector similarity search — `SearchV`
+
+```hql
+results <- SearchV<TypeName>(queryVector, k)
+```
+
+```hql
+QUERY SearchDocs (query_vec: [F64], limit: I64) =>
+    docs <- SearchV<Document>(query_vec, limit)
+    RETURN docs
+
+// Search with auto-embedding
+QUERY SearchByText (text: String, limit: I64) =>
+    docs <- SearchV<Document>(Embed(text), limit)
+    RETURN docs
+```
+
+### Node-field vector search — `SearchN`
+
+Searches over a `vector(N)` field declared directly on a node type.
+
+```hql
+results <- SearchN<NodeType.fieldName>(queryVector, k)
+```
+
+```hql
+// Schema: N::Person { embedding: vector(1536), name: String }
+QUERY SearchPeople (query: [F64], k: I32) =>
+    people <- SearchN<Person.embedding>(query, k)
+    RETURN people
+```
+
+### Full-text search — `SearchBM25`
+
+```hql
+results <- SearchBM25<TypeName>(queryString, k)
+```
+
+```hql
+QUERY FullTextSearch (query: String, limit: I64) =>
+    results <- SearchBM25<Article>(query, limit)
+    RETURN results
+```
+
+### Upsert a vector — `UpsertV`
+
+```hql
+QUERY UpsertDocument (content: String, vector: [F64]) =>
+    existing <- V<Document>::WHERE(_::{content}::EQ(content))
+    doc      <- existing::UpsertV(vector, {content: content})
+    RETURN doc
+```
+
+### `Embed()`
+
+Converts a string to a vector using the configured embedding provider. Usable wherever a vector argument is accepted.
+
+```hql
+Embed(stringVariable)
+Embed("literal text")
+```
+
+---
+
+## Graph Traversal
+
+Traversal steps are chained with `::` onto a node, edge, or vector.
+
+### `Out<EdgeType>` — outgoing neighbors
+
+```hql
+neighbors <- node::Out<EdgeType>
+all_neighbors <- node::Out                  // all outgoing edges
+neighbors <- node::Out<EdgeType1, EdgeType2>  // union of types
+```
+
+### `In<EdgeType>` — incoming neighbors
+
+```hql
+followers <- N<User>(user_id)::In<Follows>
+```
+
+### `OutE<EdgeType>` — outgoing edge objects
+
+Returns the **edge objects** (not neighbor nodes).
+
+```hql
+edges <- N<User>(user_id)::OutE<Follows>
+```
+
+### `InE<EdgeType>` — incoming edge objects
+
+```hql
+edges <- N<User>(user_id)::InE<Follows>
+```
+
+### `FromN` / `ToN` — source/destination node of an edge
+
+```hql
+source <- edge::FromN
+target <- edge::ToN
+```
+
+### `FromV` / `ToV` — source/destination vector of an edge
+
+```hql
+source_vec <- edge::FromV
+dest_vec   <- edge::ToV
+```
+
+### Chaining traversals
+
+```hql
+// Two hops: user -> follows -> their posts
+QUERY GetFollowedUsersPosts (user_id: ID) =>
+    posts <- N<User>(user_id)::Out<Follows>::Out<Created>
+    RETURN posts
+```
+
+---
+
+## Filtering
+
+### `WHERE` — conditional filter
+
+```hql
+filtered <- source::WHERE(predicate)
+```
+
+#### Comparison operators
+
+All comparison operators are chained as last steps on a property access:
+
+```hql
+_::{fieldName}::OPERATOR(value)
+```
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `GT(n)` | Greater than | `_::{age}::GT(18)` |
+| `GTE(n)` | Greater than or equal | `_::{age}::GTE(18)` |
+| `LT(n)` | Less than | `_::{age}::LT(65)` |
+| `LTE(n)` | Less than or equal | `_::{age}::LTE(65)` |
+| `EQ(v)` | Equal | `_::{name}::EQ("Alice")` |
+| `NEQ(v)` | Not equal | `_::{status}::NEQ("banned")` |
+| `CONTAINS(s)` | String contains substring | `_::{email}::CONTAINS("@gmail")` |
+| `IS_IN(arr)` | Value is in array | `_::{tag}::IS_IN(tag_list)` |
+
+```hql
+QUERY GetAdults () =>
+    adults <- N<User>::WHERE(_::{age}::GT(18))
+    RETURN adults
+
+QUERY GetGmailUsers () =>
+    users <- N<Users>::WHERE(_::{email}::CONTAINS("@gmail.com"))
+    RETURN users
+```
+
+### `EXISTS` — relationship existence check
+
+```hql
+// Users who have at least one follower
+QUERY GetPopularUsers () =>
+    popular <- N<User>::WHERE(EXISTS(_::In<Follows>))
+    RETURN popular
+
+// Users who have no friends
+QUERY GetLonelyUsers () =>
+    lonely <- N<User>::WHERE(!EXISTS(_::Out<Knows>))
+    RETURN lonely
+```
+
+### `AND` / `OR` — boolean combinators
+
+```hql
+QUERY GetFilteredUsers () =>
+    users <- N<User>::WHERE(
+        AND(
+            _::{age}::GT(18),
+            OR(_::{name}::EQ("Alice"), _::{name}::EQ("Bob"))
+        )
+    )
+    RETURN users
+```
+
+### `INTERSECT` — set intersection
+
+Returns only elements that appear in **every** result of the given sub-traversal.
+
+```hql
+// Articles that have ALL of the given tags
+QUERY ArticlesByAllTags (tag_names: [String]) =>
+    articles <- N<Tag>::WHERE(_::{name}::IS_IN(tag_names))::INTERSECT(_::In<HasTag>)
+    RETURN articles
+```
+
+---
+
+## Aggregation and Sorting
+
+### `COUNT`
+
+```hql
+QUERY CountFollowers (user_id: ID) =>
+    n <- N<User>(user_id)::In<Follows>::COUNT
+    RETURN n
+```
+
+### `RANGE` — pagination
+
+```hql
+QUERY GetPage (offset: I64, limit: I64) =>
+    posts <- N<Post>::RANGE(offset, limit)
+    RETURN posts
+```
+
+### `ORDER` — sort
+
+```hql
+sorted_asc  <- source::ORDER<Asc>(_::{field})
+sorted_desc <- source::ORDER<Desc>(_::{field})
+```
+
+```hql
+QUERY GetRecentPosts () =>
+    posts <- N<Post>::ORDER<Desc>(_::{created_at})
+    RETURN posts
+```
+
+### `FIRST` — take first element
+
+```hql
+first_item <- source::FIRST
+```
+
+### `GROUP_BY`
+
+```hql
+QUERY GroupUsersByAge () =>
+    users <- N<User>
+    RETURN users::GROUP_BY(age)
+```
+
+### `AGGREGATE_BY`
+
+```hql
+QUERY AggregateUsersByAge () =>
+    users <- N<User>
+    RETURN users::AGGREGATE_BY(age)
+```
+
+---
+
+## Shortest Path
+
+### `ShortestPath` / `ShortestPathBFS` — minimum hops
+
+```hql
+QUERY GetShortestPath (from_id: ID, to_id: ID) =>
+    path <- N<City>(from_id)::ShortestPath<Road>::To(to_id)
+    RETURN path
+```
+
+### `ShortestPathDijkstras` — minimum total weight
+
+```hql
+QUERY GetFastestRoute (from_id: ID, to_id: ID) =>
+    path <- N<City>(from_id)::ShortestPathDijkstras<Road>(_::{distance_km})::To(to_id)
+    RETURN path
+```
+
+### `ShortestPathAStar` — heuristic-guided search
+
+```hql
+QUERY GetAStarRoute (start: ID, end: ID) =>
+    path <- N<City>(start)::ShortestPathAStar<Road>(_::{distance}, "h")::To(end)
+    RETURN path
+```
+
+---
+
+## Mathematical Functions
+
+Mathematical functions use prefix notation and can be nested freely.
+
+### Arithmetic
+
+| Function | Operation |
+|----------|-----------|
+| `ADD(a, b)` | a + b |
+| `SUB(a, b)` | a - b |
+| `MUL(a, b)` | a × b |
+| `DIV(a, b)` | a ÷ b |
+| `POW(a, b)` | a ^ b |
+| `MOD(a, b)` | a mod b |
+
+### Unary math
+
+| Function | Operation |
+|----------|-----------|
+| `ABS(x)` | Absolute value |
+| `SQRT(x)` | Square root |
+| `CEIL(x)` | Ceiling |
+| `FLOOR(x)` | Floor |
+| `ROUND(x)` | Round |
+| `LN(x)` | Natural logarithm |
+| `LOG10(x)` | Base-10 logarithm |
+| `EXP(x)` | e^x |
+
+### Trigonometry
+
+| Function | Description |
+|----------|-------------|
+| `SIN(x)` | Sine (radians) |
+| `COS(x)` | Cosine |
+| `TAN(x)` | Tangent |
+| `ASIN(x)` | Arcsine |
+| `ACOS(x)` | Arccosine |
+| `ATAN(x)` | Arctangent |
+| `ATAN2(y, x)` | Two-argument arctangent |
+
+### Aggregate functions
+
+| Function | Description |
+|----------|-------------|
+| `MIN(x)` | Minimum |
+| `MAX(x)` | Maximum |
+| `SUM(x)` | Sum |
+| `AVG(x)` | Average |
+| `COUNT(x)` | Count |
+
+### Constants
+
+| Expression | Value |
+|------------|-------|
+| `PI()` | π ≈ 3.14159… |
+| `E()` | e ≈ 2.71828… |
+
+```hql
+// Computed field using math
+QUERY GetUserStats (user_id: ID) =>
+    user <- N<Container>(user_id)
+    RETURN user::{
+        name,
+        total_relations: ADD(_::Out<Contains>::COUNT, _::In<Contains>::COUNT),
+        ratio:           DIV(_::Out<Contains>::COUNT, _::In<Contains>::COUNT),
+    }
+```
+
+---
+
+## Vector Reranking
+
+### `RerankRRF` — Reciprocal Rank Fusion
+
+```hql
+QUERY SearchRRF (query_vec: [F64]) =>
+    results <- SearchV<Document>(query_vec, 100)
+        ::RerankRRF
+        ::RANGE(0, 10)
+    RETURN results
+
+QUERY SearchRRFCustomK (query_vec: [F64], k_val: F64) =>
+    results <- SearchV<Document>(query_vec, 100)
+        ::RerankRRF(k: k_val)
+        ::RANGE(0, 10)
+    RETURN results
+```
+
+### `RerankMMR` — Maximal Marginal Relevance
+
+Balances relevance and diversity. `lambda` controls the tradeoff (0 = max diversity, 1 = max relevance). Supported distance metrics: `"cosine"` (default), `"euclidean"`, `"dotproduct"`.
+
+```hql
+QUERY SearchMMR (query_vec: [F64]) =>
+    results <- SearchV<Document>(query_vec, 100)
+        ::RerankMMR(lambda: 0.7)
+        ::RANGE(0, 10)
+    RETURN results
+```
+
+### Chaining rerankers
+
+```hql
+QUERY SearchChained (query_vec: [F64]) =>
+    results <- SearchV<Document>(query_vec, 100)
+        ::RerankRRF(k: 60)
+        ::RerankMMR(lambda: 0.7)
+        ::RANGE(0, 10)
+    RETURN results
+```
+
+---
+
+## Field Remapping and Object Construction
+
+### Property access — `::{ field }`
+
+```hql
+QUERY GetName (user_id: ID) =>
+    user <- N<User>(user_id)
+    RETURN user::{name}
+
+QUERY GetNameAge (user_id: ID) =>
+    user <- N<User>(user_id)
+    RETURN user::{name, age}
+```
+
+### Field remapping — `::{ alias: expression }`
+
+```hql
+QUERY GetDisplayInfo () =>
+    users <- N<User>::RANGE(0, 10)
+    RETURN users::{displayName: name, userAge: age}
+
+// Computed field
+QUERY GetStats (user_id: ID) =>
+    user <- N<User>(user_id)
+    RETURN user::{
+        name,
+        follower_count: _::In<Follows>::COUNT,
+        post_count: _::Out<Created>::COUNT,
+    }
+```
+
+### `ID` step
+
+```hql
+ids <- N<User>::ID
+```
+
+### Spread operator `..`
+
+Includes all remaining fields not explicitly named.
+
+```hql
+QUERY GetAllFieldsPlusId (user_id: ID) =>
+    user <- N<User>(user_id)
+    RETURN user::{
+        userID: ID,
+        ..
+    }
+```
+
+### Exclude fields — `::!{ field }`
+
+```hql
+QUERY GetWithoutSecret () =>
+    files <- N<File>
+    RETURN files::!{text}
+```
+
+### Closure remapping — `|alias|{...}`
+
+Iterates over a collection with a named variable for the current element.
+
+```hql
+QUERY GetUserPosts (user_id: ID) =>
+    user  <- N<User>(user_id)
+    posts <- user::Out<HasPost>
+    RETURN user::|usr|{
+        posts: posts::{
+            postID: ID,
+            creatorID: usr::ID,
+            creatorName: usr::{name},
+            ..
+        }
+    }
+```
+
+### Nested object construction
+
+```hql
+QUERY GetAppData (user_id: ID) =>
+    app      <- N<App>(user_id)
+    branches <- app::Out<HasBranch>
+    RETURN {
+        app: {
+            name: app::{name},
+            description: app::{description},
+            branches: [branches],
+        }
+    }
+```
+
+---
+
+## Loops
+
+`FOR...IN` iterates over a collection variable.
+
+### Basic loop
+
+```hql
+QUERY CreateItems (names: [String]) =>
+    FOR item IN names {
+        created <- AddN<Item>({name: item})
+    }
+    RETURN "Done"
+```
+
+### Destructuring loop
+
+```hql
+QUERY CreateDocuments (docs: [{ title: String, content: String }]) =>
+    FOR {title, content} IN docs {
+        node <- AddN<Document>({title: title, content: content})
+    }
+    RETURN "Done"
+```
+
+### Nested loops — RAG ingestion example
+
+```hql
+QUERY IngestChapters (
+    chapters: [{ id: I64, subchapters: [{ title: String, content: String, chunks: [{chunk: String, vector: [F64]}] }] }]
+) =>
+    FOR {id, subchapters} IN chapters {
+        chapter_node <- AddN<Chapter>({chapter_index: id})
+        FOR {title, content, chunks} IN subchapters {
+            subchapter_node <- AddN<SubChapter>({title: title, content: content})
+            AddE<Contains>::From(chapter_node)::To(subchapter_node)
+            FOR {chunk, vector} IN chunks {
+                vec <- AddV<Embedding>(vector)
+                AddE<EmbeddingOf>({chunk: chunk})::From(subchapter_node)::To(vec)
+            }
+        }
+    }
+    RETURN "Success"
+```
+
+---
+
+## Return Values
+
+Every query must end with `RETURN`.
+
+```hql
+RETURN user                     // single variable
+RETURN user, friends, count     // multiple variables (tuple)
+RETURN "success"                // string literal
+RETURN [user1, user2, user3]    // array
+RETURN {                        // object
+    user: user,
+    count: count,
+    status: "ok",
+}
+```
+
+Remapping steps can be applied directly on the `RETURN` expression:
+
+```hql
+RETURN user::{name, age}
+
+RETURN posts::{
+    post: _::{content},
+    creatorID: _::In<Created>::ID,
+}
+```
+
+---
+
+## Type Reference
+
+### Scalar types
+
+| Type | Description | Range |
+|------|-------------|-------|
+| `String` | UTF-8 text | Arbitrary length |
+| `Boolean` | Boolean | `true` or `false` |
+| `F32` | 32-bit float | IEEE 754 single |
+| `F64` | 64-bit float | IEEE 754 double |
+| `I8` | Signed 8-bit integer | −128 to 127 |
+| `I16` | Signed 16-bit integer | −32,768 to 32,767 |
+| `I32` | Signed 32-bit integer | −2^31 to 2^31−1 |
+| `I64` | Signed 64-bit integer | −2^63 to 2^63−1 |
+| `U8` | Unsigned 8-bit | 0 to 255 |
+| `U16` | Unsigned 16-bit | 0 to 65,535 |
+| `U32` | Unsigned 32-bit | 0 to 2^32−1 |
+| `U64` | Unsigned 64-bit | 0 to 2^64−1 |
+| `U128` | Unsigned 128-bit | 0 to 2^128−1 |
+
+### Special types
+
+| Type | Description |
+|------|-------------|
+| `ID` | Node/edge/vector identifier (UUID-based) |
+| `Date` | UTC timestamp |
+| `NOW` | Current UTC timestamp (default value only) |
+
+### Complex types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `[T]` | Array of type T | `[String]`, `[F64]`, `[ID]` |
+| `{fields}` | Inline object / struct | `{name: String, age: U32}` |
+| `vector(N)` | Fixed-dimension float vector | `vector(1536)` |
+
+---
+
+## Migrations
+
+Migrations transform data when the schema changes.
+
+```hql
+MIGRATION schema::1 => schema::2 {
+    N::User => N::Person {
+        name: name,
+        birthYear: age AS I32,
+    }
+    E::Follows => E::Follows { Properties: { weight: 1 } }
+}
+```
+
+Migration fields support:
+- Direct field copy: `fieldName: fieldName`
+- Renamed field: `newName: oldName`
+- Type cast: `newName: oldName AS TargetType`
+- Literal default: `fieldName: "default_value"`
+- Timestamp: `fieldName: NOW`
+
+---
+
+## Comments
+
+HQL supports single-line comments with `//`.
+
+```hql
+// This is a full-line comment
+
+N::User {
+    name: String, // inline comment
+    age: U32,
+}
+```
+
+---
+
+## Appendix: Parser Notes
+
+> This section is for contributors to SparrowDB, not application developers.
+
+### Source files
+
+| File | Purpose |
+|------|---------|
+| `crates/sparrow-core/src/grammar.pest` | PEG grammar (authoritative syntax definition) |
+| `crates/sparrow-core/src/sparrowc/parser/` | Parser modules (pest → AST) |
+| `crates/sparrow-core/src/sparrowc/analyzer/` | Semantic analysis and type inference |
+| `crates/sparrow-core/src/sparrowc/generator/` | Code generation (AST → runtime bytecode) |
+
+### Grammar overview
+
+The grammar is written in [pest](https://pest.rs/) PEG format. The top-level rule is `source`:
+
+```pest
+source = { SOI ~ (schema_def | migration_def | query_def)* ~ EOI }
+```
+
+### Key grammar rules
+
+| Rule | What it parses |
+|------|----------------|
+| `schema_def` | `N::`, `E::`, `V::` declarations |
+| `query_def` | `QUERY name(params) => body RETURN expr` |
+| `get_stmt` | `identifier <- evaluates_to_anything` |
+| `traversal` | Pipeline starting from a start node/edge/vector |
+| `step` | Single `::` step (graph, filter, remap, aggregate) |
+| `last_step` | Terminal step (comparisons, `UPDATE`, `UpsertN`, etc.) |
+| `AddN` / `AddE` / `AddV` | Creation steps |
+| `SearchV` / `SearchN` / `SearchBM25` | Search steps |
+| `for_loop` | `FOR arg IN ident { body }` |
+| `object_step` | `{field: expr, ..}` (remapping) |
+| `bool_operations` | `GT`, `GTE`, `LT`, `LTE`, `EQ`, `NEQ`, `CONTAINS`, `IS_IN` |
+| `rerank_rrf` | `RerankRRF(k: n)?` |
+| `rerank_mmr` | `RerankMMR(lambda: n, distance?: s)` |
+| `shortest_path` | `ShortestPath<E>::To(id)` |
+
+### Feature flags
+
+HQL compilation requires the `compiler` feature:
+
+```
+compiler = pest + pest_derive + ariadne
+```
+
+The `ariadne` crate provides human-readable error reporting. It **must** remain in the feature graph whenever `compiler` is enabled.
+
+Full gateway + storage requires:
+
+```
+lmdb = server = build + compiler + vectors + heed3
+```

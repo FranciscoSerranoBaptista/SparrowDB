@@ -1,0 +1,43 @@
+---
+title: Introduction
+description: SparrowDB is an open-source graph-vector database built from scratch in Rust.
+---
+
+SparrowDB makes it easy to build all the components needed for an AI application in a single platform. You no longer need a separate application DB, vector DB, graph DB, or application layers to manage multiple storage locations.
+
+SparrowDB combines **graph traversal**, **vector similarity search**, **BM25 keyword search**, and an **MCP server** into a single embeddable database written in Rust.
+
+## Key Features
+
+| Feature | Description |
+|---|---|
+| **Graph + Vector in one** | Define nodes and edges with HQL, then attach embeddings to any node — no separate vector store needed. |
+| **Built-in MCP tools** | Native Model Context Protocol support so AI agents can discover data and walk the graph without writing raw queries. |
+| **Built-in embeddings** | Use `Embed()` in HQL to vectorize text at write time — no pre-processing pipeline required. |
+| **Dual storage backends** | Choose LMDB (default, zero-copy reads) or RocksDB (high-throughput writes) at startup via a feature flag. |
+| **Runtime HQL interpreter** | POST raw HQL to `/__hql_runtime_eval` for dynamic query execution without a recompile. |
+| **BM25 + vector hybrid search** | Combine keyword and semantic search in a single traversal step. |
+| **Diagnostics endpoint** | `GET /diagnostics` returns node/edge/vector counts and entry point health at a glance. |
+| **Data management CLI** | `snapshot`, `clone`, and `restore` commands for live database backups without downtime. |
+
+## Data model
+
+SparrowDB primarily operates with a **graph + vector** data model, but it also supports KV, document, and relational-style data. The schema is defined in HQL (Hypergraph Query Language) `.hx` files.
+
+```hql
+N::User {
+    name: String,
+    bio:  String,
+}
+
+E::Follows {
+    From: User,
+    To:   User,
+}
+```
+
+## Next steps
+
+- [Quick Start](/docs/quickstart) — install the CLI and run your first query in minutes
+- [HQL Reference](/docs/hql) — the full language reference for writing schemas and queries
+- [HTTP API](/docs/http-api) — every endpoint, request and response shape
