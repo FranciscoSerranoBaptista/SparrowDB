@@ -148,6 +148,10 @@ All notable changes to SparrowDB are documented here.
 **CLI**
 - `sparrow add <name>` now fails with a clear error in non-interactive mode when no instance name is given — previously silently used the project name, which was surprising in scripts
 
+**Storage Engine**
+- `PutFlags::APPEND` replaced with plain `put()` in `add_n`, `add_e`, and `upsert` — LMDB's APPEND flag requires monotonically increasing keys; UUID v4 keys are random and do not satisfy this invariant, causing a non-monotonic key panic on any out-of-order insert; plain put lets the B-tree handle arbitrary insertion order correctly
+- `UpsertN` via an `NFromIndex` variable no longer fails on first insert — the secondary-index lookup returned `None` when the record did not yet exist and the absence was treated as an error; the upsert path now treats `None` as a missing node and falls through to the `AddN` path as intended
+
 ### Documentation
 
 - `docs/HQL.md` — comprehensive HQL language reference (2 000+ lines, 21 sections):
