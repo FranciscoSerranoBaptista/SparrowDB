@@ -168,14 +168,15 @@ mod tests {
             parser::{SparrowParser, write_to_temp_file},
         };
 
+        // Verified HQL syntax: schema declaration + SearchN round-trip
         let source = r#"
             N::Person {
                 name: String,
                 embedding: vector(1536)
             }
-            QUERY addPerson(name: String, emb: vector(1536)) =>
-                result <- AddN<Person>({name: name, embedding: emb})
-                RETURN result
+            QUERY findPeople(q: [F64]) =>
+                results <- SearchN<Person.embedding>(q, 10)
+                RETURN results
         "#;
 
         let content = write_to_temp_file(vec![source]);
@@ -221,6 +222,18 @@ mod tests {
         assert!(
             ts_output.contains("Array<number> /* vector(1536) */"),
             "TypeScript for Person should contain Array<number> /* vector(1536) */, got:\n{ts_output}"
+        );
+
+        // Verify SearchN query generates a search_n engine call
+        let find_query = generated
+            .queries
+            .iter()
+            .find(|q| q.name == "findPeople")
+            .expect("findPeople query should be generated");
+        let find_code = format!("{find_query}");
+        assert!(
+            find_code.contains("search_n"),
+            "findPeople query should contain search_n call, got:\n{find_code}"
         );
     }
 

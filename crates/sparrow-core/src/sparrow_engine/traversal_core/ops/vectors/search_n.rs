@@ -143,7 +143,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "lmdb"))]
 mod tests {
     use std::sync::Arc;
 
@@ -241,5 +241,75 @@ mod tests {
         } else {
             panic!("expected TraversalValue::Node, got {:?}", result);
         }
+    }
+
+    /// Two-node test: verifies search_n returns correctly ranked nearest neighbours.
+    /// Alice is close to the query; Bob is far. k=2 should return both, Alice first.
+    #[test]
+    fn test_search_n_ranking() {
+        let (_temp_dir, storage) = setup_test_db();
+        let write_arena = Bump::new();
+        let mut txn = storage.graph_env.write_txn().unwrap();
+
+        // Alice embedding: [1.0, 0.0, 0.0, 0.0]
+        let alice_props = ImmutablePropertiesMap::new(
+            1,
+            std::iter::once((
+                write_arena.alloc_str("name") as &str,
+                Value::String("Alice".to_string()),
+            )),
+            &write_arena,
+        );
+        let alice = G::new_mut(&storage, &write_arena, &mut txn)
+            .add_n_with_vectors(
+                "Person",
+                Some(alice_props),
+                None,
+                Some(&[("Person.embedding", &[1.0_f32, 0.0, 0.0, 0.0])]),
+            )
+            .collect_to_obj()
+            .unwrap();
+        let alice_id = alice.id();
+
+        // Bob embedding: [0.0, 1.0, 0.0, 0.0] — orthogonal to Alice
+        let bob_props = ImmutablePropertiesMap::new(
+            1,
+            std::iter::once((
+                write_arena.alloc_str("name") as &str,
+                Value::String("Bob".to_string()),
+            )),
+            &write_arena,
+        );
+        G::new_mut(&storage, &write_arena, &mut txn)
+            .add_n_with_vectors(
+                "Person",
+                Some(bob_props),
+                None,
+                Some(&[("Person.embedding", &[0.0_f32, 1.0, 0.0, 0.0])]),
+            )
+            .collect_to_obj()
+            .unwrap();
+
+        txn.commit().unwrap();
+
+        // Query close to Alice [0.9, 0.1, 0.0, 0.0]
+        let read_arena = Bump::new();
+        let txn = storage.graph_env.read_txn().unwrap();
+        let query = read_arena.alloc_slice_copy(&[0.9_f64, 0.1, 0.0, 0.0]);
+        let label = read_arena.alloc_str("Person.embedding");
+
+        let results = G::new(&storage, &txn, &read_arena)
+            .search_n::<Filter, usize>(query, 2usize, label, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert_eq!(results.len(), 2, "expected 2 results from two-node index");
+
+        // First result should be Alice (nearest to query)
+        assert_eq!(
+            results[0].id(),
+            alice_id,
+            "first result should be Alice (nearest neighbour)"
+        );
     }
 }
