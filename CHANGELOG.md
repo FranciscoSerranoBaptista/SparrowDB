@@ -78,6 +78,23 @@ All notable changes to SparrowDB are documented here.
 - New `sparrow-memory` crate scaffolded: episodic memory store with opaque ID fields, `TryFrom<&str>` for `Priority`, and `PartialEq` on stored types
 - Index name constants and core type definitions
 
+**Bulk Import / Export**
+- `sparrow import <FILE> [OPTIONS]` — bulk-load records from a JSON, CSV, or Parquet file into a running SparrowDB instance
+  - Format auto-detected from extension (`.json`, `.csv`, `.parquet` / `.pq`); override with `--format json|csv|parquet`
+  - `--query <NAME>` — call the same HQL query for every record
+  - `--query-column <COL>` — per-record query routing: reads the query name from a named field on each record (the column is stripped before posting); `--query` serves as a fallback for records that omit the column — enables importing mixed node+edge files in a single pass
+  - `--workers <N>` — concurrent HTTP workers (default 8); backed by `buffer_unordered` so network latency is hidden behind concurrency
+  - `--dry-run` — parse the file and print a routing preview without sending any requests
+  - `--on-error continue|abort` — skip failures and finish (default) or stop on first error
+  - `--token` / `SPARROW_TOKEN` env var — sets the `x-api-key` header for auth-protected instances
+  - Full guide: `docs/import.md`
+- `sparrow export <FILE> --query <NAME> [OPTIONS]` — export records from a running SparrowDB instance to a JSON, CSV, or Parquet file
+  - POSTs `--params <JSON>` (default `{}`) to `POST /<query>` and extracts the response record array
+  - `--key <KEY>` — which top-level key in the response object contains the records; auto-detected when the response has exactly one key, required otherwise
+  - `--pretty` — pretty-print JSON output (`.json` format only)
+  - `--token` / `SPARROW_TOKEN` env var — sets the `x-api-key` header
+  - Full guide: `docs/import.md#export`
+
 ### Performance
 
 **v1/query write batching**
