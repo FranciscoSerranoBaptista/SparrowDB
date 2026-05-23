@@ -82,6 +82,8 @@ pub fn seed_graph(storage: &SparrowGraphStorage, node_count: usize) -> Vec<u128>
 // ---------------------------------------------------------------------------
 
 /// A representative HQL file covering point lookup, traversal, and mutation.
+/// The schema and queries are intentionally simple so parser/analyser time
+/// is dominated by the compiler pipeline, not schema complexity.
 pub const HQL_SOURCE: &str = r#"
 N::Person {
     INDEX name: String,
