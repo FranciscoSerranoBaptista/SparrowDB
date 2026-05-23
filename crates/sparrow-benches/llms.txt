@@ -1,0 +1,100 @@
+# sparrow-benches
+
+Criterion performance benchmark crate for SparrowDB.
+No binary; only `[[bench]]` targets + a thin `src/lib.rs` for shared fixture helpers.
+Feature flags: `cpu` (default — no live DB), `http` (future — requires running container).
+
+## Purpose
+
+Establishes measurable baselines for the three CPU-hot paths and catches regressions
+on every PR via a `critcmp` diff posted as a GitHub Actions annotation.
+
+## Benchmark targets
+
+### compiler (`benches/compiler.rs`)
+
+Exercises the HQL compiler pipeline without any LMDB or network involvement.
+
+Groups:
+- `compiler/parse`   — `SparrowParser::parse_source(content)` only
+- `compiler/analyze` — `analyze(source)` on an already-parsed AST
+- `compiler/full`    — parse + analyze round-trip
+
+Inputs: a static HQL schema + three queries defined in `src/lib.rs::HQL_SOURCE`.
+No DB, no arena allocation beyond the parse tree.
+
+Baseline (macOS M-series): parse ~62 µs, analyze ~7 µs, full ~69 µs.
+
+### traversal (`benches/traversal.rs`)
+
+Seeds a fixture graph into a tempfile-backed LMDB env once per group (not per
+iteration), then benchmarks graph walk operations.
+
+Groups:
+- `traversal/n_from_type/small`  — scan 100 "person" nodes
+- `traversal/n_from_type/medium` — scan 10 000 "person" nodes
+- `traversal/out_node/small`     — single-hop out-edge walk, 100-node chain graph
+- `traversal/out_node/medium`    — single-hop out-edge walk, 10 000-node chain graph
+
+Key implementation note: seeding uses `seed_graph()` from `src/lib.rs`, which bypasses
+the traversal-iterator API (`add_n`/`add_edge`) and writes directly to LMDB with
+`put()` (not `PutFlags::APPEND`). This avoids `MDB_KEYEXIST` panics caused by
+`v6_uuid()` generating non-monotonic u128 values in rapid succession.
+See `docs/superpowers/known-issues.md` for the full write-up.
+
+Baseline: n_from_type/small ~3 µs, medium ~264 µs; out_node/small ~32 µs, medium ~5 ms.
+
+### write_pipeline (`benches/write_pipeline.rs`)
+
+Measures record encoding independently of LMDB commit latency.
+
+Groups:
+- `write_pipeline/serialize/{1,100,1000,10000}`   — `Node::to_bincode_bytes()` per node in batch
+- `write_pipeline/deserialize/{1,100,1000,10000}` — `Node::from_bincode_bytes()` per blob in batch
+
+Setup (node construction, pre-serialisation) is outside `b.iter()`.
+The deserialize closure returns `black_box(count)` (XOR of node IDs) rather than
+`Vec<Node>` to satisfy Rust's lifetime rules on `Node<'arena>`.
+
+Baseline: serialize/1 ~15 ns, serialize/10000 ~101 µs; deserialize/1 ~20 ns, deserialize/10000 ~102 µs.
+
+## Shared fixture helpers (`src/lib.rs`)
+
+- `make_engine() -> (SparrowGraphEngine, TempDir)` — creates a 1 GB LMDB env in a temp dir.
+- `seed_graph(storage, node_count) -> Vec<u128>` — inserts `node_count` "person" nodes in a chain
+  connected by "knows" edges. Returns sorted node IDs. Bypasses `add_n`/`add_edge` (see above).
+- `HQL_SOURCE: &str` — static HQL schema with Person nodes, Knows edges, and three queries.
+- `make_content(src) -> Content` — wraps a raw HQL string into the `Content` type for `SparrowParser`.
+
+## Baseline management
+
+Baselines live in `crates/sparrow-benches/baselines/` as committed criterion JSON files.
+Criterion names dirs after benchmark IDs with `/` replaced by `_`
+(e.g. `compiler_parse/main/estimates.json`, `write_pipeline_serialize/1000/main/estimates.json`).
+
+Update workflow:
+  `make bench-update`  — run benches, copy JSONs to baselines/, stage with git add
+  `git commit -m "perf(benches): update baselines"`
+
+Compare workflow:
+  `make bench-diff`    — restore baselines → target/criterion/, run benches as "current", critcmp diff
+
+## CI
+
+`.github/workflows/bench.yml` — triggers on PRs touching `crates/sparrow-benches/**` or `crates/sparrow-core/**`.
+Restores committed baselines, runs benchmarks as "current", posts `critcmp main current` diff
+as a PR comment. Non-blocking (informational only).
+
+## Imports
+
+All sparrow-core types are imported as `use sparrow_db::...` (lib name override; package name is `sparrow-core`).
+Key paths used by benches:
+- `sparrow_db::sparrow_engine::traversal_core::ops::g::G`
+- `sparrow_db::sparrow_engine::traversal_core::ops::source::n_from_type::NFromTypeAdapter`
+- `sparrow_db::sparrow_engine::traversal_core::ops::out::out::OutAdapter`
+- `sparrow_db::sparrowc::parser::SparrowParser`
+- `sparrow_db::sparrowc::analyzer::analyze`
+- `sparrow_db::utils::items::{Node, Edge}`
+- `sparrow_db::utils::id::v6_uuid`
+- `sparrow_db::utils::label_hash::hash_label`
+- `sparrow_db::sparrow_engine::storage_core::SparrowGraphStorage`
