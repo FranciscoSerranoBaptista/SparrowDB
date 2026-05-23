@@ -2,9 +2,9 @@
   "name": "@sparrowdb/docs",
   "version": "0.1.0",
   "private": true,
-  "license": "Apache-2.0",
+  "license": "UNLICENSED",
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start"
   },
