@@ -21,7 +21,8 @@ use crate::{
             bool_ops::BoExp,
             queries::Query as GeneratedQuery,
             source_steps::{
-                AddE, AddN, AddV, SearchBM25, SearchVector as GeneratedSearchVector, SourceStep,
+                AddE, AddN, AddV, SearchBM25, SearchNStep, SearchVector as GeneratedSearchVector,
+                SourceStep,
             },
             statements::Statement as GeneratedStatement,
             traversal_steps::{
@@ -1678,10 +1679,148 @@ pub(crate) fn infer_expr_type<'a>(
                 })),
             )
         }
-        SearchNodeVector(_snv) => {
-            // SearchNodeVector is parsed but not yet lowered through the analyzer.
-            // Return Unknown until Task 3+ implements full support.
-            (Type::Unknown, None)
+        SearchNodeVector(snv) => {
+            // 1. Validate node type exists (E101)
+            if !ctx.node_set.contains(snv.node_type.as_str()) {
+                generate_error!(ctx, original_query, snv.loc.clone(), E101, &snv.node_type);
+                return (Type::Unknown, None);
+            }
+
+            // 2. Validate the field exists and is a vector field (E202)
+            let field_set = ctx.node_fields.get(snv.node_type.as_str());
+            let field = field_set.and_then(|fs| fs.get(snv.field_name.as_str()));
+            match field {
+                None => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E202,
+                        &snv.field_name,
+                        "node",
+                        &snv.node_type
+                    );
+                    return (Type::Unknown, None);
+                }
+                Some(f) if !matches!(f.field_type, FieldType::Vector(_)) => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E202,
+                        &snv.field_name,
+                        "node",
+                        &snv.node_type
+                    );
+                    return (Type::Unknown, None);
+                }
+                _ => {}
+            }
+
+            // 3. Build the HNSW label: "TypeName.fieldname"
+            let label = GenRef::Literal(format!("{}.{}", snv.node_type, snv.field_name));
+
+            // 4. Resolve the query vector
+            let vec: VecData = match &snv.data {
+                Some(VectorData::Vector(v)) => {
+                    VecData::Standard(GeneratedValue::Literal(GenRef::Ref(format!(
+                        "[{}]",
+                        v.iter()
+                            .map(|f| f.to_string())
+                            .collect::<Vec<String>>()
+                            .join(",")
+                    ))))
+                }
+                Some(VectorData::Identifier(i)) => {
+                    is_valid_identifier(ctx, original_query, snv.loc.clone(), i.as_str());
+                    let _ =
+                        type_in_scope(ctx, original_query, snv.loc.clone(), scope, i.as_str());
+                    VecData::Standard(gen_identifier_or_param(
+                        original_query,
+                        i.as_str(),
+                        true,
+                        false,
+                    ))
+                }
+                _ => {
+                    generate_error!(
+                        ctx,
+                        original_query,
+                        snv.loc.clone(),
+                        E601,
+                        &snv.loc.span
+                    );
+                    return (Type::Unknown, None);
+                }
+            };
+
+            // 5. Resolve k
+            let k = match &snv.k {
+                Some(k) => match &k.value {
+                    EvaluatesToNumberType::I8(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::I16(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::I32(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::I64(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U8(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U16(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U32(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U64(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::U128(i) => {
+                        GeneratedValue::Primitive(GenRef::Std(i.to_string()))
+                    }
+                    EvaluatesToNumberType::Identifier(i) => {
+                        is_valid_identifier(ctx, original_query, snv.loc.clone(), i.as_str());
+                        type_in_scope(ctx, original_query, snv.loc.clone(), scope, i.as_str());
+                        gen_identifier_or_param(original_query, i, false, false)
+                    }
+                    _ => {
+                        generate_error!(
+                            ctx,
+                            original_query,
+                            snv.loc.clone(),
+                            E601,
+                            &snv.loc.span
+                        );
+                        GeneratedValue::Unknown
+                    }
+                },
+                None => {
+                    generate_error!(ctx, original_query, snv.loc.clone(), E601, &snv.loc.span);
+                    GeneratedValue::Unknown
+                }
+            };
+
+            // 6. Return nodes of the searched type
+            (
+                Type::Nodes(Some(snv.node_type.clone())),
+                Some(GeneratedStatement::Traversal(GeneratedTraversal {
+                    traversal_type: TraversalType::Ref,
+                    steps: vec![],
+                    should_collect: ShouldCollect::ToVec,
+                    source_step: Separator::Period(SourceStep::SearchN(SearchNStep {
+                        label,
+                        vec,
+                        k,
+                    })),
+                    ..Default::default()
+                })),
+            )
         }
     }
 }
