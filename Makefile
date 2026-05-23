@@ -46,18 +46,21 @@ docker-logs:
 
 ## Run CPU benchmarks (no comparison — just measure)
 bench:
-	cargo bench -p sparrow-benches --features cpu
+	cargo bench -p sparrow-benches --bench compiler --bench traversal --bench write_pipeline --features cpu
 
 ## Re-run benchmarks, save new baselines, stage for commit.
 ## Review the diff with `git diff --staged`, then commit manually:
 ##   git commit -m "perf(benches): update baselines"
 bench-update:
-	cargo bench -p sparrow-benches --features cpu -- --save-baseline main
-	@for bench in compiler traversal write_pipeline; do \
-	  mkdir -p crates/sparrow-benches/baselines/$$bench; \
-	  if [ -d target/criterion/$$bench/main ]; then \
-	    cp -r target/criterion/$$bench/main crates/sparrow-benches/baselines/$$bench/; \
-	  fi; \
+	cargo bench -p sparrow-benches --bench compiler --bench traversal --bench write_pipeline --features cpu -- --save-baseline main
+	@find target/criterion -type f -name "estimates.json" -path "*/main/*" | while read f; do \
+	  rel="$${f#target/criterion/}"; \
+	  dir="crates/sparrow-benches/baselines/$$(dirname $$rel)"; \
+	  mkdir -p "$$dir"; \
+	  cp "$$f" "$$dir/"; \
+	  cp "$$(dirname $$f)/benchmark.json" "$$dir/" 2>/dev/null || true; \
+	  cp "$$(dirname $$f)/sample.json" "$$dir/" 2>/dev/null || true; \
+	  cp "$$(dirname $$f)/tukey.json" "$$dir/" 2>/dev/null || true; \
 	done
 	git add crates/sparrow-benches/baselines/
 	@echo "Baselines staged. Run: git commit -m 'perf(benches): update baselines'"
@@ -65,6 +68,11 @@ bench-update:
 ## Diff the current run against committed main baselines (same as CI does).
 ## Requires critcmp: cargo install critcmp
 bench-diff:
-	rsync -av crates/sparrow-benches/baselines/ target/criterion/
-	cargo bench -p sparrow-benches --features cpu -- --save-baseline current
+	@find crates/sparrow-benches/baselines -type f -name "*.json" | while read f; do \
+	  rel="$${f#crates/sparrow-benches/baselines/}"; \
+	  dir="target/criterion/$$(dirname $$rel)"; \
+	  mkdir -p "$$dir"; \
+	  cp "$$f" "$$dir/"; \
+	done
+	cargo bench -p sparrow-benches --bench compiler --bench traversal --bench write_pipeline --features cpu -- --save-baseline current
 	critcmp main current

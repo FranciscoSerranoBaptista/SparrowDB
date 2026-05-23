@@ -28,15 +28,22 @@ jobs:
 
       - name: Restore committed main baselines
         run: |
-          # Copy committed baselines into target/criterion/ so critcmp can find them
+          # Criterion names dirs after benchmark IDs (slashes→underscores), not
+          # cargo bench target names.  Copy each committed JSON back into the
+          # matching target/criterion/<id>/main/ path so critcmp can find them.
           if [ -d crates/sparrow-benches/baselines ]; then
-            rsync -av crates/sparrow-benches/baselines/ target/criterion/
+            find crates/sparrow-benches/baselines -type f -name "*.json" | while read f; do
+              rel="${f#crates/sparrow-benches/baselines/}"
+              dir="target/criterion/$(dirname $rel)"
+              mkdir -p "$dir"
+              cp "$f" "$dir/"
+            done
           else
             echo "No committed baselines yet — skipping comparison"
           fi
 
       - name: Run benchmarks
-        run: cargo bench -p sparrow-benches --features cpu -- --save-baseline current
+        run: cargo bench -p sparrow-benches --bench compiler --bench traversal --bench write_pipeline --features cpu -- --save-baseline current
 
       - name: Generate diff
         id: diff
