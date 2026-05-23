@@ -310,12 +310,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                     };
 
                     let bytes = bincode::serialize(&node)?;
-                    self.storage.nodes_db.put_with_flags(
-                        self.txn,
-                        PutFlags::APPEND,
-                        &node.id,
-                        &bytes,
-                    )?;
+                    self.storage.nodes_db.put(self.txn, &node.id, &bytes)?;
 
                     for (k, v) in create_props.iter() {
                         let Some((db, secondary_index)) = self.storage.secondary_indices.get(*k)
@@ -492,9 +487,8 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                     };
 
                     let bytes = edge.to_bincode_bytes()?;
-                    self.storage.edges_db.put_with_flags(
+                    self.storage.edges_db.put(
                         self.txn,
-                        PutFlags::APPEND,
                         SparrowGraphStorage::edge_key(&edge.id),
                         &bytes,
                     )?;

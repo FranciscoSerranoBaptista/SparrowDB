@@ -7,8 +7,6 @@ use crate::{
     },
     utils::{id::v6_uuid, items::Node, properties::ImmutablePropertiesMap},
 };
-use heed3::PutFlags;
-
 pub trait AddNAdapter<'db, 'arena, 'txn, 's>:
     Iterator<Item = Result<TraversalValue<'arena>, GraphError>>
 {
@@ -64,12 +62,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
 
         match bincode::serialize(&node) {
             Ok(bytes) => {
-                if let Err(e) = self.storage.nodes_db.put_with_flags(
-                    self.txn,
-                    PutFlags::APPEND,
-                    &node.id,
-                    &bytes,
-                ) {
+                if let Err(e) = self.storage.nodes_db.put(self.txn, &node.id, &bytes) {
                     result = Err(GraphError::from(e));
                 }
             }
@@ -169,12 +162,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
 
         match bincode::serialize(&node) {
             Ok(bytes) => {
-                if let Err(e) = self.storage.nodes_db.put_with_flags(
-                    self.txn,
-                    PutFlags::APPEND,
-                    &node.id,
-                    &bytes,
-                ) {
+                if let Err(e) = self.storage.nodes_db.put(self.txn, &node.id, &bytes) {
                     result = Err(GraphError::from(e));
                 }
             }

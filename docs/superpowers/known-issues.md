@@ -9,8 +9,12 @@ workaround so future engineers understand why the code looks the way it does.
 
 ## 1. `PutFlags::APPEND` + non-monotonic v6 UUIDs causes `MDB_KEYEXIST`
 
-**Status:** Worked around in `crates/sparrow-benches/src/lib.rs`. Root cause
-in `add_n` / `add_edge` is unfixed.
+**Status:** ✅ Fixed. `PutFlags::APPEND` replaced with plain `put()` in
+`add_n.rs`, `add_e.rs`, and `upsert.rs`. The `sparrow-benches` workaround
+(`seed_graph` bypassing `add_n`/`add_edge`) can remain as-is; it is now
+merely a performance optimisation (pre-sorting IDs), not a correctness
+requirement. Regression tests added in
+`crates/sparrow-core/src/sparrow_engine/tests/capacity_optimization_tests.rs`.
 
 ### Symptom
 
@@ -94,27 +98,28 @@ layout; using `put()` instead of `put_with_flags(APPEND)` removes the
 monotonicity pre-condition entirely, making the code correct regardless of
 clock resolution.
 
-### Potential permanent fix
+### Permanent fix (applied)
 
-The correct long-term fix is to remove `PutFlags::APPEND` from `add_n` and
-`add_edge` and replace it with a plain `put()`.  `APPEND` was likely added
-as a performance optimisation based on the assumption that UUIDs are always
-generated in ascending order, but this assumption breaks under load.
-The performance gain from `APPEND` is small (it skips a B-tree search) and
-not worth the fragility.
+`PutFlags::APPEND` was removed from the three write sites that used it for
+primary-record insertion:
 
-**Files to change for the permanent fix:**
+| File | Change |
+|------|--------|
+| `crates/sparrow-core/src/sparrow_engine/traversal_core/ops/source/add_n.rs` | `put_with_flags(APPEND)` → `put()` (both `add_n` and `add_n_with_vectors`) |
+| `crates/sparrow-core/src/sparrow_engine/traversal_core/ops/source/add_e.rs` | `put_with_flags(APPEND)` → `put()` on `edges_db` |
+| `crates/sparrow-core/src/sparrow_engine/traversal_core/ops/util/upsert.rs` | `put_with_flags(APPEND)` → `put()` on both `nodes_db` and `edges_db` |
 
-| File | Lines | Change |
-|------|-------|--------|
-| `crates/sparrow-core/src/sparrow_engine/traversal_core/ops/source/add_n.rs` | ~69, ~174 | `PutFlags::APPEND` → plain `put()` |
-| `crates/sparrow-core/src/sparrow_engine/traversal_core/ops/source/add_e.rs` | ~112 | `PutFlags::APPEND` → plain `put()` |
-
-`APPEND_DUP` on the out/in-edge index databases is unaffected — within a
-single key the values *are* written in ascending order (edge data is
+`APPEND_DUP` on the out/in-edge index databases is intentionally unchanged —
+within a single key the values *are* written in ascending order (edge data is
 `edge_id || node_id` and edge IDs are generated one at a time, so there is
 never a second value for the same key in a single request). `APPEND_DUP`
 can stay.
+
+Regression tests (`test_add_n_succeeds_when_existing_key_is_higher` and
+`test_add_edge_succeeds_when_existing_key_is_higher`) in
+`crates/sparrow-core/src/sparrow_engine/tests/capacity_optimization_tests.rs`
+deterministically verify that both operations succeed when a higher key
+already exists in the database.
 
 ---
 

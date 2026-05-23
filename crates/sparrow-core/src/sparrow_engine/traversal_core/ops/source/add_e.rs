@@ -109,9 +109,8 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
 
         match edge.to_bincode_bytes() {
             Ok(bytes) => {
-                if let Err(e) = self.storage.edges_db.put_with_flags(
+                if let Err(e) = self.storage.edges_db.put(
                     self.txn,
-                    PutFlags::APPEND,
                     &SparrowGraphStorage::edge_key(&edge.id),
                     &bytes,
                 ) {

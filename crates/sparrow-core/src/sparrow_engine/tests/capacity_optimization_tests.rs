@@ -17,7 +17,7 @@ use crate::{
             config::Config,
             ops::{
                 g::G,
-                source::{add_n::AddNAdapter, n_from_type::NFromTypeAdapter},
+                source::{add_e::AddEAdapter, add_n::AddNAdapter, n_from_type::NFromTypeAdapter},
                 util::{
                     aggregate::AggregateAdapter, group_by::GroupByAdapter, update::UpdateAdapter,
                 },
@@ -26,7 +26,7 @@ use crate::{
     },
     props,
     protocol::value::Value,
-    utils::{id::v6_uuid, properties::ImmutablePropertiesMap},
+    utils::{id::v6_uuid, items::Node, properties::ImmutablePropertiesMap},
 };
 
 fn setup_test_db(temp_dir: &TempDir) -> Arc<SparrowGraphStorage> {
@@ -256,6 +256,156 @@ fn test_aggregate_varying_property_counts() {
         .n_from_type("User")
         .aggregate_by(&props3, false);
     assert!(result.is_ok(), "Aggregate with 3 properties should work");
+}
+
+/// Regression test: `add_n` must succeed even when the new UUID is lower than
+/// an existing key in `nodes_db`.
+///
+/// `PutFlags::APPEND` requires every new key to be **strictly greater** than all
+/// existing keys. UUID v6 is timestamp-based; when many nodes are inserted in a
+/// tight loop (e.g., benchmark setup) the OS clock does not always advance
+/// between consecutive calls, producing identical or non-monotonic u128 values.
+///
+/// This test deterministically reproduces the ordering inversion: a sentinel node
+/// is written directly to `nodes_db` with `u128::MAX - 1` as its key, which is
+/// higher than any real v6 UUID. The subsequent `add_n` call generates a
+/// current-time UUID (always ≪ `u128::MAX`), which is non-monotonic relative to
+/// the sentinel.
+///
+/// **Before fix:** `put_with_flags(PutFlags::APPEND)` → `MDB_KEYEXIST` → Err(StorageError)
+/// **After fix:**  plain `put()` → succeeds regardless of key ordering
+#[test]
+fn test_add_n_succeeds_when_existing_key_is_higher() {
+    let temp_dir = TempDir::new().unwrap();
+    let storage = setup_test_db(&temp_dir);
+
+    // Write a sentinel node directly (bypassing add_n) with the largest possible
+    // key so that every real UUID generated afterwards will be smaller.
+    let sentinel_id: u128 = u128::MAX - 1;
+    {
+        let arena = Bump::new();
+        let sentinel_node = Node {
+            id: sentinel_id,
+            label: arena.alloc_str("sentinel"),
+            version: 1,
+            properties: None,
+        };
+        let bytes = sentinel_node.to_bincode_bytes().unwrap();
+        let mut txn = storage.graph_env.write_txn().unwrap();
+        storage.nodes_db.put(&mut txn, &sentinel_id, &bytes).unwrap();
+        txn.commit().unwrap();
+    }
+
+    // add_n generates a current-time v6 UUID ≪ u128::MAX - 1.
+    // With PutFlags::APPEND this fails; with plain put() it must succeed.
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+    let result = G::new_mut(&storage, &arena, &mut txn)
+        .add_n("Regular", None, None)
+        .next()
+        .expect("add_n must yield exactly one result");
+
+    assert!(
+        result.is_ok(),
+        "add_n failed when a higher key already exists — PutFlags::APPEND regression: {:?}",
+        result.err()
+    );
+
+    txn.commit().unwrap();
+
+    // Both the sentinel and the new node must be stored.
+    let rtxn = storage.graph_env.read_txn().unwrap();
+    assert_eq!(
+        storage.nodes_db.len(&rtxn).unwrap(),
+        2,
+        "Expected 2 nodes (sentinel + inserted), found {}",
+        storage.nodes_db.len(&rtxn).unwrap()
+    );
+}
+
+/// Regression test: `add_edge` must succeed even when the new edge UUID is lower
+/// than an existing key in `edges_db`.
+///
+/// Mirrors `test_add_n_succeeds_when_existing_key_is_higher` but for edges.
+/// The sentinel edge is written directly with `u128::MAX - 1` as its ID; the
+/// subsequent `add_edge` call generates a smaller UUID, which would trip
+/// `PutFlags::APPEND` on `edges_db`.
+#[test]
+fn test_add_edge_succeeds_when_existing_key_is_higher() {
+    use crate::utils::items::Edge;
+    use crate::sparrow_engine::storage_core::SparrowGraphStorage as SGS;
+
+    let temp_dir = TempDir::new().unwrap();
+    let storage = setup_test_db(&temp_dir);
+
+    // Create from/to nodes in separate transactions (each only one node, so
+    // UUID ordering in nodes_db is unaffected).
+    let (from_id, to_id) = {
+        let arena = Bump::new();
+        let mut txn = storage.graph_env.write_txn().unwrap();
+        let from = G::new_mut(&storage, &arena, &mut txn)
+            .add_n("From", None, None)
+            .next()
+            .unwrap()
+            .expect("from node")
+            .id();
+        let to = G::new_mut(&storage, &arena, &mut txn)
+            .add_n("To", None, None)
+            .next()
+            .unwrap()
+            .expect("to node")
+            .id();
+        txn.commit().unwrap();
+        (from, to)
+    };
+
+    // Write a sentinel edge directly with the largest possible edge-ID key so
+    // that the next real v6 UUID will be smaller.
+    let sentinel_edge_id: u128 = u128::MAX - 1;
+    {
+        let arena = Bump::new();
+        let sentinel_edge = Edge {
+            id: sentinel_edge_id,
+            label: arena.alloc_str("sentinel"),
+            version: 1,
+            properties: None,
+            from_node: from_id,
+            to_node: to_id,
+        };
+        let bytes = sentinel_edge.to_bincode_bytes().unwrap();
+        let mut txn = storage.graph_env.write_txn().unwrap();
+        storage
+            .edges_db
+            .put(&mut txn, &SGS::edge_key(&sentinel_edge_id), &bytes)
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
+    // add_edge generates a current-time v6 UUID ≪ u128::MAX - 1.
+    // With PutFlags::APPEND on edges_db this fails; with plain put() it must succeed.
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+    let result = G::new_mut(&storage, &arena, &mut txn)
+        .add_edge("test_edge", None, from_id, to_id, false)
+        .next()
+        .expect("add_edge must yield exactly one result");
+
+    assert!(
+        result.is_ok(),
+        "add_edge failed when a higher edge key already exists — PutFlags::APPEND regression: {:?}",
+        result.err()
+    );
+
+    txn.commit().unwrap();
+
+    // Both sentinel edge and the new edge must be stored.
+    let rtxn = storage.graph_env.read_txn().unwrap();
+    assert_eq!(
+        storage.edges_db.len(&rtxn).unwrap(),
+        2,
+        "Expected 2 edges (sentinel + inserted), found {}",
+        storage.edges_db.len(&rtxn).unwrap()
+    );
 }
 
 #[cfg(test)]
