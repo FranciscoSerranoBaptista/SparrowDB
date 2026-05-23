@@ -2194,7 +2194,24 @@ pub(crate) fn validate_traversal<'a>(
             StepType::UpsertN(upsert) => {
                 // UpsertN is valid only on nodes
                 let (source, source_is_plural) = match &gen_traversal.traversal_type {
-                    TraversalType::FromSingle(var) => (Some(var.clone()), false),
+                    TraversalType::FromSingle(var) => {
+                        // If this variable was assigned from N<Type>({field: value})
+                        // (secondary-index lookup), its assignment used collect_to_obj()?
+                        // which returns Err("No value found") when the index is empty —
+                        // exactly what happens on first insert. Inline the original
+                        // NFromIndex source step so the generator emits the None-branch
+                        // block form: collect::<Vec>() (succeeds on empty) →
+                        // upsert_n_with_defaults (creates node when iterator is empty).
+                        if let Some(index_ss) = scope
+                            .get(var.inner().as_str())
+                            .and_then(|vi| vi.index_source_step.clone())
+                        {
+                            gen_traversal.source_step = Separator::Period(index_ss);
+                            (None, true)
+                        } else {
+                            (Some(var.clone()), false)
+                        }
+                    }
                     TraversalType::FromIter(var) => (Some(var.clone()), true),
                     _ => (None, true), // Default to plural for inline traversals
                 };
@@ -3886,5 +3903,65 @@ mod tests {
             "expected E202, got: {:?}",
             diagnostics
         );
+    }
+
+    /// Regression test: `existing <- N<Type>({field: value})` followed by
+    /// `existing::UpsertN({...})` must generate the None-branch block form for
+    /// UpsertN (which uses `collect::<Vec>()` and handles an empty index result
+    /// by creating a new node).  Previously the assignment used `collect_to_obj()?`
+    /// which returned `Err("No value found")` on first insert, so the upsert never ran.
+    #[test]
+    fn test_upsert_n_via_index_var_uses_none_branch() {
+        let source = r#"
+            N::Email {
+                UNIQUE INDEX email: String,
+                created_at: Date DEFAULT NOW,
+            }
+
+            QUERY upsert_email(email: String) =>
+                existing <- N<Email>({email: email})
+                node <- existing::UpsertN({email: email})
+                RETURN node
+        "#;
+
+        let content = write_to_temp_file(vec![source]);
+        let parsed = SparrowParser::parse_source(&content).unwrap();
+        let result = crate::sparrowc::analyzer::analyze(&parsed);
+
+        assert!(result.is_ok());
+        let (diagnostics, output) = result.unwrap();
+        assert!(diagnostics.is_empty(), "unexpected diagnostics: {:?}", diagnostics);
+
+        // The UpsertN statement must use the None-branch (source = None, source_is_plural = true)
+        // so the generator emits the collect::<Vec> + upsert_n_with_defaults block form.
+        let upsert_traversal = output
+            .queries
+            .first()
+            .expect("expected generated query")
+            .statements
+            .iter()
+            .find_map(|stmt| match stmt {
+                GeneratedStatement::Assignment(assign) => match assign.value.as_ref() {
+                    GeneratedStatement::Traversal(traversal) => match &traversal.traversal_type {
+                        TraversalType::UpsertN { source, source_is_plural, .. } => {
+                            Some((source.clone(), *source_is_plural))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("expected UpsertN traversal");
+
+        // source must be None (None-branch block form, not FromSingle which calls
+        // collect_to_obj()? at assignment time and fails on first insert).
+        assert!(
+            upsert_traversal.0.is_none(),
+            "UpsertN via NFromIndex variable must use the None-branch (inline block) form, \
+             not FromSingle — FromSingle fails on first insert because the assignment already \
+             called collect_to_obj()? which returns Err on an empty index lookup"
+        );
+        assert!(upsert_traversal.1, "source_is_plural must be true for the None-branch");
     }
 }

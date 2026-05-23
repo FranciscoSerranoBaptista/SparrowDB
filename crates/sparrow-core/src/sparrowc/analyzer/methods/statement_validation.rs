@@ -13,13 +13,14 @@ use crate::{
         },
         generator::{
             queries::Query as GeneratedQuery,
+            source_steps::SourceStep,
             statements::Statement as GeneratedStatement,
             statements::{
                 Assignment as GeneratedAssignment, Drop as GeneratedDrop,
                 ForEach as GeneratedForEach, ForLoopInVariable, ForVariable,
             },
             traversal_steps::ShouldCollect,
-            utils::GenRef,
+            utils::{GenRef, Separator},
         },
         parser::types::*,
     },
@@ -85,6 +86,13 @@ pub(crate) fn validate_statements<'a>(
             // Store projection metadata from the traversal if available
             if let Some(GeneratedStatement::Traversal(ref tr)) = stmt {
                 var_info.store_projection_metadata(tr);
+                // If the RHS is a secondary-index lookup (N<Type>({field: value})), remember
+                // the source step. UpsertN will detect this and inline the lookup into the
+                // None-branch block form, which handles an empty result (first insert) by
+                // creating a new node — unlike collect_to_obj()? which errors on empty.
+                if let Separator::Period(SourceStep::NFromIndex(_)) = &tr.source_step {
+                    var_info.index_source_step = Some(tr.source_step.inner().clone());
+                }
             }
             scope.insert(assign.variable.as_str(), var_info);
 

@@ -58,12 +58,18 @@ pub fn seed_graph(storage: &SparrowGraphStorage, node_count: usize) -> Vec<u128>
         .expect("failed to open write txn");
 
     let mut ids: Vec<u128> = Vec::with_capacity(node_count);
-    for _ in 0..node_count {
+    for i in 0..node_count {
         let node = G::new_mut(storage, &arena, &mut wtxn)
             .add_n("person", None, None)
             .collect_to_obj()
             .expect("add_n failed");
         ids.push(node.id());
+        // v6 UUIDs are timestamp-based; rapid generation can produce non-monotonic
+        // u128 values which trips LMDB's PutFlags::APPEND check inside add_n.
+        // A 1µs yield every 500 nodes lets the clock advance, keeping IDs ordered.
+        if i % 500 == 499 {
+            std::thread::sleep(std::time::Duration::from_micros(1));
+        }
     }
 
     for window in ids.windows(2) {

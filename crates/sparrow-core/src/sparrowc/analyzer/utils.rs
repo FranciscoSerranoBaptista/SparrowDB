@@ -318,6 +318,14 @@ pub(super) struct VariableInfo {
         String,
         crate::sparrowc::generator::traversal_steps::NestedTraversalInfo,
     >,
+    /// When this variable was assigned from `N<Type>({field: value})` (NFromIndex),
+    /// stores the original `SourceStep::NFromIndex(...)` so UpsertN can inline it.
+    ///
+    /// The assignment uses `collect_to_obj()?` which returns `Err("No value found")`
+    /// on an empty index — breaking create-or-update (upsert on first insert).
+    /// UpsertN detects this field and switches to the `None`-branch block form
+    /// (which uses `collect::<Vec>()` and handles empty by creating a new node).
+    pub index_source_step: Option<crate::sparrowc::generator::source_steps::SourceStep>,
 }
 
 impl VariableInfo {
@@ -334,6 +342,7 @@ impl VariableInfo {
             excluded_fields: Vec::new(),
             has_spread: false,
             nested_traversals: std::collections::HashMap::new(),
+            index_source_step: None,
         }
     }
 
@@ -350,6 +359,7 @@ impl VariableInfo {
             excluded_fields: Vec::new(),
             has_spread: false,
             nested_traversals: std::collections::HashMap::new(),
+            index_source_step: None,
         }
     }
 
@@ -366,6 +376,7 @@ impl VariableInfo {
             excluded_fields: Vec::new(),
             has_spread: false,
             nested_traversals: std::collections::HashMap::new(),
+            index_source_step: None,
         }
     }
 
