@@ -142,3 +142,104 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use bumpalo::Bump;
+    use heed3::RoTxn;
+    use tempfile::TempDir;
+
+    use crate::{
+        protocol::value::Value,
+        sparrow_engine::{
+            storage_core::SparrowGraphStorage,
+            traversal_core::{
+                ops::{
+                    g::G,
+                    source::add_n::AddNAdapter,
+                    vectors::search_n::SearchNAdapter,
+                },
+                traversal_value::TraversalValue,
+            },
+            vector_core::vector::HVector,
+        },
+        utils::properties::ImmutablePropertiesMap,
+    };
+
+    type Filter = fn(&HVector, &RoTxn) -> bool;
+
+    fn setup_test_db() -> (TempDir, Arc<SparrowGraphStorage>) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().to_str().unwrap();
+        let storage = SparrowGraphStorage::new(
+            db_path,
+            crate::sparrow_engine::traversal_core::config::Config::default(),
+            Default::default(),
+        )
+        .unwrap();
+        (temp_dir, Arc::new(storage))
+    }
+
+    #[test]
+    fn test_add_n_and_search_n_round_trip() {
+        let (_temp_dir, storage) = setup_test_db();
+
+        // --- write phase: insert a node with a vector embedding ---
+        let write_arena = Bump::new();
+        let mut txn = storage.graph_env.write_txn().unwrap();
+
+        let props_map = ImmutablePropertiesMap::new(
+            1,
+            std::iter::once((write_arena.alloc_str("name") as &str, Value::String("Alice".to_string()))),
+            &write_arena,
+        );
+
+        let inserted = G::new_mut(&storage, &write_arena, &mut txn)
+            .add_n_with_vectors(
+                "Person",
+                Some(props_map),
+                None,
+                Some(&[("Person.embedding", &[0.1_f32, 0.2, 0.3, 0.4])]),
+            )
+            .collect_to_obj()
+            .unwrap();
+
+        let inserted_id = inserted.id();
+        let inserted_label = inserted.label().to_string();
+
+        txn.commit().unwrap();
+
+        // --- read phase: search for the node by its vector ---
+        let read_arena = Bump::new();
+        let txn = storage.graph_env.read_txn().unwrap();
+
+        let query = read_arena.alloc_slice_copy(&[0.1_f64, 0.2, 0.3, 0.4]);
+        let label = read_arena.alloc_str("Person.embedding");
+
+        let results = G::new(&storage, &txn, &read_arena)
+            .search_n::<Filter, usize>(query, 1usize, label, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        // --- assertions ---
+        assert_eq!(results.len(), 1, "expected exactly one result from search_n");
+
+        let result = &results[0];
+        assert_eq!(result.id(), inserted_id, "result node id should match inserted node id");
+        assert_eq!(inserted_label, "Person", "inserted node should have label 'Person'");
+        assert_eq!(result.label(), "Person", "result node should have label 'Person'");
+
+        if let TraversalValue::Node(node) = result {
+            let name = node.get_property("name");
+            assert_eq!(
+                name,
+                Some(&Value::String("Alice".to_string())),
+                "node should have name='Alice'"
+            );
+        } else {
+            panic!("expected TraversalValue::Node, got {:?}", result);
+        }
+    }
+}
