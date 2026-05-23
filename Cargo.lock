@@ -4665,6 +4665,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sparrow-benches"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "criterion",
+ "rand 0.9.1",
+ "sparrow-core",
+ "tempfile",
+]
+
+[[package]]
 name = "sparrow-chef"
 version = "0.1.0"
 dependencies = [
