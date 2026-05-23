@@ -2,7 +2,10 @@ use crate::{
     sparrowc::parser::{
         SparrowParser, ParserError, Rule,
         location::HasLoc,
-        types::{IdType, StartNode, Traversal, ValueType},
+        types::{
+            EvaluatesToNumber, EvaluatesToNumberType, IdType, SearchNodeVector, StartNode,
+            Traversal, ValueType, VectorData,
+        },
         utils::{PairTools, PairsTools},
     },
     protocol::value::Value,
@@ -206,6 +209,9 @@ impl SparrowParser {
                 Ok(StartNode::Edge { edge_type, ids })
             }
             Rule::identifier => Ok(StartNode::Identifier(pair.as_str().to_string())),
+            Rule::search_node_vector => {
+                Ok(StartNode::SearchNodeVector(self.parse_search_node_vector(pair)?))
+            }
             Rule::search_vector => Ok(StartNode::SearchVector(self.parse_search_vector(pair)?)),
             Rule::start_vector => {
                 let pairs = pair.into_inner();
@@ -319,5 +325,86 @@ impl SparrowParser {
             }
             _ => Ok(StartNode::Anonymous),
         }
+    }
+
+    pub(super) fn parse_search_node_vector(
+        &self,
+        pair: Pair<Rule>,
+    ) -> Result<SearchNodeVector, ParserError> {
+        let mut node_type = String::new();
+        let mut field_name = String::new();
+        let mut data = None;
+        let mut k = None;
+
+        for p in pair.clone().into_inner() {
+            match p.as_rule() {
+                Rule::type_dot_field => {
+                    let mut inner = p.into_inner();
+                    node_type = inner
+                        .next()
+                        .ok_or_else(|| ParserError::from("missing node type in SearchN"))?
+                        .as_str()
+                        .to_string();
+                    field_name = inner
+                        .next()
+                        .ok_or_else(|| ParserError::from("missing field name in SearchN"))?
+                        .as_str()
+                        .to_string();
+                }
+                Rule::vector_data => {
+                    let inner = p.into_inner().next()
+                        .ok_or_else(|| ParserError::from("empty vector_data in SearchN"))?;
+                    match inner.as_rule() {
+                        Rule::identifier => {
+                            data = Some(VectorData::Identifier(inner.as_str().to_string()));
+                        }
+                        Rule::vec_literal => {
+                            data = Some(VectorData::Vector(self.parse_vec_literal(inner)?));
+                        }
+                        Rule::embed_method => {
+                            return Err(ParserError::from(
+                                "Embed() is not supported in SearchN; use a Vec<f64> parameter",
+                            ));
+                        }
+                        _ => {
+                            return Err(ParserError::from(format!(
+                                "Unexpected rule in SearchN vector_data: {:?}",
+                                inner.as_rule()
+                            )));
+                        }
+                    }
+                }
+                Rule::integer => {
+                    k = Some(EvaluatesToNumber {
+                        loc: p.loc(),
+                        value: EvaluatesToNumberType::I32(
+                            p.as_str()
+                                .parse::<i32>()
+                                .map_err(|_| ParserError::from("Invalid integer k in SearchN"))?,
+                        ),
+                    });
+                }
+                Rule::identifier => {
+                    k = Some(EvaluatesToNumber {
+                        loc: p.loc(),
+                        value: EvaluatesToNumberType::Identifier(p.as_str().to_string()),
+                    });
+                }
+                _ => {
+                    return Err(ParserError::from(format!(
+                        "Unexpected rule in SearchN: {:?}",
+                        p.as_rule()
+                    )));
+                }
+            }
+        }
+
+        Ok(SearchNodeVector {
+            loc: pair.loc(),
+            node_type,
+            field_name,
+            data,
+            k,
+        })
     }
 }

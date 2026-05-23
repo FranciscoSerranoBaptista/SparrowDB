@@ -135,6 +135,10 @@ impl SparrowParser {
                 loc: pair.loc(),
                 expr: ExpressionType::SearchVector(self.parse_search_vector(pair)?),
             }),
+            Rule::search_node_vector => Ok(Expression {
+                loc: pair.loc(),
+                expr: ExpressionType::SearchNodeVector(self.parse_search_node_vector(pair)?),
+            }),
             Rule::none => Ok(Expression {
                 loc: pair.loc(),
                 expr: ExpressionType::Empty,
