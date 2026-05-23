@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/sparrow-benches",
     "crates/sparrow-core",
     "crates/sparrow-container",
     "crates/sparrow-macros",
