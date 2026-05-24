@@ -6,6 +6,43 @@ All notable changes to SparrowDB are documented here.
 
 ## [Unreleased]
 
+### Performance
+
+**Compiler: WHERE+EQ Index Optimization**
+- `N<Type>::WHERE(_::{field}::EQ(value))` on `@indexed` or `@unique` fields now compiles to an O(log n) B-tree index lookup (`NFromIndex`) instead of an O(n) full table scan + filter (`NFromType` + `filter_ref`)
+- For bulk imports of 43K records this reduces total comparisons from ~878 million (O(n²)) to ~700K (O(n log n))
+- The optimizer only fires on simple equality checks with primitive/literal RHS values; compound WHERE, sub-traversal comparisons, and non-indexed fields are left unchanged
+
+**Periodic LMDB Sync**
+- Writer thread now calls `force_sync()` every 500 write transactions to flush dirty pages and bound RSS growth during bulk imports
+- Final `force_sync()` on shutdown ensures data durability before process exit
+
+### New Features
+
+**OrbStack Container Runtime**
+- Added `OrbStack` as a container runtime option alongside Docker and Podman (`container_runtime = "orbstack"` in `sparrow.toml`)
+- OrbStack uses the Docker CLI (drop-in compatible) with better macOS resource management and stability
+- Startup detection checks `open -a OrbStack` exit code and reports a clear error if OrbStack is not installed
+- OrbStack is macOS-only; other platforms get an explicit error message
+
+**Bulk Import Resilience**
+- `sparrow import` now has a 30-second HTTP request timeout and 10-second connect timeout — no longer hangs forever on a dead server
+- Ctrl+C during import sets a graceful abort flag, drains in-flight requests, and prints an ok/failed/pending summary before exiting with code 130
+- `.ndjson` and `.jsonl` files are now properly supported with a dedicated newline-delimited JSON reader (`read_ndjson`) — previously these extensions were mapped to the JSON array parser which always failed on multi-record NDJSON input
+- Added `ImportFormat::Ndjson` variant; `--format ndjson` and `--format jsonl` accepted as explicit overrides
+
+### Bug Fixes
+
+**Storage Engine**
+- Reduced default `db_max_size_gb` from 20 to 4 across all code paths (`Config::default()`, `init_config()`, `get_db_max_size_gb()`, `storage_core::new()`) — the previous 20GB default caused excessive page-fault pressure in containers with 2GB memory limits
+- Fixed stale LMDB lock file cleanup on startup: uses correct filename `lock.mdb` (subdirectory mode), logs errors instead of silently swallowing them, and only removes orphaned locks (lock file present without data file)
+
+**CLI**
+- `sparrow check` now shows actual compiler errors on failure (previously `handle_cargo_check_failure` ignored all parameters and showed only a generic message)
+- `sparrow check` now warns when file restore fails instead of silently swallowing errors (a failed restore leaves stale generated code in `sparrow-repo-copy` which busts Docker layer cache)
+- `sparrow check` sends success telemetry (was only sent on failure)
+- `sparrow check` uses `project.sparrow_dir` instead of hardcoded `.sparrow` path for the shared `check-cache` target directory
+
 ### New Features
 
 **Schema Migrations**
