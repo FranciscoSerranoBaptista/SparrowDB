@@ -201,7 +201,7 @@ async fn prune_system_wide() -> Result<()> {
 
     let op = Operation::new("Pruning", "system");
 
-    for runtime in [ContainerRuntime::Docker, ContainerRuntime::Podman] {
+    for runtime in [ContainerRuntime::Docker, ContainerRuntime::Podman, ContainerRuntime::OrbStack] {
         if DockerManager::check_runtime_available(runtime).is_ok() {
             let mut runtime_step = Step::with_messages(
                 &format!("Cleaning {} images", runtime.label()),

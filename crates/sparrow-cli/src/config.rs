@@ -58,6 +58,7 @@ pub enum ContainerRuntime {
     #[default]
     Docker,
     Podman,
+    OrbStack,
 }
 
 impl ContainerRuntime {
@@ -65,6 +66,7 @@ impl ContainerRuntime {
         match self {
             Self::Docker => "docker",
             Self::Podman => "podman",
+            Self::OrbStack => "docker", // OrbStack provides its own docker-compatible binary
         }
     }
 
@@ -72,6 +74,7 @@ impl ContainerRuntime {
         match self {
             Self::Docker => "DOCKER",
             Self::Podman => "PODMAN",
+            Self::OrbStack => "ORBSTACK",
         }
     }
 }
@@ -198,7 +201,7 @@ fn default_true() -> bool {
 fn default_m() -> u32 { 16 }
 fn default_ef_construction() -> u32 { 128 }
 fn default_ef_search() -> u32 { 768 }
-fn default_db_max_size_gb() -> u32 { 20 }
+fn default_db_max_size_gb() -> u32 { 4 }
 
 fn default_embedding_model() -> Option<String> {
     Some("text-embedding-ada-002".to_string())

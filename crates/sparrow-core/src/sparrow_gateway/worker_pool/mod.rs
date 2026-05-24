@@ -291,6 +291,11 @@ impl Worker {
 
             // Single-threaded writer: process one request at a time, waiting for
             // any continuations to complete before moving to the next request.
+            // Periodically flush dirty LMDB pages to bound RSS growth during
+            // bulk imports.
+            let mut write_count: u64 = 0;
+            const SYNC_INTERVAL: u64 = 500;
+
             loop {
                 match rx.recv() {
                     Ok((req, ret_chan)) => {
@@ -320,9 +325,21 @@ impl Worker {
                                 );
                             }
                         }
+
+                        write_count += 1;
+                        if write_count % SYNC_INTERVAL == 0 {
+                            if let Err(e) = graph_access.storage.graph_env.force_sync() {
+                                error!("LMDB force_sync failed after {} writes: {e}", write_count);
+                            } else {
+                                trace!("LMDB force_sync after {} writes", write_count);
+                            }
+                        }
                     }
                     Err(_) => {
                         trace!("Writer request channel was dropped, shutting down");
+                        if let Err(e) = graph_access.storage.graph_env.force_sync() {
+                            error!("LMDB final force_sync failed: {e}");
+                        }
                         break;
                     }
                 }

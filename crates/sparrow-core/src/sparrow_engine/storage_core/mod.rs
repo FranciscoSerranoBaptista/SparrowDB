@@ -101,10 +101,24 @@ pub mod lmdb {
         ) -> Result<SparrowGraphStorage, GraphError> {
             fs::create_dir_all(path)?;
 
-            let db_size = if config.db_max_size_gb.unwrap_or(100) >= 9999 {
+            // Clean up stale LMDB lock file from unclean shutdown (e.g., OOM kill).
+            // LMDB re-creates the lock file on env open, so removing an orphaned one is safe.
+            let lock_path = std::path::Path::new(path).join("data.mdb-lock");
+            let data_path = std::path::Path::new(path).join("data.mdb");
+            if lock_path.exists() && !data_path.exists() {
+                tracing::warn!("Removing orphaned LMDB lock file: {}", lock_path.display());
+                let _ = fs::remove_file(&lock_path);
+            } else if lock_path.exists() {
+                tracing::info!(
+                    "LMDB lock file present at {} — normal if previous shutdown was clean",
+                    lock_path.display()
+                );
+            }
+
+            let db_size = if config.db_max_size_gb.unwrap_or(4) >= 9999 {
                 9998
             } else {
-                config.db_max_size_gb.unwrap_or(100)
+                config.db_max_size_gb.unwrap_or(4)
             };
 
             let graph_env = unsafe {

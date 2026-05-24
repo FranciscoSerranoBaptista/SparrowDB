@@ -134,6 +134,81 @@ fn is_simple_property_traversal(tr: &Traversal) -> Option<(String, String)> {
     }
 }
 
+/// Checks if a WHERE step that was just added can be replaced with an index lookup.
+///
+/// Pattern: `N<Type>::WHERE(_::{field}::EQ(value))` where `field` is @indexed or @unique.
+/// When detected, replaces NFromType source with NFromIndex and removes the WHERE step.
+fn try_optimize_where_to_index(
+    ctx: &Ctx<'_>,
+    gen_traversal: &mut GeneratedTraversal,
+    node_type: &str,
+) -> bool {
+    // 1. Source must be NFromType
+    let source_label = match &gen_traversal.source_step {
+        Separator::Period(SourceStep::NFromType(nft)) => nft.label.clone(),
+        _ => return false,
+    };
+
+    // 2. Last step must be a WHERE with a traversal expression
+    let where_expr_traversal = match gen_traversal.steps.last() {
+        Some(sep) => match sep.inner() {
+            GeneratedStep::Where(Where::Ref(wr)) => match &wr.expr {
+                BoExp::Expr(tr) => tr,
+                _ => return false,
+            },
+            _ => return false,
+        },
+        None => return false,
+    };
+
+    // 3. Traversal must have exactly 2 steps: PropertyFetch + BoolOp::Eq
+    if where_expr_traversal.steps.len() != 2 {
+        return false;
+    }
+
+    let prop_name = match where_expr_traversal.steps[0].inner() {
+        GeneratedStep::PropertyFetch(p) => p,
+        _ => return false,
+    };
+
+    let eq_value = match where_expr_traversal.steps[1].inner() {
+        GeneratedStep::BoolOp(BoolOp::Eq(eq)) => &eq.right,
+        _ => return false,
+    };
+
+    // 4. Extract property name string
+    let prop_name_str = match prop_name {
+        GenRef::Literal(s) | GenRef::Std(s) | GenRef::Ref(s) => s.clone(),
+        _ => return false,
+    };
+
+    // 5. Property must be indexed on this node type
+    let node_fields = match ctx.node_fields.get(node_type) {
+        Some(fields) => fields,
+        None => return false,
+    };
+
+    let field_def = match node_fields.get(prop_name_str.as_str()) {
+        Some(f) => f,
+        None => return false,
+    };
+
+    if !field_def.is_indexed() {
+        return false;
+    }
+
+    // All conditions met — rewrite source to NFromIndex and drop the WHERE step
+    gen_traversal.source_step = Separator::Period(SourceStep::NFromIndex(NFromIndex {
+        label: source_label,
+        index: GenRef::Literal(prop_name_str),
+        key: eq_value.clone(),
+    }));
+
+    gen_traversal.steps.pop(); // Remove the WHERE step
+
+    true
+}
+
 /// Validates the traversal and returns the end type of the traversal
 ///
 /// This method also builds the generated traversal (`gen_traversal`) as it analyzes the traversal
@@ -1026,6 +1101,14 @@ pub(crate) fn validate_traversal<'a>(
                             E655,
                             "unexpected statement type in Where clause"
                         );
+                    }
+                }
+
+                // Optimization: if this WHERE is a simple equality on an indexed field,
+                // replace the NFromType scan with an NFromIndex lookup (O(log n) vs O(n)).
+                if let Type::Nodes(Some(ref nt)) = cur_ty {
+                    if try_optimize_where_to_index(ctx, gen_traversal, nt) {
+                        tracing::trace!("Optimized WHERE to index lookup for N<{}>", nt);
                     }
                 }
             }

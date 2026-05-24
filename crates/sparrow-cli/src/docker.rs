@@ -369,6 +369,29 @@ impl<'a> DockerManager<'a> {
                 }
             }
 
+            // OrbStack on macOS
+            (ContainerRuntime::OrbStack, "macos") => {
+                Step::verbose_substep("Starting OrbStack for macOS...");
+                Command::new("open")
+                    .args(["-a", "OrbStack"])
+                    .output()
+                    .map_err(|e| eyre!("Failed to start OrbStack: {}", e))?;
+            }
+
+            // OrbStack on Linux
+            (ContainerRuntime::OrbStack, "linux") => {
+                Step::verbose_substep("Starting OrbStack on Linux...");
+                let result = Command::new("orbctl").args(["start"]).output();
+                match result {
+                    Ok(output) if output.status.success() => {}
+                    _ => {
+                        return Err(eyre!(
+                            "Failed to start OrbStack. Is it installed? See https://orbstack.dev"
+                        ));
+                    }
+                }
+            }
+
             (_, platform) => {
                 return Err(eyre!(
                     "Unsupported platform '{}' for auto-starting {}",
@@ -507,14 +530,11 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the cached repo workspace first (contains all dependencies and Cargo.toml files)
+# Copy workspace — Cargo.toml/Cargo.lock only needed for recipe generation
 COPY sparrow-repo-copy/ ./
 
-# Then overlay instance-specific files
-COPY sparrow-container/ ./sparrow-container/
-
 FROM chef AS planner
-# Generate the recipe file for dependency caching
+# Generate the recipe file for dependency caching (queries.rs not needed here)
 RUN cargo chef prepare --recipe-path recipe.json --bin sparrow-container
 
 FROM chef AS builder
@@ -526,7 +546,7 @@ RUN cargo chef cook {build_flag} --recipe-path recipe.json --bin sparrow-contain
 
 # Copy source code and build the application
 COPY sparrow-repo-copy/ ./
-COPY sparrow-container/ ./sparrow-container/
+COPY sparrow-container/ ./crates/sparrow-container/
 RUN cargo build {build_flag} --package sparrow-container
 
 # Runtime image
