@@ -60,12 +60,16 @@ impl<
     where
         K: Into<Value> + Serialize + Clone,
     {
+        // Keys in the HashMap are "TypeName:field_name" since the
+        // global-namespace fix.  Qualify by label so we find the right
+        // per-type LMDB database.
+        let qualified = format!("{label}:{index}");
         let db = self
             .storage
             .secondary_indices
-            .get(index)
+            .get(qualified.as_str())
             .ok_or(GraphError::New(format!(
-                "Secondary Index {index} not found"
+                "Secondary Index '{index}' not found for type '{label}'"
             )))
             .unwrap();
         let label_as_bytes = label.as_bytes();

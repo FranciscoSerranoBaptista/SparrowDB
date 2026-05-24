@@ -64,9 +64,13 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                         match node.properties {
                             None => {
-                                // Insert secondary indices
+                                // Insert secondary indices.
+                                // Keys in the HashMap are "TypeName:field_name".
                                 for (k, v) in props.iter() {
-                                    let Some(db) = self.storage.secondary_indices.get(*k) else {
+                                    let qualified = format!("{}:{k}", node.label);
+                                    let Some(db) =
+                                        self.storage.secondary_indices.get(qualified.as_str())
+                                    else {
                                         continue;
                                     };
 
@@ -96,8 +100,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                             }
                             Some(old) => {
                                 // Phase 1: Check unique constraints (read-only) before any writes.
+                                // Keys in the HashMap are "TypeName:field_name".
                                 'unique_check: for (k, v) in props.iter() {
-                                    let Some(db) = self.storage.secondary_indices.get(*k) else {
+                                    let qualified = format!("{}:{k}", node.label);
+                                    let Some(db) =
+                                        self.storage.secondary_indices.get(qualified.as_str())
+                                    else {
                                         continue;
                                     };
                                     if !matches!(db.1, SecondaryIndex::Unique(_)) {
@@ -138,8 +146,11 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                                 if update_ok {
                                     // Phase 2: Apply secondary index updates.
+                                    // Keys in the HashMap are "TypeName:field_name".
                                     for (k, v) in props.iter() {
-                                        let Some(db) = self.storage.secondary_indices.get(*k)
+                                        let qualified = format!("{}:{k}", node.label);
+                                        let Some(db) =
+                                            self.storage.secondary_indices.get(qualified.as_str())
                                         else {
                                             continue;
                                         };

@@ -70,7 +70,10 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         }
 
         for index in secondary_indices {
-            match self.storage.secondary_indices.get(index) {
+            // Keys in the HashMap are "TypeName:field_name" since the
+            // global-namespace fix.  Qualify with the node label.
+            let qualified = format!("{label}:{index}");
+            match self.storage.secondary_indices.get(qualified.as_str()) {
                 Some(db) => {
                     let key = match node.get_property(index) {
                         Some(value) => value,
@@ -170,7 +173,10 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         }
 
         for index in secondary_indices {
-            match self.storage.secondary_indices.get(index) {
+            // Keys in the HashMap are "TypeName:field_name" since the
+            // global-namespace fix.  Qualify with the node label.
+            let qualified = format!("{label}:{index}");
+            match self.storage.secondary_indices.get(qualified.as_str()) {
                 Some(db) => {
                     let key = match node.get_property(index) {
                         Some(value) => value,

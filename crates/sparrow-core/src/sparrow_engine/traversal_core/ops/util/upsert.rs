@@ -191,9 +191,15 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                 return Ok(TraversalValue::Node(node));
                             }
 
-                            // Insert secondary indices
+                            // Insert secondary indices.
+                            // Keys in the HashMap are "TypeName:field_name" so
+                            // we qualify with the node label to avoid
+                            // cross-type collisions.
                             for (k, v) in props.iter() {
-                                let Some(index) = self.storage.secondary_indices.get(*k) else {
+                                let qualified = format!("{}:{k}", node.label);
+                                let Some(index) =
+                                    self.storage.secondary_indices.get(qualified.as_str())
+                                else {
                                     continue;
                                 };
                                 update_secondary_index(index, self.txn, k, node.id, v)?;
@@ -214,7 +220,10 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                             }
 
                             for (k, v) in props.iter() {
-                                let Some(index) = self.storage.secondary_indices.get(*k) else {
+                                let qualified = format!("{}:{k}", node.label);
+                                let Some(index) =
+                                    self.storage.secondary_indices.get(qualified.as_str())
+                                else {
                                     continue;
                                 };
 
@@ -313,7 +322,10 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                     self.storage.nodes_db.put(self.txn, &node.id, &bytes)?;
 
                     for (k, v) in create_props.iter() {
-                        let Some((db, secondary_index)) = self.storage.secondary_indices.get(*k)
+                        // Keys in the HashMap are "TypeName:field_name".
+                        let qualified = format!("{}:{k}", label);
+                        let Some((db, secondary_index)) =
+                            self.storage.secondary_indices.get(qualified.as_str())
                         else {
                             continue;
                         };
@@ -549,10 +561,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                 Some(Ok(TraversalValue::Vector(mut vector))) => {
                     match vector.properties {
                         None => {
-                            // Insert secondary indices
+                            // Insert secondary indices.
+                            // Keys in the HashMap are "TypeName:field_name".
                             for (k, v) in props.iter() {
+                                let qualified = format!("{label}:{k}");
                                 let Some((db, secondary_index)) =
-                                    self.storage.secondary_indices.get(*k)
+                                    self.storage.secondary_indices.get(qualified.as_str())
                                 else {
                                     continue;
                                 };
@@ -587,8 +601,9 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                         }
                         Some(old) => {
                             for (k, v) in props.iter() {
+                                let qualified = format!("{label}:{k}");
                                 let Some((db, secondary_index)) =
-                                    self.storage.secondary_indices.get(*k)
+                                    self.storage.secondary_indices.get(qualified.as_str())
                                 else {
                                     continue;
                                 };
@@ -627,10 +642,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                 .cloned()
                                 .collect();
 
-                            // Add secondary indices for NEW properties (not in old)
+                            // Add secondary indices for NEW properties (not in old).
+                            // Keys in the HashMap are "TypeName:field_name".
                             for (k, v) in &diff {
+                                let qualified = format!("{label}:{k}");
                                 let Some((db, secondary_index)) =
-                                    self.storage.secondary_indices.get(*k)
+                                    self.storage.secondary_indices.get(qualified.as_str())
                                 else {
                                     continue;
                                 };
@@ -707,7 +724,10 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                         )?;
 
                     for (k, v) in create_props.iter() {
-                        let Some((db, secondary_index)) = self.storage.secondary_indices.get(*k)
+                        // Keys in the HashMap are "TypeName:field_name".
+                        let qualified = format!("{label}:{k}");
+                        let Some((db, secondary_index)) =
+                            self.storage.secondary_indices.get(qualified.as_str())
                         else {
                             continue;
                         };
@@ -744,10 +764,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                     match vector.properties {
                         None => {
-                            // Insert secondary indices
+                            // Insert secondary indices.
+                            // Keys in the HashMap are "TypeName:field_name".
                             for (k, v) in props.iter() {
+                                let qualified = format!("{label}:{k}");
                                 let Some((db, secondary_index)) =
-                                    self.storage.secondary_indices.get(*k)
+                                    self.storage.secondary_indices.get(qualified.as_str())
                                 else {
                                     continue;
                                 };
@@ -782,8 +804,9 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                         }
                         Some(old) => {
                             for (k, v) in props.iter() {
+                                let qualified = format!("{label}:{k}");
                                 let Some((db, secondary_index)) =
-                                    self.storage.secondary_indices.get(*k)
+                                    self.storage.secondary_indices.get(qualified.as_str())
                                 else {
                                     continue;
                                 };
@@ -822,10 +845,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                 .cloned()
                                 .collect();
 
-                            // Add secondary indices for NEW properties (not in old)
+                            // Add secondary indices for NEW properties (not in old).
+                            // Keys in the HashMap are "TypeName:field_name".
                             for (k, v) in &diff {
+                                let qualified = format!("{label}:{k}");
                                 let Some((db, secondary_index)) =
-                                    self.storage.secondary_indices.get(*k)
+                                    self.storage.secondary_indices.get(qualified.as_str())
                                 else {
                                     continue;
                                 };

@@ -250,4 +250,19 @@ impl SecondaryIndex {
             FieldPrefix::Optional | FieldPrefix::Empty => Self::None,
         }
     }
+
+    /// Like `from_field`, but qualifies the index key with the node type name so
+    /// that `UNIQUE INDEX session_id` on `N::Session` is stored as
+    /// `"Session:session_id"` instead of the bare `"session_id"`.  This prevents
+    /// cross-type namespace collisions when different node schemas share a field
+    /// name (e.g. `Session.session_id` uniquely indexed vs. `InsightEvent.session_id`
+    /// plain String).
+    pub fn from_field_for_type(type_name: &str, field: &Field) -> Self {
+        let qualified = format!("{type_name}:{}", field.name);
+        match field.prefix {
+            FieldPrefix::Index => Self::Index(qualified),
+            FieldPrefix::UniqueIndex => Self::Unique(qualified),
+            FieldPrefix::Optional | FieldPrefix::Empty => Self::None,
+        }
+    }
 }

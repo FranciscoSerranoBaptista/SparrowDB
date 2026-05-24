@@ -26,7 +26,6 @@ use crate::{
     },
 };
 use indexmap::IndexMap;
-use itertools::Itertools;
 use serde::Serialize;
 use std::{
     borrow::Cow,
@@ -71,14 +70,27 @@ impl<'a> Ctx<'a> {
         let all_schemas = build_field_lookups(src);
         let (node_fields, edge_fields, vector_fields) = all_schemas.get_latest();
 
-        // Build secondary indices from indexed fields
+        // Build secondary indices from indexed fields.
+        //
+        // Keys are qualified as "TypeName:field_name" so that a
+        // `UNIQUE INDEX session_id` on `N::Session` produces
+        // `"Session:session_id"` and never collides with a plain
+        // `session_id: String` field on `N::InsightEvent`.
+        // The old unqualified approach used a flat HashMap keyed by bare
+        // field name, which caused DuplicateKey errors for any node type
+        // that shared a field name with an indexed field on another type.
         let secondary_indices: Vec<SecondaryIndex> = src
             .get_latest_schema()?
             .node_schemas
             .iter()
-            .flat_map(|schema| schema.fields.iter().filter(|f| f.is_indexed()))
-            .dedup()
-            .map(SecondaryIndex::from_field)
+            .flat_map(|schema| {
+                let type_name = schema.name.1.clone();
+                schema
+                    .fields
+                    .iter()
+                    .filter(|f| f.is_indexed())
+                    .map(move |f| SecondaryIndex::from_field_for_type(&type_name, f))
+            })
             .collect();
 
         // Create the context first (without output populated)

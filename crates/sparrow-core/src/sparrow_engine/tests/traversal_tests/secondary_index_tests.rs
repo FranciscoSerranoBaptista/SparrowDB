@@ -27,8 +27,9 @@ fn setup_indexed_db() -> (TempDir, Arc<SparrowGraphStorage>) {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().to_str().unwrap();
     let mut config = crate::sparrow_engine::traversal_core::config::Config::default();
+    // Index keys are "TypeName:field_name" since the cross-type namespace fix.
     config.graph_config.as_mut().unwrap().secondary_indices =
-        Some(vec![SecondaryIndex::Index("name".to_string())]);
+        Some(vec![SecondaryIndex::Index("person:name".to_string())]);
     let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
     (temp_dir, Arc::new(storage))
 }
@@ -37,8 +38,9 @@ fn setup_unique_indexed_db() -> (TempDir, Arc<SparrowGraphStorage>) {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().to_str().unwrap();
     let mut config = crate::sparrow_engine::traversal_core::config::Config::default();
+    // Index keys are "TypeName:field_name" since the cross-type namespace fix.
     config.graph_config.as_mut().unwrap().secondary_indices =
-        Some(vec![SecondaryIndex::Unique("name".to_string())]);
+        Some(vec![SecondaryIndex::Unique("person:name".to_string())]);
     let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
     (temp_dir, Arc::new(storage))
 }
@@ -682,4 +684,96 @@ fn test_multiple_nodes_same_index_value() {
 
     assert_eq!(jane_nodes.len(), 1, "Expected 1 node with name=Jane");
     assert_eq!(jane_nodes[0].id(), node3_id);
+}
+
+// ============================================================================
+// Cross-Type Namespace Fix: UNIQUE INDEX on one type must not bleed into
+// a plain field with the same name on a different type.
+//
+// Regression test for: DuplicateKey("session_id") fired on UpsertInsightEvent
+// after Session nodes were imported, because the unique index was stored in a
+// global namespace keyed by bare field name.  Fixed by qualifying index keys
+// as "TypeName:field_name".
+// ============================================================================
+
+#[test]
+fn test_unique_index_does_not_collide_across_types() {
+    // Storage: Session has UNIQUE INDEX on session_id; InsightEvent has none.
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().to_str().unwrap();
+    let mut config = crate::sparrow_engine::traversal_core::config::Config::default();
+    config.graph_config.as_mut().unwrap().secondary_indices = Some(vec![
+        SecondaryIndex::Unique("Session:session_id".to_string()),
+        // InsightEvent has no index on session_id — intentionally absent.
+    ]);
+    let storage = Arc::new(
+        SparrowGraphStorage::new(db_path, config, Default::default()).unwrap(),
+    );
+
+    // 1. Insert a Session node with session_id = "s-001".
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+    G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "Session",
+            props_option(&arena, props! { "session_id" => "s-001" }),
+            Some(&["session_id"]),
+        )
+        .collect_to_obj()
+        .expect("Session node should insert without error");
+    txn.commit().unwrap();
+
+    // 2. Now upsert an InsightEvent node that also carries session_id = "s-001"
+    //    as a plain (non-indexed) field.  Before the fix this triggered
+    //    DuplicateKey("session_id") because the upsert found Session's unique
+    //    LMDB database when looking up "session_id" in the global HashMap.
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+    let result = G::new_mut(&storage, &arena, &mut txn)
+        .upsert_n(
+            "InsightEvent",
+            &[("session_id", Value::from("s-001")), ("slug", Value::from("insight-1"))],
+        )
+        .collect_to_obj();
+    txn.commit().unwrap();
+
+    assert!(
+        result.is_ok(),
+        "InsightEvent upsert with same session_id as an existing Session must not \
+         trigger DuplicateKey; got: {result:?}"
+    );
+
+    // 3. A second InsightEvent with the same session_id must also succeed.
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+    let result2 = G::new_mut(&storage, &arena, &mut txn)
+        .upsert_n(
+            "InsightEvent",
+            &[("session_id", Value::from("s-001")), ("slug", Value::from("insight-2"))],
+        )
+        .collect_to_obj();
+    txn.commit().unwrap();
+
+    assert!(
+        result2.is_ok(),
+        "Second InsightEvent upsert with same session_id must also succeed; got: {result2:?}"
+    );
+
+    // 4. The unique constraint on Session must still be enforced: a second
+    //    Session with the same session_id should fail.
+    let arena = Bump::new();
+    let mut txn = storage.graph_env.write_txn().unwrap();
+    let result3 = G::new_mut(&storage, &arena, &mut txn)
+        .add_n(
+            "Session",
+            props_option(&arena, props! { "session_id" => "s-001" }),
+            Some(&["session_id"]),
+        )
+        .collect_to_obj();
+    txn.abort();
+
+    assert!(
+        matches!(result3, Err(GraphError::DuplicateKey(_))),
+        "Session with duplicate session_id must still be rejected; got: {result3:?}"
+    );
 }

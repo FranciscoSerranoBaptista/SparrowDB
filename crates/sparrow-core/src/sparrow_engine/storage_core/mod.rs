@@ -469,8 +469,23 @@ pub mod lmdb {
             // delete secondary indices
             let node = self.get_node(txn, id, &arena)?;
             for (index_name, (db, _)) in &self.secondary_indices {
-                // Use get_property like we do when adding, to handle id, label, and regular properties consistently
-                match node.get_property(index_name) {
+                // index_name is "TypeName:field_name" (qualified since the
+                // global-namespace fix).  Only remove entries that belong to
+                // this node's type; other types may have an identically-named
+                // field that maps to a different LMDB database.
+                let (node_type, field_name) = match index_name.split_once(':') {
+                    Some(pair) => pair,
+                    None => {
+                        // Legacy bare name (pre-migration databases) — fall
+                        // back to the old behaviour so existing data is not
+                        // silently ignored.
+                        (index_name.as_str(), index_name.as_str())
+                    }
+                };
+                if node.label != node_type {
+                    continue;
+                }
+                match node.get_property(field_name) {
                     Some(value) => match bincode::serialize(value) {
                         Ok(serialized) => {
                             if let Err(e) = db.delete_one_duplicate(txn, &serialized, &node.id) {
@@ -480,8 +495,7 @@ pub mod lmdb {
                         Err(e) => return Err(GraphError::from(e)),
                     },
                     None => {
-                        // Property not found - this is expected for some indices
-                        // Continue to next index
+                        // Property not found - this is expected for some indices.
                     }
                 }
             }
