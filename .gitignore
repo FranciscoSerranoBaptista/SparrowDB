@@ -9,6 +9,9 @@ hack/
 /tmp
 /data
 .cargo/credentials
+.env
+.env.*
+!.env.example
 **/dist
 !packages/studio/dist/index.html
 **/dist-dev
