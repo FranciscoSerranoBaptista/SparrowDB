@@ -34,6 +34,12 @@ All notable changes to SparrowDB are documented here.
 ### Bug Fixes
 
 **Storage Engine**
+- Fixed cross-type `UNIQUE INDEX` namespace collision: secondary-index LMDB databases and HashMap entries are now keyed `"TypeName:field_name"` instead of the bare field name — previously, a `UNIQUE INDEX session_id` on `N::Session` caused `DuplicateKey("session_id")` errors on every other node type that carried a plain `session_id: String` field, even with no unique constraint declared; `drop_node` also incorrectly cleaned up index entries across types
+  - `SecondaryIndex::from_field_for_type(type_name, field)` added to qualify keys at compile time
+  - All write paths (`add_n`, `upsert_n`, `update`) and the read path (`n_from_index`) now compute `format!("{}:{}", label, field)` before the HashMap lookup
+  - `drop_node` parses the `"TypeName:"` prefix and skips entries that belong to a different node type
+  - Regression test: `test_unique_index_does_not_collide_across_types`
+  - **Migration note:** existing LMDB volumes have bare-named index databases (e.g. `"session_id"`); fresh databases are unaffected. A migration step for in-place upgrades will be added separately.
 - Reduced default `db_max_size_gb` from 20 to 4 across all code paths (`Config::default()`, `init_config()`, `get_db_max_size_gb()`, `storage_core::new()`) — the previous 20GB default caused excessive page-fault pressure in containers with 2GB memory limits
 - Fixed stale LMDB lock file cleanup on startup: uses correct filename `lock.mdb` (subdirectory mode), logs errors instead of silently swallowing them, and only removes orphaned locks (lock file present without data file)
 
