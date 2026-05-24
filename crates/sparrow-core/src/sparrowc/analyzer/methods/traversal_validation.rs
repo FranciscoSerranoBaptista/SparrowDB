@@ -172,7 +172,10 @@ fn try_optimize_where_to_index(
     };
 
     let eq_value = match where_expr_traversal.steps[1].inner() {
-        GeneratedStep::BoolOp(BoolOp::Eq(eq)) => &eq.right,
+        GeneratedStep::BoolOp(BoolOp::Eq(eq)) => match &eq.right {
+            GeneratedValue::Primitive(_) | GeneratedValue::Literal(_) => &eq.right,
+            _ => return false,
+        },
         _ => return false,
     };
 

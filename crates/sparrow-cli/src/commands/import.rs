@@ -34,6 +34,7 @@ use serde_json::{Map, Value};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportFormat {
     Json,
+    Ndjson,
     Csv,
     Parquet,
 }
@@ -42,6 +43,7 @@ impl std::fmt::Display for ImportFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ImportFormat::Json => write!(f, "json"),
+            ImportFormat::Ndjson => write!(f, "ndjson"),
             ImportFormat::Csv => write!(f, "csv"),
             ImportFormat::Parquet => write!(f, "parquet"),
         }
@@ -52,9 +54,10 @@ fn detect_format(path: &Path, override_fmt: Option<&str>) -> Result<ImportFormat
     if let Some(fmt) = override_fmt {
         return match fmt.to_ascii_lowercase().as_str() {
             "json" => Ok(ImportFormat::Json),
+            "ndjson" | "jsonl" => Ok(ImportFormat::Ndjson),
             "csv" => Ok(ImportFormat::Csv),
             "parquet" | "pq" => Ok(ImportFormat::Parquet),
-            other => bail!("unknown format '{}' (valid: json, csv, parquet)", other),
+            other => bail!("unknown format '{}' (valid: json, ndjson, csv, parquet)", other),
         };
     }
 
@@ -65,11 +68,12 @@ fn detect_format(path: &Path, override_fmt: Option<&str>) -> Result<ImportFormat
         .to_ascii_lowercase();
 
     match ext.as_str() {
-        "json" | "jsonl" | "ndjson" => Ok(ImportFormat::Json),
+        "json" => Ok(ImportFormat::Json),
+        "jsonl" | "ndjson" => Ok(ImportFormat::Ndjson),
         "csv" | "tsv" => Ok(ImportFormat::Csv),
         "parquet" | "pq" => Ok(ImportFormat::Parquet),
         other => bail!(
-            "cannot infer format from extension '.{}' — use --format json|csv|parquet",
+            "cannot infer format from extension '.{}' — use --format json|csv|parquet|ndjson",
             other
         ),
     }
@@ -101,6 +105,29 @@ fn read_json(path: &Path) -> Result<Vec<Map<String, Value>>> {
             top.type_name()
         ),
     }
+}
+
+/// Read a newline-delimited JSON file (one JSON object per line).
+fn read_ndjson(path: &Path) -> Result<Vec<Map<String, Value>>> {
+    use std::io::{BufRead, BufReader};
+
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("opening {}", path.display()))?;
+    let reader = BufReader::new(file);
+    let mut records = Vec::new();
+
+    for (i, line) in reader.lines().enumerate() {
+        let line = line.with_context(|| format!("reading line {} of {}", i + 1, path.display()))?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let obj: Map<String, Value> = serde_json::from_str(trimmed)
+            .with_context(|| format!("parsing JSON at line {} of {}", i + 1, path.display()))?;
+        records.push(obj);
+    }
+
+    Ok(records)
 }
 
 /// Read a CSV file.  Header row becomes parameter names; each subsequent row is
@@ -288,6 +315,7 @@ pub async fn run(
 
     let records: Vec<Map<String, Value>> = match fmt {
         ImportFormat::Json => read_json(&file)?,
+        ImportFormat::Ndjson => read_ndjson(&file)?,
         ImportFormat::Csv => read_csv(&file)?,
         ImportFormat::Parquet => read_parquet(&file)?,
     };
@@ -356,26 +384,12 @@ pub async fn run(
 
     let start = Instant::now();
 
-    // Install Ctrl+C handler to print summary on interrupt
+    // Install Ctrl+C handler — sets aborted flag so the stream drains gracefully
     {
-        let ok_count = Arc::clone(&ok_count);
-        let err_count = Arc::clone(&err_count);
         let aborted = Arc::clone(&aborted);
-        let pb = Arc::clone(&pb);
-        let total = total as u64;
         tokio::spawn(async move {
             if tokio::signal::ctrl_c().await.is_ok() {
-                aborted.store(true, Ordering::Relaxed);
-                pb.finish_and_clear();
-                let ok = ok_count.load(Ordering::Relaxed);
-                let err = err_count.load(Ordering::Relaxed);
-                eprintln!(
-                    "\nInterrupted — {} ok, {} failed, {} pending",
-                    ok,
-                    err,
-                    total - ok - err
-                );
-                std::process::exit(130);
+                aborted.store(true, Ordering::SeqCst);
             }
         });
     }
@@ -444,9 +458,19 @@ pub async fn run(
     pb.finish_and_clear();
 
     let elapsed = start.elapsed();
-    let ok = ok_count.load(Ordering::Relaxed);
-    let err = err_count.load(Ordering::Relaxed);
+    let ok = ok_count.load(Ordering::SeqCst);
+    let err = err_count.load(Ordering::SeqCst);
+    let was_interrupted = aborted.load(Ordering::SeqCst);
+    let pending = (total as u64).saturating_sub(ok + err);
     let throughput = ok as f64 / elapsed.as_secs_f64().max(0.001);
+
+    if was_interrupted {
+        eprintln!(
+            "\nInterrupted — {} ok, {} failed, {} pending",
+            ok, err, pending
+        );
+        std::process::exit(130);
+    }
 
     println!(
         "✓ {}/{} records imported  ({:.2}s, {:.0} rec/s)",
@@ -499,7 +523,8 @@ mod tests {
         assert_eq!(detect_format(Path::new("a.csv"), None).unwrap(), ImportFormat::Csv);
         assert_eq!(detect_format(Path::new("a.parquet"), None).unwrap(), ImportFormat::Parquet);
         assert_eq!(detect_format(Path::new("a.pq"), None).unwrap(), ImportFormat::Parquet);
-        assert_eq!(detect_format(Path::new("a.ndjson"), None).unwrap(), ImportFormat::Json);
+        assert_eq!(detect_format(Path::new("a.ndjson"), None).unwrap(), ImportFormat::Ndjson);
+        assert_eq!(detect_format(Path::new("a.jsonl"), None).unwrap(), ImportFormat::Ndjson);
     }
 
     #[test]

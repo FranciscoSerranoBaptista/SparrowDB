@@ -102,17 +102,14 @@ pub mod lmdb {
             fs::create_dir_all(path)?;
 
             // Clean up stale LMDB lock file from unclean shutdown (e.g., OOM kill).
-            // LMDB re-creates the lock file on env open, so removing an orphaned one is safe.
-            let lock_path = std::path::Path::new(path).join("data.mdb-lock");
+            // In subdirectory mode (heed3 default), the lock file is `lock.mdb`.
+            let lock_path = std::path::Path::new(path).join("lock.mdb");
             let data_path = std::path::Path::new(path).join("data.mdb");
             if lock_path.exists() && !data_path.exists() {
                 tracing::warn!("Removing orphaned LMDB lock file: {}", lock_path.display());
-                let _ = fs::remove_file(&lock_path);
-            } else if lock_path.exists() {
-                tracing::info!(
-                    "LMDB lock file present at {} — normal if previous shutdown was clean",
-                    lock_path.display()
-                );
+                if let Err(e) = fs::remove_file(&lock_path) {
+                    tracing::warn!("Failed to remove orphaned lock file: {e}");
+                }
             }
 
             let db_size = if config.db_max_size_gb.unwrap_or(4) >= 9999 {

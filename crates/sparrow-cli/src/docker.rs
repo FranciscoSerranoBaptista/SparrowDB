@@ -369,27 +369,23 @@ impl<'a> DockerManager<'a> {
                 }
             }
 
-            // OrbStack on macOS
+            // OrbStack on macOS (OrbStack is macOS-only)
             (ContainerRuntime::OrbStack, "macos") => {
                 Step::verbose_substep("Starting OrbStack for macOS...");
-                Command::new("open")
+                let output = Command::new("open")
                     .args(["-a", "OrbStack"])
                     .output()
                     .map_err(|e| eyre!("Failed to start OrbStack: {}", e))?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(eyre!(
+                        "OrbStack does not appear to be installed: {stderr}"
+                    ));
+                }
             }
 
-            // OrbStack on Linux
-            (ContainerRuntime::OrbStack, "linux") => {
-                Step::verbose_substep("Starting OrbStack on Linux...");
-                let result = Command::new("orbctl").args(["start"]).output();
-                match result {
-                    Ok(output) if output.status.success() => {}
-                    _ => {
-                        return Err(eyre!(
-                            "Failed to start OrbStack. Is it installed? See https://orbstack.dev"
-                        ));
-                    }
-                }
+            (ContainerRuntime::OrbStack, _) => {
+                return Err(eyre!("OrbStack is only supported on macOS"));
             }
 
             (_, platform) => {

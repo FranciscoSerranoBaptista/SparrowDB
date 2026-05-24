@@ -141,7 +141,7 @@ impl Config {
 	"graph_config": {
 		"secondary_indices": []
 	},
-	"db_max_size_gb": 10,
+	"db_max_size_gb": 4,
 	"mcp": true,
 	"bm25": true,
 	"embedding_model": "text-embedding-ada-002",
@@ -165,7 +165,7 @@ impl Config {
     }
 
     pub fn get_db_max_size_gb(&self) -> usize {
-        self.db_max_size_gb.unwrap_or(10)
+        self.db_max_size_gb.unwrap_or(4)
     }
 
     pub fn get_mcp(&self) -> bool {
@@ -241,7 +241,7 @@ impl Config {
         writeln!(
             f,
             "db_max_size_gb: Some({}),",
-            self.db_max_size_gb.unwrap_or(10)
+            self.db_max_size_gb.unwrap_or(4)
         )?;
         writeln!(f, "mcp: Some({}),", self.mcp.unwrap_or(true))?;
         writeln!(f, "bm25: Some({}),", self.bm25.unwrap_or(true))?;
@@ -293,7 +293,7 @@ impl Default for Config {
             graph_config: Some(GraphConfig {
                 secondary_indices: None,
             }),
-            db_max_size_gb: Some(10),
+            db_max_size_gb: Some(4),
             mcp: Some(true),
             bm25: Some(true),
             schema: None,
