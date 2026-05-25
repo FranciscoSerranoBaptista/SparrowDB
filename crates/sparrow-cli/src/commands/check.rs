@@ -247,6 +247,65 @@ async fn run_cargo_check(sparrow_container_dir: &Path, target_dir: &Path) -> Res
     })
 }
 
+/// Stage 1: scan generated Rust code for known-bad structural patterns.
+///
+/// Runs in-process at ~0ms. Catches known codegen bug classes before paying
+/// the 30–60s cargo check penalty.
+///
+/// If this fires, it means a known bug has regressed. The error message
+/// explicitly attributes it as a SparrowDB bug so the user knows not to
+/// fix their HQL.
+fn check_codegen_assertions(code: &str) -> Result<()> {
+    // Assertion 1: n_from_index key must not be a `.clone()` expression.
+    // The key parameter is the third argument (after two string literals).
+    // A quick scan: find every "n_from_index(" and check if the rest of
+    // the call (up to the closing paren) contains ".clone()".
+    for (line_num, line) in code.lines().enumerate() {
+        let line_num = line_num + 1;
+        if let Some(idx) = line.find("n_from_index(") {
+            let after = &line[idx..];
+            // Find the third comma (separating third arg from second)
+            let mut comma_count = 0;
+            let mut third_arg_start = None;
+            for (i, ch) in after.char_indices() {
+                if ch == ',' {
+                    comma_count += 1;
+                    if comma_count == 2 {
+                        third_arg_start = Some(i + 1);
+                        break;
+                    }
+                }
+            }
+            if let Some(start) = third_arg_start {
+                let third_arg = &after[start..];
+                if third_arg.contains(".clone()") {
+                    return Err(eyre::eyre!(
+                        "codegen bug [Stage 1 assertion]: n_from_index key argument contains \
+                         .clone() on line {line_num}.\n\
+                         This means the WHERE optimizer emitted an owned value instead of a \
+                         reference for the index key.\n\
+                         This is a SparrowDB bug. Please report with your .hx files at: \
+                         https://github.com/SparrowDB/sparrowdb/issues\n\
+                         Run `sparrow check --debug-codegen` to inspect the full generated output."
+                    ));
+                }
+            }
+        }
+
+        // Assertion 2: no UNKNOWN GeneratedValue placeholders.
+        if line.contains("/* UNKNOWN */") || line.contains("\"UNKNOWN\"") {
+            return Err(eyre::eyre!(
+                "codegen bug [Stage 1 assertion]: unknown GeneratedValue on line {line_num}.\n\
+                 The code generator produced a placeholder instead of a real Rust expression.\n\
+                 This is a SparrowDB bug. Please report with your .hx files at: \
+                 https://github.com/SparrowDB/sparrowdb/issues\n\
+                 Run `sparrow check --debug-codegen` to inspect the full generated output."
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Handle cargo check failure - print errors and offer GitHub issue creation.
 fn handle_cargo_check_failure(
     cargo_output: &CargoCheckOutput,
@@ -267,4 +326,40 @@ fn handle_cargo_check_failure(
     print_warning("Please report this issue at https://github.com/SparrowDB/sparrowdb/issues");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod assertion_tests {
+    use super::*;
+
+    #[test]
+    fn assertion_passes_on_clean_code() {
+        let code = r#"
+pub fn get_user(input: HandlerInput) -> Result<Response, GraphError> {
+    // sparrow:query=GetUser source=users.hx:1
+    let db = Arc::clone(&input.graph.storage);
+    let r = db.n_from_index("User", "slug", &data.slug);
+}
+"#;
+        assert!(check_codegen_assertions(code).is_ok());
+    }
+
+    #[test]
+    fn assertion_catches_clone_in_n_from_index() {
+        let code = r#"
+    let r = db.n_from_index("User", "slug", data.slug.clone());
+"#;
+        let result = check_codegen_assertions(code);
+        assert!(result.is_err(), "Expected assertion error for .clone() in n_from_index");
+        assert!(result.unwrap_err().to_string().contains("n_from_index"));
+    }
+
+    #[test]
+    fn assertion_catches_unknown_generated_value() {
+        let code = r#"
+    let val = /* UNKNOWN */;
+"#;
+        let result = check_codegen_assertions(code);
+        assert!(result.is_err(), "Expected assertion error for UNKNOWN generated value");
+    }
 }
