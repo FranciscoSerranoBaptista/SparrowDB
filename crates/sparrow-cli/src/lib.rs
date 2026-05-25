@@ -78,3 +78,14 @@ pub enum ProjectConfigAction {
         id: bool,
     },
 }
+
+#[cfg(test)]
+mod build_hash_tests {
+    #[test]
+    fn sparrow_build_hash_is_set() {
+        let hash = env!("SPARROW_BUILD_HASH");
+        assert!(!hash.is_empty(), "SPARROW_BUILD_HASH must not be empty");
+        // "unknown" is acceptable in environments without git
+        // but the variable must always be set
+    }
+}
