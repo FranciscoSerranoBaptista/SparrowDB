@@ -113,3 +113,44 @@ cargo test --package sparrow-cli
 Some integration tests start real Docker containers. They require Docker or Podman to be running and available in `PATH`. These tests are slow and should not be run in CI without a container runtime present.
 
 Tests that access shared state (e.g., a running Docker instance) use `serial_test` to prevent interference.
+
+---
+
+## CLI development rules
+
+- New subcommands go in `src/commands/` with a `pub async fn run(...)` entry point.
+- Async command handlers must use `tokio::process::Command` for any process spawning — never `std::process::Command` in async.
+- Always check exit codes explicitly. The most common silent failure: ignoring Docker process exit status and proceeding as if the command succeeded.
+- Test new commands locally with `sparrow check` before `sparrow push`.
+
+---
+
+## Agent invocation guide
+
+| Agent | When to invoke |
+|-------|---------------|
+| `rust-reviewer` | Any change to this crate — knows the `docker.rs` `std::process::Command` exception |
+| `silent-failure-hunter` | Exit code gaps, Docker errors silently swallowed, wrong results with no error |
+| `rust-build-resolver` | `cargo build` / `cargo check` failures |
+
+---
+
+## Skills reference
+
+| Skill | Purpose |
+|-------|---------|
+| `docs/skills/setup.md` | CLI command reference — expected behavior for each subcommand |
+| `docs/skills/debugging.md` | Debugging CLI runtime issues |
+
+---
+
+## Code graph
+
+Use `code-review-graph` MCP tools to navigate this crate efficiently:
+
+| Tool | How to use for sparrow-cli |
+|------|---------------------------|
+| `get_flow_tool` | Pass a command entry point (e.g. `push_command`) to trace execution end-to-end |
+| `get_impact_radius_tool` | Pass `docker` to see everything that depends on the Docker helpers |
+| `semantic_search_nodes_tool` | Find a specific command handler by keyword (e.g. `"stress run"`, `"backup snapshot"`) |
+| `traverse_graph_tool` | Follow the command dispatch chain from `main` through clap to the handler |
