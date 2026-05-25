@@ -346,6 +346,18 @@ fn translate_named_query(
             continue;
         }
 
+        // ── EWhere:{...} ───────────────────────────────────────────────────
+        if let Some(cond) = step.get("EWhere") {
+            flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
+            if let Some(uuids) = pending_uuid_ids.take() {
+                out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+                seed_var = Some(name.to_string());
+            }
+            let args = translate_ewhere(cond)?;
+            tool_args.extend(args);
+            continue;
+        }
+
         // ── Inject:"varname" ───────────────────────────────────────────────
         if let Some(inject_name) = step.get("Inject").and_then(|v| v.as_str()) {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
@@ -375,6 +387,44 @@ fn translate_named_query(
                 edge_type: EdgeType::Node,
                 filter: None,
             });
+            continue;
+        }
+
+        // ── OutN:"EDGE" — traverse outgoing edge to destination node ────────
+        //
+        // OutN is the HelixDB edge-to-node switch that, when used with a label from a
+        // node context, behaves identically to Out.  OutN without a label is not
+        // well-defined in this context; we log a warning and skip the step.
+        if let Some(out_n_val) = step.get("OutN") {
+            maybe_flush_uuid_lookup(&mut out, &mut pending_uuid_ids, &mut seed_var, name)?;
+            if let Some(edge) = out_n_val.as_str() {
+                tool_args.push(ToolArgs::OutStep {
+                    edge_label: edge.to_string(),
+                    edge_type: EdgeType::Node,
+                    filter: None,
+                });
+            } else {
+                warn!("v1_compat: OutN without a string edge label is not supported — use OutN:\"EDGE_LABEL\" or Out:\"EDGE_LABEL\"");
+            }
+            continue;
+        }
+
+        // ── InN:"EDGE" — traverse incoming edge to source node ──────────────
+        //
+        // InN is the HelixDB edge-to-node switch that, when used with a label from a
+        // node context, behaves identically to In.  InN without a label is not
+        // well-defined in this context; we log a warning and skip the step.
+        if let Some(in_n_val) = step.get("InN") {
+            maybe_flush_uuid_lookup(&mut out, &mut pending_uuid_ids, &mut seed_var, name)?;
+            if let Some(edge) = in_n_val.as_str() {
+                tool_args.push(ToolArgs::InStep {
+                    edge_label: edge.to_string(),
+                    edge_type: EdgeType::Node,
+                    filter: None,
+                });
+            } else {
+                warn!("v1_compat: InN without a string edge label is not supported — use InN:\"EDGE_LABEL\" or In:\"EDGE_LABEL\"");
+            }
             continue;
         }
 
@@ -587,6 +637,58 @@ fn translate_nwhere(cond: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError
     Err(CompatError::Translation(format!(
         "unsupported NWhere condition: {cond}"
     )))
+}
+
+/// Translate an `EWhere` condition object into tool args.
+///
+/// Mirrors `translate_nwhere` but produces `EFromType` (edge source) instead of
+/// `NFromType` (node source):
+/// `{"Eq": ["$label", {"String": T}]}` → `[EFromType(T)]`
+/// `{"And": [{"Eq": ["$label", {"String": T}]}, ...rest...]}` → `[EFromType(T), FilterItems(rest)]`
+fn translate_ewhere(cond: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError> {
+    if let Some(and_arr) = cond.get("And").and_then(|a| a.as_array()) {
+        let label_type = and_arr.iter().find_map(label_from_eq);
+        let rest: Vec<&sonic_rs::Value> =
+            and_arr.iter().filter(|c| label_from_eq(c).is_none()).collect();
+
+        let mut args = Vec::new();
+        if let Some(label) = label_type {
+            args.push(ToolArgs::EFromType { edge_type: label });
+        }
+        let filter_props = rest
+            .into_iter()
+            .map(translate_eq_condition)
+            .collect::<Result<Vec<_>, _>>()?;
+        let filter_props: Vec<FilterProperties> =
+            filter_props.into_iter().flatten().flatten().collect();
+        if !filter_props.is_empty() {
+            args.push(ToolArgs::FilterItems {
+                filter: FilterTraversal {
+                    properties: Some(vec![filter_props]),
+                    filter_traversals: None,
+                },
+            });
+        }
+        return Ok(args);
+    }
+
+    if cond.get("Eq").is_some() {
+        if let Some(label) = label_from_eq(cond) {
+            return Ok(vec![ToolArgs::EFromType { edge_type: label }]);
+        }
+        let props = translate_eq_condition(cond)?.unwrap_or_default();
+        if props.is_empty() {
+            return Ok(vec![]);
+        }
+        return Ok(vec![ToolArgs::FilterItems {
+            filter: FilterTraversal {
+                properties: Some(vec![props]),
+                filter_traversals: None,
+            },
+        }]);
+    }
+
+    Err(CompatError::Translation(format!("unsupported EWhere condition: {cond}")))
 }
 
 /// If this value is `{"Eq": ["$label", {"String": T}]}`, return Some(T).
@@ -1037,6 +1139,7 @@ mod tests {
         sparrow_gateway::router::router::HandlerInput,
     };
     use axum::body::Bytes;
+    use sonic_rs::{JsonContainerTrait, JsonValueTrait};
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -1066,9 +1169,64 @@ mod tests {
         }
     }
 
+    fn make_read_request(body: impl Into<Bytes>) -> Request {
+        Request {
+            name: "__v1_compat_read".to_string(),
+            req_type: RequestType::Query,
+            api_key: None,
+            body: body.into(),
+            in_fmt: Format::Json,
+            out_fmt: Format::Json,
+            pre_computed_embedding: None,
+        }
+    }
+
     fn node_count(graph: &SparrowGraphEngine) -> u64 {
         let txn = graph.storage.graph_env.read_txn().unwrap();
         graph.storage.nodes_db.len(&txn).unwrap_or(0)
+    }
+
+    /// Add a node with the given label and return its UUID string.
+    fn add_node(graph: &Arc<SparrowGraphEngine>, label: &str) -> String {
+        let body = format!(
+            r#"{{"request_type":"write","query":{{"queries":[{{"Query":{{"name":"n","steps":[{{"AddN":{{"label":"{label}","properties":[["_k",{{"Value":{{"String":"{label}"}}}}]]}}}}]}}}}],"returns":["n"]}}}}"#
+        );
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_write_request(body),
+            graph: graph.clone(),
+        })
+        .expect("add_node must succeed");
+        let json: sonic_rs::Value = sonic_rs::from_slice(&resp.body).expect("valid JSON response");
+        json.get("n")
+            .and_then(|n| n.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|id| id.as_str())
+            .expect("n.ids[0] must be a UUID string")
+            .to_string()
+    }
+
+    /// Create an edge from_id --label--> to_id.
+    fn add_edge(graph: &Arc<SparrowGraphEngine>, from_id: &str, to_id: &str, label: &str) {
+        let body = format!(r#"{{
+            "request_type": "write",
+            "query": {{
+                "queries": [
+                    {{"Query": {{"name": "src", "steps": [{{"N": {{"Ids": ["{from_id}"]}}}}]}}}},
+                    {{"Query": {{"name": "tgt", "steps": [{{"N": {{"Ids": ["{to_id}"]}}}}]}}}},
+                    {{"Query": {{"name": "e", "steps": [
+                        {{"Inject": "src"}},
+                        {{"AddE": {{"label": "{label}", "to": {{"Var": "tgt"}}, "properties": []}}}}
+                    ]}}}}
+                ],
+                "returns": ["e"]
+            }}
+        }}"#);
+        v1_compat_handler(HandlerInput {
+            request: make_write_request(body),
+            graph: graph.clone(),
+        })
+        .expect("add_edge must succeed");
     }
 
     /// A request with N AddN steps followed by a step that fails must commit
@@ -1157,5 +1315,149 @@ mod tests {
         let result = v1_compat_handler(input);
         assert!(result.is_ok(), "three AddN in one request should succeed");
         assert_eq!(node_count(&graph), 3, "all three nodes must be persisted");
+    }
+
+    // ── Bug-fix tests: EWhere and OutN/InN ───────────────────────────────────────
+
+    /// EWhere must return all edges whose `$label` matches the predicate.
+    ///
+    /// Bug A (before fix): EWhere is silently skipped → result_store has no entry for
+    /// the query name → response is `{}` (empty object, "r" key absent).
+    #[test]
+    #[serial_test::serial]
+    fn ewhere_returns_edges_matching_label() {
+        let (graph, _dir) = make_test_graph();
+        let a_id = add_node(&graph, "TestA");
+        let b_id = add_node(&graph, "TestB");
+        add_edge(&graph, &a_id, &b_id, "LINKS_TO");
+
+        let body = r#"{
+            "request_type": "read",
+            "query": {
+                "queries": [{"Query": {"name": "r", "steps": [
+                    {"EWhere": {"Eq": ["$label", {"String": "LINKS_TO"}]}}
+                ]}}],
+                "returns": ["r"]
+            }
+        }"#;
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("EWhere query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        // Bug A: before the fix the response was `{}` — the "r" key was absent entirely.
+        assert!(
+            json.get("r").is_some(),
+            "EWhere response must include the 'r' result key; got: {}",
+            sonic_rs::to_string(&json).unwrap_or_default()
+        );
+        let ids = json
+            .get("r")
+            .and_then(|r| r.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .expect("r.ids must be an array");
+        assert_eq!(
+            ids.len(),
+            1,
+            "exactly one LINKS_TO edge must be found; got {} ids",
+            ids.len()
+        );
+    }
+
+    /// OutN with a string edge label must traverse to the destination node.
+    ///
+    /// Bug B (before fix): OutN is silently skipped → pending_uuid_ids for the
+    /// preceding N:{Ids:[...]} step is flushed at end-of-query → starting node
+    /// returned unchanged (TestA instead of TestB).
+    #[test]
+    #[serial_test::serial]
+    fn outn_traverses_to_destination_node() {
+        let (graph, _dir) = make_test_graph();
+        let a_id = add_node(&graph, "TestA");
+        let b_id = add_node(&graph, "TestB");
+        add_edge(&graph, &a_id, &b_id, "LINKS_TO");
+
+        let body = format!(r#"{{
+            "request_type": "read",
+            "query": {{
+                "queries": [{{"Query": {{"name": "r", "steps": [
+                    {{"N": {{"Ids": ["{a_id}"]}}}},
+                    {{"OutN": "LINKS_TO"}}
+                ]}}}}],
+                "returns": ["r"]
+            }}
+        }}"#);
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("OutN query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        let label = json
+            .get("r")
+            .and_then(|r| r.get("properties"))
+            .and_then(|p| p.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|n| n.get("label"))
+            .and_then(|l| l.as_str())
+            .expect("r.properties[0].label must be present");
+
+        assert_eq!(
+            label, "TestB",
+            "OutN must return the destination node (TestB); got '{label}' — Bug B: starting node returned unchanged"
+        );
+    }
+
+    /// InN with a string edge label must traverse to the source node.
+    ///
+    /// Bug B (before fix): InN is silently skipped → starting node returned unchanged
+    /// (TestB instead of TestA).
+    #[test]
+    #[serial_test::serial]
+    fn inn_traverses_to_source_node() {
+        let (graph, _dir) = make_test_graph();
+        let a_id = add_node(&graph, "TestA");
+        let b_id = add_node(&graph, "TestB");
+        add_edge(&graph, &a_id, &b_id, "LINKS_TO");
+
+        let body = format!(r#"{{
+            "request_type": "read",
+            "query": {{
+                "queries": [{{"Query": {{"name": "r", "steps": [
+                    {{"N": {{"Ids": ["{b_id}"]}}}},
+                    {{"InN": "LINKS_TO"}}
+                ]}}}}],
+                "returns": ["r"]
+            }}
+        }}"#);
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("InN query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        let label = json
+            .get("r")
+            .and_then(|r| r.get("properties"))
+            .and_then(|p| p.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|n| n.get("label"))
+            .and_then(|l| l.as_str())
+            .expect("r.properties[0].label must be present");
+
+        assert_eq!(
+            label, "TestA",
+            "InN must return the source node (TestA); got '{label}' — Bug B: starting node returned unchanged"
+        );
     }
 }
