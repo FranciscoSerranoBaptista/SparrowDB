@@ -19,7 +19,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-fmt-on-edit.sh"
+          },
+          {
+            "type": "command",
             "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-async-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-check-on-edit.sh"
           }
         ]
       },
@@ -28,7 +36,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-fmt-on-edit.sh"
+          },
+          {
+            "type": "command",
             "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-async-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-check-on-edit.sh"
           }
         ]
       }

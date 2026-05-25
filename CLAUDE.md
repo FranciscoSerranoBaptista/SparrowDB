@@ -192,3 +192,15 @@ Rebuild the graph after significant structural changes:
 # via MCP tool in Claude Code session
 build_or_update_graph_tool(repo_path="/Users/franciscobaptista/Development/SparrowDB")
 ```
+
+---
+
+## Rust language rules
+
+The following files extend this document with general Rust conventions.
+They complement (not replace) the project-specific rules above.
+
+@.claude/rules/rust/coding-style.md
+@.claude/rules/rust/patterns.md
+@.claude/rules/rust/security.md
+@.claude/rules/rust/testing.md
