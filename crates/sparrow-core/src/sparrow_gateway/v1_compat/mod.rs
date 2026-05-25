@@ -16,7 +16,7 @@ use sonic_rs::{JsonContainerTrait, JsonValueTrait};
 use tracing::{info, warn};
 
 use crate::{
-    protocol::{value::Value, Format, Response, request::RequestType},
+    protocol::{request::RequestType, value::Value, Format, Response},
     sparrow_engine::{
         storage_core::{storage_methods::StorageMethods, SparrowGraphStorage},
         traversal_core::traversal_value::TraversalValue,
@@ -25,8 +25,8 @@ use crate::{
     sparrow_gateway::{
         gateway::AppState,
         mcp::tools::{
-            EdgeType, FilterProperties, FilterTraversal, Operator, ToolArgs,
-            execute_query_chain, execute_query_chain_from_seed,
+            execute_query_chain, execute_query_chain_from_seed, EdgeType, FilterProperties,
+            FilterTraversal, Operator, ToolArgs,
         },
         router::router::{Handler, HandlerInput, HandlerSubmission},
     },
@@ -68,7 +68,11 @@ pub async fn v1_query_axum_handler(
                 .map(|s| s == "write")
         })
         .unwrap_or(false);
-    let handler_name = if is_write { "__v1_compat_write" } else { "__v1_compat_read" };
+    let handler_name = if is_write {
+        "__v1_compat_write"
+    } else {
+        "__v1_compat_read"
+    };
 
     #[cfg(feature = "lmdb")]
     {
@@ -118,7 +122,11 @@ pub async fn v1_query_axum_handler(
 
     match state.worker_pool.process(req).await {
         Ok(r) => {
-            info!(handler = handler_name, elapsed_us = start.elapsed().as_micros(), "v1_compat ok");
+            info!(
+                handler = handler_name,
+                elapsed_us = start.elapsed().as_micros(),
+                "v1_compat ok"
+            );
             r.into_response()
         }
         Err(e) => {
@@ -132,16 +140,14 @@ pub fn v1_compat_handler(input: HandlerInput) -> Result<Response, GraphError> {
     let body: sonic_rs::Value = sonic_rs::from_slice(&input.request.body)
         .map_err(|e| GraphError::DecodeError(format!("v1_compat: invalid JSON: {e}")))?;
 
-    let query = body.get("query").ok_or_else(|| {
-        GraphError::DecodeError("v1_compat: missing 'query' field".to_string())
-    })?;
+    let query = body
+        .get("query")
+        .ok_or_else(|| GraphError::DecodeError("v1_compat: missing 'query' field".to_string()))?;
 
     let raw_queries = query
         .get("queries")
         .and_then(|q| q.as_array())
-        .ok_or_else(|| {
-            GraphError::DecodeError("v1_compat: missing 'queries' array".to_string())
-        })?;
+        .ok_or_else(|| GraphError::DecodeError("v1_compat: missing 'queries' array".to_string()))?;
 
     let return_vars: Vec<String> = query
         .get("returns")
@@ -175,7 +181,10 @@ pub fn v1_compat_handler(input: HandlerInput) -> Result<Response, GraphError> {
     let body_bytes = sonic_rs::to_vec(&output)
         .map_err(|e| GraphError::DecodeError(format!("v1_compat: serialise: {e}")))?;
 
-    Ok(Response { body: body_bytes, fmt: Format::Json })
+    Ok(Response {
+        body: body_bytes,
+        fmt: Format::Json,
+    })
 }
 
 // ─── compatibility error ───────────────────────────────────────────────────────
@@ -212,10 +221,7 @@ enum CompatStep {
         bind_to: String,
     },
     /// Look up nodes directly by UUID string.
-    LookupByUuid {
-        ids: Vec<u128>,
-        bind_to: String,
-    },
+    LookupByUuid { ids: Vec<u128>, bind_to: String },
     AddNode {
         node_type: String,
         fields: HashMap<String, Value>,
@@ -300,7 +306,14 @@ where
         let steps = translate_named_query(name, raw_steps)?;
 
         for step in steps {
-            execute_compat_step(step, storage, &mut wtxn, arena, &mut live_store, &mut result_store)?;
+            execute_compat_step(
+                step,
+                storage,
+                &mut wtxn,
+                arena,
+                &mut live_store,
+                &mut result_store,
+            )?;
         }
     }
 
@@ -338,7 +351,10 @@ fn translate_named_query(
         if let Some(cond) = step.get("NWhere") {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
             if let Some(uuids) = pending_uuid_ids.take() {
-                out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+                out.push(CompatStep::LookupByUuid {
+                    ids: uuids,
+                    bind_to: name.to_string(),
+                });
                 seed_var = Some(name.to_string());
             }
             let args = translate_nwhere(cond)?;
@@ -350,7 +366,10 @@ fn translate_named_query(
         if let Some(cond) = step.get("EWhere") {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
             if let Some(uuids) = pending_uuid_ids.take() {
-                out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+                out.push(CompatStep::LookupByUuid {
+                    ids: uuids,
+                    bind_to: name.to_string(),
+                });
                 seed_var = Some(name.to_string());
             }
             let args = translate_ewhere(cond)?;
@@ -362,7 +381,10 @@ fn translate_named_query(
         if let Some(inject_name) = step.get("Inject").and_then(|v| v.as_str()) {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
             if let Some(uuids) = pending_uuid_ids.take() {
-                out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+                out.push(CompatStep::LookupByUuid {
+                    ids: uuids,
+                    bind_to: name.to_string(),
+                });
             }
             seed_var = Some(inject_name.to_string());
             continue;
@@ -440,7 +462,10 @@ fn translate_named_query(
         if let Some(add_n) = step.get("AddN") {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
             if let Some(uuids) = pending_uuid_ids.take() {
-                out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+                out.push(CompatStep::LookupByUuid {
+                    ids: uuids,
+                    bind_to: name.to_string(),
+                });
             }
             let node_type = add_n
                 .get("label")
@@ -452,7 +477,11 @@ fn translate_named_query(
             } else {
                 HashMap::new()
             };
-            out.push(CompatStep::AddNode { node_type, fields, bind_to: name.to_string() });
+            out.push(CompatStep::AddNode {
+                node_type,
+                fields,
+                bind_to: name.to_string(),
+            });
             return Ok(out);
         }
 
@@ -465,9 +494,7 @@ fn translate_named_query(
                 .get("to")
                 .and_then(|t| t.get("Var"))
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    CompatError::Translation("AddE: to.Var is required".to_string())
-                })?
+                .ok_or_else(|| CompatError::Translation("AddE: to.Var is required".to_string()))?
                 .to_string();
             let edge_type = add_e
                 .get("label")
@@ -479,7 +506,13 @@ fn translate_named_query(
             } else {
                 HashMap::new()
             };
-            out.push(CompatStep::AddEdge { edge_type, from_var, to_var, fields, bind_to: name.to_string() });
+            out.push(CompatStep::AddEdge {
+                edge_type,
+                from_var,
+                to_var,
+                fields,
+                bind_to: name.to_string(),
+            });
             return Ok(out);
         }
 
@@ -498,7 +531,10 @@ fn translate_named_query(
         if step.get("Drop").is_some() {
             maybe_flush_uuid_lookup(&mut out, &mut pending_uuid_ids, &mut seed_var, name)?;
             let (sv, args) = (seed_var.take(), std::mem::take(&mut tool_args));
-            out.push(CompatStep::DropNodes { seed_var: sv, tool_args: args });
+            out.push(CompatStep::DropNodes {
+                seed_var: sv,
+                tool_args: args,
+            });
             return Ok(out);
         }
 
@@ -506,7 +542,10 @@ fn translate_named_query(
         if let Some(vs) = step.get("VectorSearchNodes") {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
             if let Some(uuids) = pending_uuid_ids.take() {
-                out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+                out.push(CompatStep::LookupByUuid {
+                    ids: uuids,
+                    bind_to: name.to_string(),
+                });
                 seed_var = Some(name.to_string());
             }
             let args = translate_vector_search(vs)?;
@@ -532,7 +571,10 @@ fn translate_named_query(
     // Flush any accumulated state at end of query.
     if let Some(uuids) = pending_uuid_ids.take() {
         flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
-        out.push(CompatStep::LookupByUuid { ids: uuids, bind_to: name.to_string() });
+        out.push(CompatStep::LookupByUuid {
+            ids: uuids,
+            bind_to: name.to_string(),
+        });
     } else if !pending_updates.is_empty() {
         let updates: HashMap<String, Value> = pending_updates.into_iter().collect();
         let (sv, args) = (seed_var.take(), std::mem::take(&mut tool_args));
@@ -606,7 +648,8 @@ fn translate_nwhere(cond: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError
             .into_iter()
             .map(translate_eq_condition)
             .collect::<Result<Vec<_>, _>>()?;
-        let filter_props: Vec<FilterProperties> = filter_props.into_iter().flatten().flatten().collect();
+        let filter_props: Vec<FilterProperties> =
+            filter_props.into_iter().flatten().flatten().collect();
         if !filter_props.is_empty() {
             args.push(ToolArgs::FilterItems {
                 filter: FilterTraversal {
@@ -648,8 +691,10 @@ fn translate_nwhere(cond: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError
 fn translate_ewhere(cond: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError> {
     if let Some(and_arr) = cond.get("And").and_then(|a| a.as_array()) {
         let label_type = and_arr.iter().find_map(label_from_eq);
-        let rest: Vec<&sonic_rs::Value> =
-            and_arr.iter().filter(|c| label_from_eq(c).is_none()).collect();
+        let rest: Vec<&sonic_rs::Value> = and_arr
+            .iter()
+            .filter(|c| label_from_eq(c).is_none())
+            .collect();
 
         let mut args = Vec::new();
         if let Some(label) = label_type {
@@ -688,14 +733,19 @@ fn translate_ewhere(cond: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError
         }]);
     }
 
-    Err(CompatError::Translation(format!("unsupported EWhere condition: {cond}")))
+    Err(CompatError::Translation(format!(
+        "unsupported EWhere condition: {cond}"
+    )))
 }
 
 /// If this value is `{"Eq": ["$label", {"String": T}]}`, return Some(T).
 fn label_from_eq(v: &sonic_rs::Value) -> Option<String> {
     let eq = v.get("Eq")?.as_array()?;
     if eq.len() == 2 && eq[0].as_str() == Some("$label") {
-        return eq[1].get("String").and_then(|s| s.as_str()).map(str::to_owned);
+        return eq[1]
+            .get("String")
+            .and_then(|s| s.as_str())
+            .map(str::to_owned);
     }
     None
 }
@@ -740,7 +790,11 @@ fn translate_where_condition(cond: &sonic_rs::Value) -> Result<ToolArgs, CompatE
 
     Ok(ToolArgs::FilterItems {
         filter: FilterTraversal {
-            properties: if props.is_empty() { None } else { Some(vec![props]) },
+            properties: if props.is_empty() {
+                None
+            } else {
+                Some(vec![props])
+            },
             filter_traversals: None,
         },
     })
@@ -779,7 +833,11 @@ fn translate_vector_search(vs: &sonic_rs::Value) -> Result<Vec<ToolArgs>, Compat
 
     Ok(vec![
         ToolArgs::NFromType { node_type: label },
-        ToolArgs::SearchVec { vector, k, min_score: None },
+        ToolArgs::SearchVec {
+            vector,
+            k,
+            min_score: None,
+        },
     ])
 }
 
@@ -803,7 +861,10 @@ fn parse_typed_value(v: &sonic_rs::Value) -> Result<Value, CompatError> {
         return Ok(Value::Boolean(b));
     }
     if let Some(arr) = v.get("F64Array").and_then(|a| a.as_array()) {
-        let vals: Vec<Value> = arr.iter().map(|f| Value::F64(f.as_f64().unwrap_or(0.0))).collect();
+        let vals: Vec<Value> = arr
+            .iter()
+            .map(|f| Value::F64(f.as_f64().unwrap_or(0.0)))
+            .collect();
         return Ok(Value::Array(vals));
     }
     // Plain JSON scalar fallback.
@@ -819,7 +880,9 @@ fn parse_typed_value(v: &sonic_rs::Value) -> Result<Value, CompatError> {
     if let Some(b) = v.as_bool() {
         return Ok(Value::Boolean(b));
     }
-    Err(CompatError::Translation(format!("unsupported typed value: {v}")))
+    Err(CompatError::Translation(format!(
+        "unsupported typed value: {v}"
+    )))
 }
 
 /// Parse a HelixDB property input: `{"Value": <typed>}` or a plain typed value.
@@ -861,9 +924,8 @@ fn parse_uuid_ids(ids_val: &sonic_rs::Value) -> Result<Vec<u128>, CompatError> {
     let mut ids = Vec::with_capacity(arr.len());
     for v in arr {
         if let Some(s) = v.as_str() {
-            let uuid = uuid::Uuid::parse_str(s).map_err(|e| {
-                CompatError::Translation(format!("invalid UUID '{s}': {e}"))
-            })?;
+            let uuid = uuid::Uuid::parse_str(s)
+                .map_err(|e| CompatError::Translation(format!("invalid UUID '{s}': {e}")))?;
             ids.push(uuid.as_u128());
         } else if let Some(i) = v.as_u64() {
             // Legacy i64 IDs from HelixDB — treat as raw u128. Likely wrong but don't crash.
@@ -890,7 +952,11 @@ where
     match step {
         // ── Read-only: use write txn as a read view (sees uncommitted writes
         // from earlier steps in the same request) ────────────────────────────
-        CompatStep::Traverse { seed_var, tool_args, bind_to } => {
+        CompatStep::Traverse {
+            seed_var,
+            tool_args,
+            bind_to,
+        } => {
             let values: Vec<TraversalValue<'arena>> = {
                 let ro: &heed3::RoTxn<'db> = wtxn;
                 if let Some(sv) = &seed_var {
@@ -917,7 +983,10 @@ where
                 let ro: &heed3::RoTxn<'db> = wtxn;
                 ids.iter()
                     .filter_map(|&id| {
-                        storage.get_node(ro, id, arena).ok().map(TraversalValue::Node)
+                        storage
+                            .get_node(ro, id, arena)
+                            .ok()
+                            .map(TraversalValue::Node)
                     })
                     .collect()
             };
@@ -928,7 +997,11 @@ where
         }
 
         // ── Mutations: write directly into the shared transaction ─────────
-        CompatStep::AddNode { node_type, fields, bind_to } => {
+        CompatStep::AddNode {
+            node_type,
+            fields,
+            bind_to,
+        } => {
             let label: &'arena str = arena.alloc_str(&node_type);
 
             let sec_index_names: Vec<&'static str> = fields
@@ -943,7 +1016,9 @@ where
             };
 
             let count = fields.len();
-            let iter = fields.iter().map(|(k, v)| (arena.alloc_str(k) as &'arena str, v.clone()));
+            let iter = fields
+                .iter()
+                .map(|(k, v)| (arena.alloc_str(k) as &'arena str, v.clone()));
             let props = ImmutablePropertiesMap::new(count, iter, arena);
 
             let result = G::new_mut(storage, arena, wtxn)
@@ -960,7 +1035,13 @@ where
             result_store.insert(bind_to, vec![json_with_aliases]);
         }
 
-        CompatStep::AddEdge { edge_type, from_var, to_var, fields, bind_to } => {
+        CompatStep::AddEdge {
+            edge_type,
+            from_var,
+            to_var,
+            fields,
+            bind_to,
+        } => {
             let from_node = live_store
                 .get(from_var.as_str())
                 .and_then(|v| v.first())
@@ -984,8 +1065,9 @@ where
                 None
             } else {
                 let count = fields.len();
-                let iter =
-                    fields.iter().map(|(k, v)| (arena.alloc_str(k) as &'arena str, v.clone()));
+                let iter = fields
+                    .iter()
+                    .map(|(k, v)| (arena.alloc_str(k) as &'arena str, v.clone()));
                 Some(ImmutablePropertiesMap::new(count, iter, arena))
             };
 
@@ -1001,7 +1083,12 @@ where
             result_store.insert(bind_to, vec![json]);
         }
 
-        CompatStep::UpdateProperties { seed_var, tool_args, updates, bind_to } => {
+        CompatStep::UpdateProperties {
+            seed_var,
+            tool_args,
+            updates,
+            bind_to,
+        } => {
             // Read phase: collect targets using the write txn as a read view.
             // The block scope ensures the immutable borrow of `wtxn` ends
             // before the mutable borrow in the write phase below.
@@ -1045,7 +1132,10 @@ where
             result_store.insert(bind_to, json_values);
         }
 
-        CompatStep::DropNodes { seed_var, tool_args } => {
+        CompatStep::DropNodes {
+            seed_var,
+            tool_args,
+        } => {
             // Read phase: find nodes/edges to drop.
             let targets: Vec<TraversalValue<'arena>> = {
                 let ro: &heed3::RoTxn<'db> = wtxn;
@@ -1067,12 +1157,12 @@ where
             // Write phase: delete through the shared write transaction.
             for target in &targets {
                 match target {
-                    TraversalValue::Node(n) => storage
-                        .drop_node(wtxn, n.id)
-                        .map_err(CompatError::from)?,
-                    TraversalValue::Edge(e) => storage
-                        .drop_edge(wtxn, e.id)
-                        .map_err(CompatError::from)?,
+                    TraversalValue::Node(n) => {
+                        storage.drop_node(wtxn, n.id).map_err(CompatError::from)?
+                    }
+                    TraversalValue::Edge(e) => {
+                        storage.drop_edge(wtxn, e.id).map_err(CompatError::from)?
+                    }
                     _ => {}
                 }
             }
@@ -1134,8 +1224,10 @@ fn add_dollar_aliases(obj: sonic_rs::Value) -> sonic_rs::Value {
 mod tests {
     use super::v1_compat_handler;
     use crate::{
-        protocol::{Format, Request, request::RequestType},
-        sparrow_engine::traversal_core::{SparrowGraphEngine, SparrowGraphEngineOpts, config::Config},
+        protocol::{request::RequestType, Format, Request},
+        sparrow_engine::traversal_core::{
+            config::Config, SparrowGraphEngine, SparrowGraphEngineOpts,
+        },
         sparrow_gateway::router::router::HandlerInput,
     };
     use axum::body::Bytes;
@@ -1208,7 +1300,8 @@ mod tests {
 
     /// Create an edge from_id --label--> to_id.
     fn add_edge(graph: &Arc<SparrowGraphEngine>, from_id: &str, to_id: &str, label: &str) {
-        let body = format!(r#"{{
+        let body = format!(
+            r#"{{
             "request_type": "write",
             "query": {{
                 "queries": [
@@ -1221,7 +1314,8 @@ mod tests {
                 ],
                 "returns": ["e"]
             }}
-        }}"#);
+        }}"#
+        );
         v1_compat_handler(HandlerInput {
             request: make_write_request(body),
             graph: graph.clone(),
@@ -1272,7 +1366,10 @@ mod tests {
         };
 
         let result = v1_compat_handler(input);
-        assert!(result.is_err(), "handler must return an error when AddE references an unbound variable");
+        assert!(
+            result.is_err(),
+            "handler must return an error when AddE references an unbound variable"
+        );
 
         assert_eq!(
             node_count(&graph),
@@ -1381,7 +1478,8 @@ mod tests {
         let b_id = add_node(&graph, "TestB");
         add_edge(&graph, &a_id, &b_id, "LINKS_TO");
 
-        let body = format!(r#"{{
+        let body = format!(
+            r#"{{
             "request_type": "read",
             "query": {{
                 "queries": [{{"Query": {{"name": "r", "steps": [
@@ -1390,7 +1488,8 @@ mod tests {
                 ]}}}}],
                 "returns": ["r"]
             }}
-        }}"#);
+        }}"#
+        );
         let resp = v1_compat_handler(HandlerInput {
             request: make_read_request(body),
             graph: graph.clone(),
@@ -1427,7 +1526,8 @@ mod tests {
         let b_id = add_node(&graph, "TestB");
         add_edge(&graph, &a_id, &b_id, "LINKS_TO");
 
-        let body = format!(r#"{{
+        let body = format!(
+            r#"{{
             "request_type": "read",
             "query": {{
                 "queries": [{{"Query": {{"name": "r", "steps": [
@@ -1436,7 +1536,8 @@ mod tests {
                 ]}}}}],
                 "returns": ["r"]
             }}
-        }}"#);
+        }}"#
+        );
         let resp = v1_compat_handler(HandlerInput {
             request: make_read_request(body),
             graph: graph.clone(),
