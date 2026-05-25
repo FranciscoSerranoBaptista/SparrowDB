@@ -66,6 +66,9 @@ enum Commands {
     Check {
         /// Instance to check (defaults to all instances)
         instance: Option<String>,
+        /// Write generated code without validation (for debugging codegen bugs)
+        #[arg(long)]
+        debug_codegen: bool,
     },
 
     /// Compile project queries into the workspace
@@ -527,7 +530,9 @@ async fn main() -> Result<()> {
                 name,
             } => commands::init::run(path, template, queries_path, name).await,
             Commands::Add { name } => commands::add::run(name).await,
-            Commands::Check { instance } => commands::check::run(instance, &metrics_sender).await,
+            Commands::Check { instance, debug_codegen } => {
+                commands::check::run(instance, &metrics_sender, debug_codegen).await
+            }
             Commands::Compile { output, path } => commands::compile::run(output, path).await,
             Commands::Build { instance, bin } => {
                 commands::build::run(instance, bin, &metrics_sender)

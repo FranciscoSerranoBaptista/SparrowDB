@@ -24,7 +24,7 @@ async fn test_check_all_instances_success() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_ok(),
         "Check should succeed with valid project: {:?}",
@@ -43,7 +43,7 @@ async fn test_check_specific_instance_success() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(Some("dev".to_string()), &metrics_sender).await;
+    let result = run(Some("dev".to_string()), &metrics_sender, false).await;
     assert!(
         result.is_ok(),
         "Check should succeed for valid instance: {:?}",
@@ -60,7 +60,7 @@ async fn test_check_nonexistent_instance_fails() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(Some("nonexistent".to_string()), &metrics_sender).await;
+    let result = run(Some("nonexistent".to_string()), &metrics_sender, false).await;
     assert!(
         result.is_err(),
         "Check should fail for nonexistent instance"
@@ -81,7 +81,7 @@ async fn test_check_fails_without_schema() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(result.is_err(), "Check should fail without schema");
     let error_msg = result.err().unwrap().to_string();
     assert!(
@@ -99,7 +99,7 @@ async fn test_check_fails_with_invalid_syntax() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(result.is_err(), "Check should fail with invalid syntax");
 }
 
@@ -112,7 +112,7 @@ async fn test_check_fails_without_sparrow_toml() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_err(),
         "Check should fail without sparrow.toml in project"
@@ -178,7 +178,7 @@ E::Follows {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_ok(),
         "Check should succeed with multiple instances: {:?}",
@@ -198,7 +198,7 @@ async fn test_check_validates_each_instance_individually() {
     let metrics_sender = create_test_metrics_sender();
 
     // Check the specific instance
-    let result = run(Some("dev".to_string()), &metrics_sender).await;
+    let result = run(Some("dev".to_string()), &metrics_sender, false).await;
     assert!(result.is_ok(), "Check should validate dev instance");
 }
 
@@ -224,7 +224,7 @@ async fn test_check_with_empty_queries_directory() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_err(),
         "Check should fail with empty queries directory"
@@ -242,7 +242,7 @@ async fn test_check_with_schema_only() {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_ok(),
         "Check should succeed with schema only (queries are optional): {:?}",
@@ -304,7 +304,7 @@ QUERY GetUser(id: ID) =>
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_ok(),
         "Check should succeed with multiple .hx files: {:?}",
@@ -344,7 +344,7 @@ N::User {
     let _guard = std::env::set_current_dir(&ctx.project_path);
     let metrics_sender = create_test_metrics_sender();
 
-    let result = run(None, &metrics_sender).await;
+    let result = run(None, &metrics_sender, false).await;
     assert!(
         result.is_ok(),
         "Check should work with custom queries path: {:?}",
