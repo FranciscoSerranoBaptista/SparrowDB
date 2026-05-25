@@ -138,3 +138,57 @@ docs: add CLAUDE.md institutional knowledge files
 ```
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`
+
+---
+
+## Profiling tools (performance & memory phase)
+
+| Tool | Install | Purpose |
+|------|---------|---------|
+| `cargo flamegraph` | `cargo install flamegraph` | CPU flame graph — identify hot functions |
+| `cargo +nightly dhat` | nightly toolchain | Heap allocation profile by call site |
+| `heaptrack` | system package (Linux) | Live heap growth over time |
+| `criterion` | dev-dependency in crate | Reproducible microbenchmarks |
+| `sparrow stress` | built-in CLI | End-to-end load test against a live instance |
+| `SPARROW_SKIP_BM25_ON_WRITE=1` | env var | Isolate BM25 rebuild cost from write latency |
+| `POST /rebuild_bm25_index` | HTTP endpoint | Trigger and time a manual BM25 index rebuild |
+
+Use the `sparrow-perf-profiler` agent for a structured four-phase workflow combining these tools.
+
+---
+
+## Agent invocation guide
+
+Agents live in `.agents/`. Invoke via the Claude Code `Agent` tool or by spawning a sub-agent
+with `subagent_type` set to the agent name.
+
+| Agent | When to invoke |
+|-------|---------------|
+| `rust-reviewer` | Before merging any Rust change — runs clippy + safety + SparrowDB invariant checks |
+| `rust-build-resolver` | When `cargo build` / `cargo check` fails — workspace-aware diagnosis |
+| `silent-failure-hunter` | When a write or query path produces wrong results silently — error propagation audit |
+| `sparrow-perf-profiler` | When latency or memory grows unexpectedly — four-phase profiling workflow |
+
+---
+
+## Code graph
+
+The codebase is indexed in the `code-review-graph` MCP server. Use these tools for deep
+structural understanding before making changes:
+
+| Tool | When to use |
+|------|-------------|
+| `build_or_update_graph_tool` | After adding new files or major refactors — refresh the index |
+| `get_architecture_overview_tool` | Before starting a new feature — understand the full structure |
+| `semantic_search_nodes_tool` | Find where a concept is implemented (e.g. "write_txn", "HNSW insert") |
+| `get_review_context_tool` | Before reviewing a PR — get context on every changed file |
+| `get_impact_radius_tool` | Before modifying a function — see what depends on it |
+| `get_minimal_context_tool` | Quick context on a single file without reading the whole codebase |
+| `get_flow_tool` | Trace a code path end-to-end (e.g. HTTP request → storage write) |
+| `traverse_graph_tool` | Explore dependencies and callers of a specific node |
+
+Rebuild the graph after significant structural changes:
+```bash
+# via MCP tool in Claude Code session
+build_or_update_graph_tool(repo_path="/Users/franciscobaptista/Development/SparrowDB")
+```
