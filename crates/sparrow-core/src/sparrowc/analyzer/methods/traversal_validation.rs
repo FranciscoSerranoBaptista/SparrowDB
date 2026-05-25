@@ -173,7 +173,14 @@ fn try_optimize_where_to_index(
 
     let eq_value = match where_expr_traversal.steps[1].inner() {
         GeneratedStep::BoolOp(BoolOp::Eq(eq)) => match &eq.right {
-            GeneratedValue::Primitive(_) | GeneratedValue::Literal(_) => &eq.right,
+            // Allow literals, primitives, AND query parameters (variables bound at call time).
+            // Without Parameter here, `N<T>::WHERE(_::{idx}::EQ(param))` would fall back to a
+            // full O(n) table scan instead of using the secondary index — causing memory to grow
+            // linearly with the number of existing nodes of that type.
+            GeneratedValue::Primitive(_)
+            | GeneratedValue::Literal(_)
+            | GeneratedValue::Parameter(_)
+            | GeneratedValue::Identifier(_) => &eq.right,
             _ => return false,
         },
         _ => return false,
