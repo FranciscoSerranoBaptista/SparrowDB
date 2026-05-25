@@ -123,6 +123,7 @@ fn main() {
         path: path_str.to_string(),
         config,
         version_info: VersionInfo(transition_fns),
+        skip_bm25_on_write: None,
     };
 
     let graph = Arc::new(

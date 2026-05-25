@@ -177,6 +177,7 @@ mod tests {
             db_path,
             crate::sparrow_engine::traversal_core::config::Config::default(),
             Default::default(),
+            None,
         )
         .unwrap();
         (temp_dir, Arc::new(storage))

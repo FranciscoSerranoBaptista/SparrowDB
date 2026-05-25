@@ -1,5 +1,6 @@
 use crate::sparrow_engine::bm25::lmdb_bm25::{BM25, BM25Flatten};
 use crate::sparrow_engine::vector_core::HNSW;
+use std::sync::atomic::Ordering;
 use crate::{
     sparrow_engine::{
         traversal_core::{traversal_iter::RwTraversalIterator, traversal_value::TraversalValue},
@@ -119,7 +120,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             }
         }
 
-        if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes)
+        if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes.load(Ordering::Relaxed))
             && let Some(props) = node.properties.as_ref()
         {
             let mut data = props.flatten_bm25();
@@ -215,7 +216,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             }
         }
 
-        if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes)
+        if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes.load(Ordering::Relaxed))
             && let Some(props) = node.properties.as_ref()
         {
             let mut data = props.flatten_bm25();

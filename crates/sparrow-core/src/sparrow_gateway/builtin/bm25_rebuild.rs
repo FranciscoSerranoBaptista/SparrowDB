@@ -140,6 +140,7 @@ mod tests {
     };
     use axum::body::Bytes;
     use std::sync::Arc;
+    use std::sync::atomic::Ordering;
     use tempfile::TempDir;
 
     fn setup_test_engine() -> (SparrowGraphEngine, TempDir) {
@@ -148,6 +149,7 @@ mod tests {
             path: temp_dir.path().to_str().unwrap().to_string(),
             config: Config::default(),
             version_info: VersionInfo::default(),
+            skip_bm25_on_write: None,
         };
         let engine = SparrowGraphEngine::new(opts).unwrap();
         (engine, temp_dir)
@@ -241,7 +243,7 @@ mod tests {
         unsafe { std::env::set_var("SPARROW_SKIP_BM25_ON_WRITE", "true"); }
         let (engine, _temp_dir) = setup_test_engine();
         // skip_bm25_writes=true at this point; verify it's set
-        assert!(engine.storage.skip_bm25_writes, "skip flag should be set from env var");
+        assert!(engine.storage.skip_bm25_writes.load(Ordering::Relaxed), "skip flag should be set from env var");
         unsafe { std::env::remove_var("SPARROW_SKIP_BM25_ON_WRITE"); }
 
         {

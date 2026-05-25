@@ -48,6 +48,7 @@ pub fn make_engine() -> (SparrowGraphEngine, TempDir) {
         path: temp_dir.path().to_str().unwrap().to_string(),
         config,
         version_info: VersionInfo::default(),
+        skip_bm25_on_write: None,
     })
     .expect("failed to create SparrowGraphEngine");
     (engine, temp_dir)

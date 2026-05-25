@@ -15,7 +15,7 @@ fn open_test_storage() -> (SparrowGraphStorage, TempDir) {
     let mut config = Config::default();
     config.db_max_size_gb = Some(1);
     let vi = VersionInfo::default();
-    let storage = SparrowGraphStorage::new(dir.path().to_str().unwrap(), config, vi).unwrap();
+    let storage = SparrowGraphStorage::new(dir.path().to_str().unwrap(), config, vi, None).unwrap();
     (storage, dir)
 }
 
@@ -27,7 +27,7 @@ fn open_test_storage_with_index(idx_name: &str) -> (SparrowGraphStorage, TempDir
         secondary_indices: Some(vec![SecondaryIndex::Index(idx_name.to_string())]),
     });
     let vi = VersionInfo::default();
-    let storage = SparrowGraphStorage::new(dir.path().to_str().unwrap(), config, vi).unwrap();
+    let storage = SparrowGraphStorage::new(dir.path().to_str().unwrap(), config, vi, None).unwrap();
     (storage, dir)
 }
 

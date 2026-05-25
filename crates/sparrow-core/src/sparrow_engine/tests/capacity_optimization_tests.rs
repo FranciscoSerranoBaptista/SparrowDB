@@ -35,7 +35,7 @@ fn setup_test_db(temp_dir: &TempDir) -> Arc<SparrowGraphStorage> {
     let mut config = Config::default();
     config.bm25 = Some(true);
 
-    let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
+    let storage = SparrowGraphStorage::new(db_path, config, Default::default(), None).unwrap();
     Arc::new(storage)
 }
 

@@ -46,7 +46,7 @@ fn setup_test_storage() -> (SparrowGraphStorage, TempDir) {
     let version_info = VersionInfo::default();
 
     let storage =
-        SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info).unwrap();
+        SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info, None).unwrap();
 
     (storage, temp_dir)
 }
@@ -1237,6 +1237,7 @@ fn setup_storage_with_old_node() -> (SparrowGraphStorage, TempDir) {
         dir.path().to_str().unwrap(),
         Config::default(),
         crate::sparrow_engine::storage_core::version_info::VersionInfo::default(),
+        None,
     )
     .unwrap();
 
@@ -1386,6 +1387,7 @@ fn storage_opens_without_panic_with_inventory_wiring() {
         dir.path().to_str().unwrap(),
         Config::default(),
         VersionInfo::default(),
+        None,
     );
     assert!(storage.is_ok(), "SparrowGraphStorage::new must succeed");
 }

@@ -300,6 +300,7 @@ mod tests {
             dir.path().to_str().unwrap(),
             Config::default(),
             VersionInfo::default(),
+            None,
         )
         .unwrap();
         (storage, dir)

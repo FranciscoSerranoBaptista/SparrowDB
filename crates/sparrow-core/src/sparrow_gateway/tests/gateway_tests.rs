@@ -18,6 +18,7 @@ fn create_test_graph() -> (Arc<SparrowGraphEngine>, TempDir) {
         path: temp_dir.path().to_str().unwrap().to_string(),
         config: Config::default(),
         version_info: Default::default(),
+        skip_bm25_on_write: None,
     };
     let graph = Arc::new(SparrowGraphEngine::new(opts).unwrap());
     (graph, temp_dir)
@@ -72,6 +73,7 @@ fn test_gateway_new_with_opts() {
         path: temp_dir.path().to_str().unwrap().to_string(),
         config: Config::default(),
         version_info: Default::default(),
+        skip_bm25_on_write: None,
     };
     let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, None, None, None, Some(opts));
 

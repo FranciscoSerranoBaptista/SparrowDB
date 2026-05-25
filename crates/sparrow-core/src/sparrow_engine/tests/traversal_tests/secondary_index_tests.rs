@@ -5,6 +5,8 @@ use tempfile::TempDir;
 
 use super::test_utils::props_option;
 use crate::{
+    props,
+    protocol::value::Value,
     sparrow_engine::{
         storage_core::SparrowGraphStorage,
         traversal_core::{
@@ -19,8 +21,6 @@ use crate::{
         },
         types::{GraphError, SecondaryIndex},
     },
-    props,
-    protocol::value::Value,
 };
 
 fn setup_indexed_db() -> (TempDir, Arc<SparrowGraphStorage>) {
@@ -30,7 +30,7 @@ fn setup_indexed_db() -> (TempDir, Arc<SparrowGraphStorage>) {
     // Index keys are "TypeName:field_name" since the cross-type namespace fix.
     config.graph_config.as_mut().unwrap().secondary_indices =
         Some(vec![SecondaryIndex::Index("person:name".to_string())]);
-    let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
+    let storage = SparrowGraphStorage::new(db_path, config, Default::default(), None).unwrap();
     (temp_dir, Arc::new(storage))
 }
 
@@ -41,7 +41,7 @@ fn setup_unique_indexed_db() -> (TempDir, Arc<SparrowGraphStorage>) {
     // Index keys are "TypeName:field_name" since the cross-type namespace fix.
     config.graph_config.as_mut().unwrap().secondary_indices =
         Some(vec![SecondaryIndex::Unique("person:name".to_string())]);
-    let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
+    let storage = SparrowGraphStorage::new(db_path, config, Default::default(), None).unwrap();
     (temp_dir, Arc::new(storage))
 }
 
@@ -706,9 +706,8 @@ fn test_unique_index_does_not_collide_across_types() {
         SecondaryIndex::Unique("Session:session_id".to_string()),
         // InsightEvent has no index on session_id — intentionally absent.
     ]);
-    let storage = Arc::new(
-        SparrowGraphStorage::new(db_path, config, Default::default()).unwrap(),
-    );
+    let storage =
+        Arc::new(SparrowGraphStorage::new(db_path, config, Default::default(), None).unwrap());
 
     // 1. Insert a Session node with session_id = "s-001".
     let arena = Bump::new();
@@ -732,7 +731,10 @@ fn test_unique_index_does_not_collide_across_types() {
     let result = G::new_mut(&storage, &arena, &mut txn)
         .upsert_n(
             "InsightEvent",
-            &[("session_id", Value::from("s-001")), ("slug", Value::from("insight-1"))],
+            &[
+                ("session_id", Value::from("s-001")),
+                ("slug", Value::from("insight-1")),
+            ],
         )
         .collect_to_obj();
     txn.commit().unwrap();
@@ -749,7 +751,10 @@ fn test_unique_index_does_not_collide_across_types() {
     let result2 = G::new_mut(&storage, &arena, &mut txn)
         .upsert_n(
             "InsightEvent",
-            &[("session_id", Value::from("s-001")), ("slug", Value::from("insight-2"))],
+            &[
+                ("session_id", Value::from("s-001")),
+                ("slug", Value::from("insight-2")),
+            ],
         )
         .collect_to_obj();
     txn.commit().unwrap();

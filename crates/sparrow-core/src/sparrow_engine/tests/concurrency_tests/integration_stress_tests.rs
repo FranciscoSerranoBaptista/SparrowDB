@@ -39,7 +39,7 @@ fn setup_stress_storage() -> (Arc<SparrowGraphStorage>, TempDir) {
     let mut config = Config::default();
     config.db_max_size_gb = Some(20); // Large size for stress tests
 
-    let storage = SparrowGraphStorage::new(path, config, Default::default()).unwrap();
+    let storage = SparrowGraphStorage::new(path, config, Default::default(), None).unwrap();
     (Arc::new(storage), temp_dir)
 }
 

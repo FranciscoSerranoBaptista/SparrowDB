@@ -33,6 +33,7 @@ mod mcp_tests {
             path: temp_dir.path().to_str().unwrap().to_string(),
             config: Config::default(),
             version_info: VersionInfo::default(),
+            skip_bm25_on_write: None,
         };
         let engine = SparrowGraphEngine::new(opts).unwrap();
         (engine, temp_dir)

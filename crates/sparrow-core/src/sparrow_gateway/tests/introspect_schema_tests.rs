@@ -25,6 +25,7 @@ fn create_test_app_state(schema_json: Option<String>) -> Arc<AppState> {
         path: db_path.to_string(),
         config: Config::default(),
         version_info: VersionInfo::default(),
+        skip_bm25_on_write: None,
     };
     let graph = Arc::new(SparrowGraphEngine::new(opts).unwrap());
     let router = Arc::new(SparrowRouter::new(None, None, None));

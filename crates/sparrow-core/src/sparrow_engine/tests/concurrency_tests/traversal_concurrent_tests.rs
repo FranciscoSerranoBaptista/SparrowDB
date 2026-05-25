@@ -36,7 +36,7 @@ fn setup_concurrent_storage() -> (TempDir, Arc<SparrowGraphStorage>) {
     let mut config = Config::default();
     config.db_max_size_gb = Some(10);
 
-    let storage = SparrowGraphStorage::new(path, config, Default::default()).unwrap();
+    let storage = SparrowGraphStorage::new(path, config, Default::default(), None).unwrap();
     (temp_dir, Arc::new(storage))
 }
 

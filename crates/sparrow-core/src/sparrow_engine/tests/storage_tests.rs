@@ -13,7 +13,7 @@ fn setup_test_storage() -> (SparrowGraphStorage, TempDir) {
     let version_info = VersionInfo::default();
 
     let storage =
-        SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info).unwrap();
+        SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info, None).unwrap();
 
     (storage, temp_dir)
 }
@@ -248,7 +248,7 @@ fn test_storage_creation() {
     let config = Config::default();
     let version_info = VersionInfo::default();
 
-    let result = SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info);
+    let result = SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info, None);
 
     assert!(result.is_ok());
     let _ = result.unwrap();
@@ -278,7 +278,7 @@ fn test_storage_with_large_db_size() {
 
     let version_info = VersionInfo::default();
 
-    let result = SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info);
+    let result = SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info, None);
 
     assert!(result.is_ok());
 }

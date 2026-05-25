@@ -12,6 +12,7 @@ use crate::sparrow_engine::{
 };
 use heed3::PutFlags;
 use itertools::Itertools;
+use std::sync::atomic::Ordering;
 
 pub struct Update<I> {
     iter: I,
@@ -227,7 +228,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                         if update_ok {
                             // Update BM25 index to reflect new properties.
-                            if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes) {
+                            if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes.load(Ordering::Relaxed)) {
                                 if let Some(props_ref) = node.properties.as_ref() {
                                     let mut data = props_ref.flatten_bm25();
                                     data.push_str(node.label);

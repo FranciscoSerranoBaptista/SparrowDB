@@ -54,7 +54,7 @@ mod tests {
         let mut config = Config::default();
         config.bm25 = Some(true);
 
-        let storage = SparrowGraphStorage::new(db_path, config, Default::default()).unwrap();
+        let storage = SparrowGraphStorage::new(db_path, config, Default::default(), None).unwrap();
         Arc::new(storage)
     }
 

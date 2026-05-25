@@ -63,6 +63,8 @@ pub mod lmdb {
 
     use super::*;
     use crate::sparrow_engine::types::SecondaryIndex;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use heed3::{
         Database, DatabaseFlags, Env, EnvOpenOptions, RoTxn, RwTxn, byteorder::BE, types::*,
     };
@@ -82,10 +84,13 @@ pub mod lmdb {
 
         pub storage_config: StorageConfig,
 
-        /// When true, all BM25 mutations are skipped during writes (insert, update, delete).
-        /// Set via `SPARROW_SKIP_BM25_ON_WRITE=true`.
+        /// When the inner value is `true`, all BM25 mutations are skipped during writes
+        /// (insert, update, delete). Backed by an `Arc<AtomicBool>` so it can be
+        /// toggled at runtime without restarting the process.
+        /// Initialised from `SPARROW_SKIP_BM25_ON_WRITE=true|1`, or overridden by
+        /// passing a shared `Arc<AtomicBool>` via `SparrowGraphEngineOpts`.
         /// Run `POST /rebuild_bm25_index` after bulk import to build the index from scratch.
-        pub skip_bm25_writes: bool,
+        pub skip_bm25_writes: Arc<AtomicBool>,
     }
 
     pub type Txn<'db> = heed3::RoTxn<'db>;
@@ -103,6 +108,7 @@ pub mod lmdb {
             path: &str,
             config: Config,
             version_info: VersionInfo,
+            skip_bm25_on_write: Option<Arc<AtomicBool>>,
         ) -> Result<SparrowGraphStorage, GraphError> {
             fs::create_dir_all(path)?;
 
@@ -245,10 +251,13 @@ pub mod lmdb {
 
             wtxn.commit()?;
 
-            let skip_bm25_writes = matches!(
-                std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref(),
-                Ok("true") | Ok("1")
-            );
+            let skip_bm25_writes = skip_bm25_on_write.unwrap_or_else(|| {
+                let from_env = matches!(
+                    std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref(),
+                    Ok("true") | Ok("1")
+                );
+                Arc::new(AtomicBool::new(from_env))
+            });
 
             let mut storage = Self {
                 graph_env,
@@ -371,6 +380,20 @@ pub mod lmdb {
             wtxn.commit()?;
             self.secondary_indices.remove(name);
             Ok(())
+        }
+    }
+
+    #[cfg(test)]
+    mod skip_bm25_tests {
+        use super::*;
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        fn assert_arc_atomic_bool(_: &Arc<AtomicBool>) {}
+
+        #[allow(dead_code)]
+        fn check_field_type(s: &SparrowGraphStorage) {
+            assert_arc_atomic_bool(&s.skip_bm25_writes);
         }
     }
 

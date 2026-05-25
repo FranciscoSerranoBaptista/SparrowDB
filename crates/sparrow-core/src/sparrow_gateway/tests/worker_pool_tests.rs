@@ -22,6 +22,7 @@ fn create_test_graph() -> (Arc<SparrowGraphEngine>, TempDir) {
         path: temp_dir.path().to_str().unwrap().to_string(),
         config,
         version_info: Default::default(),
+        skip_bm25_on_write: None,
     };
     let graph = Arc::new(SparrowGraphEngine::new(opts).unwrap());
     (graph, temp_dir)

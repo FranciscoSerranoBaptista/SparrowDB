@@ -40,7 +40,7 @@ fn setup_concurrent_storage() -> (Arc<SparrowGraphStorage>, TempDir) {
 
     let version_info = VersionInfo::default();
 
-    let storage = SparrowGraphStorage::new(path, config, version_info).unwrap();
+    let storage = SparrowGraphStorage::new(path, config, version_info, None).unwrap();
     (Arc::new(storage), temp_dir)
 }
 

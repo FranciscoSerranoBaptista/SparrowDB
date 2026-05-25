@@ -1,6 +1,6 @@
+use crate::protocol;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
-use crate::protocol;
 
 // POST /migrate_status
 // Returns the status of every compiled schema migration recorded in the migrations log.
@@ -15,8 +15,7 @@ fn migrate_status(input: HandlerInput) -> Result<protocol::Response, GraphError>
     #[cfg(feature = "lmdb")]
     {
         use crate::sparrow_engine::storage_core::{
-            migration_log::read_record,
-            version_info::TransitionSubmission,
+            migration_log::read_record, version_info::TransitionSubmission,
         };
 
         let db = &input.graph.storage;
@@ -25,10 +24,7 @@ fn migrate_status(input: HandlerInput) -> Result<protocol::Response, GraphError>
         let mut entries = Vec::new();
         for submission in inventory::iter::<TransitionSubmission> {
             let t = &submission.0;
-            let migration_name = format!(
-                "{}_v{}_v{}",
-                t.item_label, t.from_version, t.to_version
-            );
+            let migration_name = format!("{}_v{}_v{}", t.item_label, t.from_version, t.to_version);
             let record = read_record(&txn, &db.migrations_db, &migration_name)?;
             let status_str = match &record {
                 Some(r) => match r.status {
@@ -105,12 +101,12 @@ inventory::submit! {
 mod tests {
     use super::*;
     use crate::{
+        protocol::{request::Request, request::RequestType, Format},
         sparrow_engine::{
             storage_core::version_info::VersionInfo,
-            traversal_core::{SparrowGraphEngine, SparrowGraphEngineOpts, config::Config},
+            traversal_core::{config::Config, SparrowGraphEngine, SparrowGraphEngineOpts},
         },
         sparrow_gateway::router::router::HandlerInput,
-        protocol::{Format, request::Request, request::RequestType},
     };
     use axum::body::Bytes;
     use std::sync::Arc;
@@ -122,6 +118,7 @@ mod tests {
             path: dir.path().to_str().unwrap().to_string(),
             config: Config::default(),
             version_info: VersionInfo::default(),
+            skip_bm25_on_write: None,
         };
         (SparrowGraphEngine::new(opts).unwrap(), dir)
     }

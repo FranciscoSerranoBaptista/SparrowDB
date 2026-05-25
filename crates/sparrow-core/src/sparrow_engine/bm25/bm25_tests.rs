@@ -48,7 +48,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path().to_str().unwrap();
         let config = Config::default();
-        let storage = SparrowGraphStorage::new(path, config, VersionInfo::default()).unwrap();
+        let storage = SparrowGraphStorage::new(path, config, VersionInfo::default(), None).unwrap();
         (storage, temp_dir)
     }
 

@@ -38,7 +38,7 @@ impl MemoryStore {
             ..Config::default()
         };
 
-        let storage = SparrowGraphStorage::new(&config.path, sparrow_config, VersionInfo::default())
+        let storage = SparrowGraphStorage::new(&config.path, sparrow_config, VersionInfo::default(), None)
             .map_err(MemoryError::Storage)?;
 
         Ok(Self { storage: Arc::new(storage) })

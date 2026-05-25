@@ -8,6 +8,7 @@ use crate::sparrow_engine::traversal_core::config::Config;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::mcp::mcp::{McpBackend, McpConnections};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
 
 pub const LMDB_STRING_HEADER_LENGTH: usize = 8;
 
@@ -30,13 +31,16 @@ pub struct SparrowGraphEngineOpts {
     pub path: String,
     pub config: Config,
     pub version_info: VersionInfo,
+    /// Shared atomic controlling BM25 skip behavior.
+    /// When `None`, storage reads `SPARROW_SKIP_BM25_ON_WRITE` from env.
+    pub skip_bm25_on_write: Option<Arc<AtomicBool>>,
 }
 
 impl SparrowGraphEngine {
     pub fn new(opts: SparrowGraphEngineOpts) -> Result<SparrowGraphEngine, GraphError> {
         let should_use_mcp = opts.config.mcp;
         let storage =
-            match SparrowGraphStorage::new(opts.path.as_str(), opts.config, opts.version_info) {
+            match SparrowGraphStorage::new(opts.path.as_str(), opts.config, opts.version_info, opts.skip_bm25_on_write) {
                 Ok(db) => Arc::new(db),
                 Err(err) => return Err(err),
             };
