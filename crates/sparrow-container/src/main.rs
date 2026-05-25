@@ -37,7 +37,20 @@ fn main() {
         Err(e) => info!(?e, "Didn't load .env file"),
     }
 
-    let config = queries::config().unwrap_or_default();
+    let mut config = queries::config().unwrap_or_default();
+
+    // Allow operators to override the LMDB map size without rebuilding the image.
+    // Default (from queries.rs) is 4 GB — too large for Docker Desktop and CI hosts.
+    // Set SPARROW_DB_MAX_SIZE_GB=1 for small datasets; increase for large production graphs.
+    if let Ok(val) = std::env::var("SPARROW_DB_MAX_SIZE_GB") {
+        match val.parse::<usize>() {
+            Ok(n) => {
+                println!("\tSPARROW_DB_MAX_SIZE_GB={n} — overriding LMDB map size to {n} GB");
+                config.db_max_size_gb = Some(n);
+            }
+            Err(e) => println!("\tWARN: SPARROW_DB_MAX_SIZE_GB={val} is not a valid integer: {e}"),
+        }
+    }
 
     let path = match std::env::var("SPARROW_DATA_DIR") {
         Ok(val) => std::path::PathBuf::from(val).join("user"),
