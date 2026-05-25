@@ -1155,8 +1155,25 @@ fn type_to_rust_string_and_fields(
 }
 
 pub(crate) fn validate_query<'a>(ctx: &mut Ctx<'a>, original_query: &'a Query) {
+    // Build source location string from the parser Loc struct.
+    // filepath is the full canonicalized path; use only the filename component.
+    let source_loc = {
+        let line = original_query.loc.start.line;
+        match &original_query.loc.filepath {
+            Some(fp) => {
+                let filename = std::path::Path::new(fp)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| fp.clone());
+                Some(format!("{filename}:{line}"))
+            }
+            None => Some(format!("queries.hx:{line}")),
+        }
+    };
+
     let mut query = GeneratedQuery {
         name: original_query.name.clone(),
+        source_loc,
         ..Default::default()
     };
 

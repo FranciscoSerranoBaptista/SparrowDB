@@ -10,6 +10,7 @@ pub struct Query {
     pub embedding_model_to_use: Option<String>,
     pub mcp_handler: Option<String>,
     pub name: String,
+    pub source_loc: Option<String>,
     pub statements: Vec<Statement>,
     pub parameters: Vec<Parameter>, // iterate through and print each one
     pub sub_parameters: Vec<(String, Vec<Parameter>)>,
@@ -122,6 +123,11 @@ impl Query {
             "pub fn {} (input: HandlerInput) -> Result<Response, GraphError> {{",
             self.name
         )?;
+
+        // Emit source attribution marker for cargo check error attribution
+        if let Some(loc) = &self.source_loc {
+            writeln!(f, "    // sparrow:query={} source={}", self.name, loc)?;
+        }
 
         // print the db boilerplate
         writeln!(f, "let db = Arc::clone(&input.graph.storage);")?;
@@ -2048,6 +2054,7 @@ impl Default for Query {
             embedding_model_to_use: None,
             mcp_handler: None,
             name: "".to_string(),
+            source_loc: None,
             statements: vec![],
             parameters: vec![],
             sub_parameters: vec![],
@@ -2079,5 +2086,39 @@ impl Display for Parameter {
             true => write!(f, "pub {}: Option<{}>", self.name, self.field_type),
             false => write!(f, "pub {}: {}", self.name, self.field_type),
         }
+    }
+}
+
+#[cfg(test)]
+mod marker_tests {
+    use super::*;
+    use std::fmt::Write;
+
+    #[test]
+    fn query_emits_source_marker_in_function_body() {
+        let q = Query {
+            name: "GetUser".to_string(),
+            source_loc: Some("users.hx:12".to_string()),
+            ..Default::default()
+        };
+        let rendered = format!("{q}");
+        assert!(
+            rendered.contains("// sparrow:query=GetUser source=users.hx:12"),
+            "Expected source marker in rendered output, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn query_without_source_loc_omits_marker() {
+        let q = Query {
+            name: "GetUser".to_string(),
+            source_loc: None,
+            ..Default::default()
+        };
+        let rendered = format!("{q}");
+        assert!(
+            !rendered.contains("// sparrow:query="),
+            "Expected no marker when source_loc is None"
+        );
     }
 }
