@@ -8,10 +8,11 @@ use sparrow_db::sparrow_gateway::mcp::mcp::{MCPHandlerFn, MCPHandlerSubmission};
 use sparrow_db::sparrow_gateway::{
     gateway::{GatewayOpts, SparrowGateway},
     router::router::{HandlerFn, HandlerSubmission},
+    settings::RuntimeSettings,
 };
 use std::{collections::HashMap, sync::Arc};
 use tracing::info;
-use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 mod queries;
 
@@ -72,7 +73,11 @@ fn main() {
     println!("\tconfig: {config:#?}");
     println!("\tpath: {}", path.display());
     println!("\tport: {port}");
-    if matches!(std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref(), Ok("true") | Ok("1")) {
+    let settings = std::sync::Arc::new(RuntimeSettings::from_env());
+    if settings
+        .skip_bm25_on_write
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         println!(
             "\tSPARROW_SKIP_BM25_ON_WRITE=true — BM25 index updates DISABLED during writes. \
              Run POST /rebuild_bm25_index after bulk import to rebuild the index."
@@ -123,7 +128,7 @@ fn main() {
         path: path_str.to_string(),
         config,
         version_info: VersionInfo(transition_fns),
-        skip_bm25_on_write: None,
+        skip_bm25_on_write: Some(std::sync::Arc::clone(&settings.skip_bm25_on_write)),
     };
 
     let graph = Arc::new(
@@ -163,9 +168,8 @@ fn main() {
 
     if hql_eval_enabled {
         use sparrow_db::sparrow_gateway::runtime_eval::handler as runtime_handler;
-        let rt_handler: HandlerFn = Arc::new(move |input| {
-            runtime_handler::handle(input, hql_schema_raw.clone())
-        });
+        let rt_handler: HandlerFn =
+            Arc::new(move |input| runtime_handler::handle(input, hql_schema_raw.clone()));
         query_routes.insert("__hql_runtime_eval".to_string(), rt_handler);
         write_routes.insert("__hql_runtime_eval".to_string());
         println!("Runtime HQL eval enabled at POST /__hql_runtime_eval");
@@ -191,6 +195,7 @@ fn main() {
         Some(mcp_routes),
         Some(write_routes),
         Some(opts),
+        std::sync::Arc::clone(&settings),
     );
 
     gateway.run().expect("Failed to run gateway")
