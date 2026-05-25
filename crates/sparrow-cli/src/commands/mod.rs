@@ -6,6 +6,7 @@ pub mod build;
 pub mod check;
 pub mod compile;
 pub mod data;
+pub mod doctor;
 pub mod delete;
 pub mod init;
 pub mod logs;

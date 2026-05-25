@@ -185,6 +185,13 @@ enum Commands {
         action: DataAction,
     },
 
+    /// Pre-flight health checklist — check CLI, workspace, Docker, and instances
+    Doctor {
+        /// Output as JSON (for CI)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Update to the latest version
     Update {
         /// Force update even if already on latest version
@@ -563,6 +570,7 @@ async fn main() -> Result<()> {
             Commands::Delete { instance } => commands::delete::run(instance).await,
             Commands::Metrics { action } => commands::metrics::run(action).await,
             Commands::Data { action } => commands::data::run(action).await,
+            Commands::Doctor { json } => commands::doctor::run(json).await,
             Commands::Update { force } => commands::update::run(force).await,
             Commands::Migrate { subcommand } => commands::migrate::run(subcommand).await,
             Commands::Upgrade {
