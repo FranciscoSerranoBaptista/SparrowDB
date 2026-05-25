@@ -395,6 +395,44 @@ pub(crate) async fn compile_project(
     Ok(metrics_data)
 }
 
+/// Compile the project and return the generated Rust code as a string,
+/// without writing `queries.rs` to disk.
+///
+/// ⚠ Sync — safe to call from blocking contexts only. Do not call from an
+/// async context without `tokio::task::spawn_blocking`.
+///
+/// Writes `config.hx.json` to the live instance workspace (same path used by
+/// `compile_project`). This is required by `compile_helix_files`, which reads
+/// config from disk. Avoid calling this concurrently with `compile_project` or
+/// `prepare_instance_workspace` for the same instance.
+///
+/// Does NOT write `queries.rs` — the caller validates and decides the final path.
+///
+/// Used by `sparrow check` Stage 0.
+pub(crate) fn compile_to_string(
+    project: &ProjectContext,
+    instance_name: &str,
+) -> Result<(String, MetricsData)> {
+    let instance_workspace = project.instance_workspace(instance_name);
+    let helix_container_dir = instance_workspace.join("sparrow-container");
+    let src_dir = helix_container_dir.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    // Write config.hx.json — required by compile_helix_files to read instance config
+    let instance = project.config.get_instance(instance_name)?;
+    let legacy_config_json = instance.to_legacy_json();
+    let legacy_config_str = serde_json::to_string_pretty(&legacy_config_json)?;
+    fs::write(src_dir.join("config.hx.json"), legacy_config_str)?;
+
+    let hx_files = collect_hx_files(&project.root, &project.config.project.queries)?;
+    let (analyzed_source, metrics_data) = compile_helix_files(&hx_files, &src_dir)?;
+
+    let mut code = String::new();
+    write!(&mut code, "{analyzed_source}")?;
+
+    Ok((code, metrics_data))
+}
+
 async fn generate_docker_files(
     project: &ProjectContext,
     instance_name: &str,
@@ -601,4 +639,20 @@ fn build_binary_using_cargo(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod compile_to_string_tests {
+    // compile_to_string is hard to unit test without real .hx files,
+    // so we just verify the function exists and has the right signature.
+    // Integration tests in tests/ cover the full round-trip.
+    use super::*;
+
+    #[test]
+    fn compile_to_string_fn_exists() {
+        // This is a compile-time test: if compile_to_string doesn't exist,
+        // this file won't compile.
+        let _: fn(&ProjectContext, &str) -> eyre::Result<(String, MetricsData)>
+            = compile_to_string;
+    }
 }
