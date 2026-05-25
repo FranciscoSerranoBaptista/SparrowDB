@@ -10,6 +10,8 @@ use axum::routing::{get, post};
 use core_affinity::CoreId;
 use tracing::{info, trace, warn};
 
+use super::mem_monitor;
+
 use super::router::router::{HandlerFn, SparrowRouter};
 use crate::sparrow_gateway::v1_compat::v1_query_axum_handler;
 #[cfg(feature = "lmdb")]
@@ -34,7 +36,12 @@ use crate::{
 pub struct GatewayOpts {}
 
 impl GatewayOpts {
-    pub const DEFAULT_WORKERS_PER_CORE: usize = 8;
+    /// Default worker threads per core.
+    ///
+    /// The effective default is `min(DEFAULT_WORKERS_PER_CORE × cores, 64)`,
+    /// capped so large machines don't pre-reserve gigabytes of thread stacks.
+    /// Override at runtime with `SPARROW_WORKER_THREADS=N` (absolute count).
+    pub const DEFAULT_WORKERS_PER_CORE: usize = 4;
 }
 
 pub struct SparrowGateway {
@@ -127,10 +134,41 @@ impl SparrowGateway {
             Err(_) => all_core_ids,
         };
 
+        // ── Resolve total worker thread count ─────────────────────────────────
+        //
+        // SPARROW_WORKER_THREADS overrides the per-core multiplier and sets the
+        // absolute total.  The default is min(DEFAULT_WORKERS_PER_CORE × cores, 64)
+        // so large hosts don't pre-reserve 1–2 GB of thread stacks by default.
+        //
+        // WorkerPool requires an even total (parity-based fair-select).
+        let effective_workers_per_core = {
+            let cores = all_core_ids.len().max(1);
+            let total = match std::env::var("SPARROW_WORKER_THREADS") {
+                Ok(val) => {
+                    let requested: usize = val
+                        .parse()
+                        .expect("SPARROW_WORKER_THREADS must be a valid integer");
+                    // Enforce minimum of 2 and even (WorkerPool invariant)
+                    let n = requested.max(2);
+                    if n % 2 == 0 { n } else { n + 1 }
+                }
+                Err(_) => {
+                    // Default: min(4 × cores, 64), ensure even and ≥ 2
+                    let n = (cores * self.workers_per_core).min(64).max(2);
+                    if n % 2 == 0 { n } else { n + 1 }
+                }
+            };
+            // Ceiling-divide to get per-core multiplier; actual total = cores × per_core
+            let per_core = (total + cores - 1) / cores;
+            per_core.max(1)
+        };
+
+        let actual_total = all_core_ids.len() * effective_workers_per_core;
         info!(
-            "Worker pool initialized: {} cores, {} worker threads, 1 writer thread",
+            "Worker pool initialized: {} cores, {} worker threads ({}×), 1 writer thread",
             all_core_ids.len(),
-            all_core_ids.len() * self.workers_per_core
+            actual_total,
+            effective_workers_per_core,
         );
 
         let tokio_core_ids = all_core_ids.clone();
@@ -145,7 +183,7 @@ impl SparrowGateway {
         );
 
         let worker_core_ids = all_core_ids.clone();
-        let worker_core_setter = Arc::new(CoreSetter::new(worker_core_ids, self.workers_per_core));
+        let worker_core_setter = Arc::new(CoreSetter::new(worker_core_ids, effective_workers_per_core));
 
         let worker_pool = WorkerPool::new(
             worker_core_setter,
@@ -196,9 +234,15 @@ impl SparrowGateway {
             token_store: Arc::clone(&self.token_store),
         }));
 
+        // Shutdown watch channel shared between the async block and the memory monitor.
+        let (mem_shutdown_tx, mem_shutdown_rx) = tokio::sync::watch::channel(false);
+
         rt.block_on(async move {
             // Initialize metrics system
             sparrow_metrics::init_metrics_system();
+
+            // Spawn RSS pressure monitor (Tokio task; stops when mem_shutdown_tx fires)
+            tokio::spawn(mem_monitor::run_memory_monitor(mem_shutdown_rx));
 
             let listener = tokio::net::TcpListener::bind(self.address)
                 .await
@@ -208,6 +252,9 @@ impl SparrowGateway {
                 .with_graceful_shutdown(shutdown_signal())
                 .await
                 .expect("Failed to serve");
+
+            // Signal memory monitor to stop
+            let _ = mem_shutdown_tx.send(true);
 
             // Shutdown metrics system to flush all pending events
             info!("Shutting down metrics system...");
@@ -228,7 +275,7 @@ impl SparrowGateway {
 }
 
 async fn shutdown_signal() {
-    // Respond to either Ctrl-C (SIGINT) or SIGTERM (e.g. `kill` or systemd stop)
+    // Respond to either Ctrl-C (SIGINT) or SIGTERM (e.g. `kill` or Docker stop)
     #[cfg(unix)]
     {
         tokio::select! {
@@ -236,7 +283,23 @@ async fn shutdown_signal() {
                 info!("Received Ctrl-C, starting graceful shutdown…");
             }
             _ = sigterm() => {
-                info!("Received SIGTERM, starting graceful shutdown…");
+                // Log memory + thread snapshot so the last lines before silence are
+                // informative — Docker sends SIGTERM before escalating to SIGKILL.
+                let rss_kb = mem_monitor::read_rss_kb();
+                let limit_kb = mem_monitor::read_cgroup_limit_kb();
+                let threads = mem_monitor::read_thread_count();
+                if limit_kb > 0 {
+                    let pct = rss_kb as f64 / limit_kb as f64 * 100.0;
+                    warn!(
+                        rss_kb,
+                        limit_kb,
+                        rss_pct = format!("{pct:.1}"),
+                        threads,
+                        "Received SIGTERM — graceful shutdown starting"
+                    );
+                } else {
+                    info!(rss_kb, threads, "Received SIGTERM — graceful shutdown starting");
+                }
             }
         }
     }

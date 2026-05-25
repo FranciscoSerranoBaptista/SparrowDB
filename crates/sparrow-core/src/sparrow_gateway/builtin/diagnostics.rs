@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use crate::sparrow_engine::types::GraphError;
+use crate::sparrow_gateway::mem_monitor;
 use crate::sparrow_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
 use crate::protocol;
 
 // GET /diagnostics
 // curl "http://localhost:PORT/diagnostics"
 //
-// Returns counts of nodes, edges, and vector stats:
+// Returns counts of nodes, edges, vector stats, and live system metrics:
 // {
 //   "nodes": 1234,
 //   "edges": 567,
@@ -17,8 +18,17 @@ use crate::protocol;
 //     "soft_deleted": 10,
 //     "hnsw_edges": 500,
 //     "entry_point_present": true
+//   },
+//   "system": {
+//     "rss_kb": 524288,
+//     "memory_limit_kb": 6291456,
+//     "rss_pct": 8.3,
+//     "thread_count": 66
 //   }
 // }
+//
+// `memory_limit_kb` and `rss_pct` are 0 outside a cgroup-constrained container
+// or on non-Linux platforms.
 
 pub fn diagnostics_inner(input: HandlerInput) -> Result<protocol::Response, GraphError> {
     let db = Arc::clone(&input.graph.storage);
@@ -35,8 +45,18 @@ pub fn diagnostics_inner(input: HandlerInput) -> Result<protocol::Response, Grap
             .stats(&txn)
             .map_err(|e| GraphError::New(e.to_string()))?;
 
+        // System metrics — point-in-time snapshot (cheap /proc reads on Linux)
+        let rss_kb = mem_monitor::read_rss_kb();
+        let limit_kb = mem_monitor::read_cgroup_limit_kb();
+        let threads = mem_monitor::read_thread_count();
+        let rss_pct = if limit_kb > 0 {
+            rss_kb as f64 / limit_kb as f64 * 100.0
+        } else {
+            0.0
+        };
+
         let body = format!(
-            r#"{{"nodes":{nodes},"edges":{edges},"vectors":{{"total":{total},"active":{active},"soft_deleted":{soft_deleted},"hnsw_edges":{hnsw_edges},"entry_point_present":{entry_point_present}}}}}"#,
+            r#"{{"nodes":{nodes},"edges":{edges},"vectors":{{"total":{total},"active":{active},"soft_deleted":{soft_deleted},"hnsw_edges":{hnsw_edges},"entry_point_present":{entry_point_present}}},"system":{{"rss_kb":{rss_kb},"memory_limit_kb":{limit_kb},"rss_pct":{rss_pct:.1},"thread_count":{threads}}}}}"#,
             nodes = nodes,
             edges = edges,
             total = vector_stats.total,
@@ -44,6 +64,10 @@ pub fn diagnostics_inner(input: HandlerInput) -> Result<protocol::Response, Grap
             soft_deleted = vector_stats.soft_deleted,
             hnsw_edges = vector_stats.hnsw_edges,
             entry_point_present = vector_stats.entry_point_present,
+            rss_kb = rss_kb,
+            limit_kb = limit_kb,
+            rss_pct = rss_pct,
+            threads = threads,
         );
 
         return Ok(protocol::Response {
@@ -241,6 +265,12 @@ mod tests {
         assert!(body_str.contains("\"soft_deleted\":0"));
         assert!(body_str.contains("\"hnsw_edges\":0"));
         assert!(body_str.contains("\"entry_point_present\":false"));
+        // System section always present; rss_kb > 0 on Linux, 0 elsewhere
+        assert!(body_str.contains("\"system\""), "diagnostics must include system section: {body_str}");
+        assert!(body_str.contains("\"rss_kb\""), "diagnostics must include rss_kb: {body_str}");
+        assert!(body_str.contains("\"memory_limit_kb\""), "diagnostics must include memory_limit_kb: {body_str}");
+        assert!(body_str.contains("\"rss_pct\""), "diagnostics must include rss_pct: {body_str}");
+        assert!(body_str.contains("\"thread_count\""), "diagnostics must include thread_count: {body_str}");
     }
 
     #[test]

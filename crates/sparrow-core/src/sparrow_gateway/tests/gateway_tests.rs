@@ -131,7 +131,7 @@ fn test_gateway_workers_per_core() {
         None,
         None,
     );
-    assert_eq!(gateway3.workers_per_core, 8);
+    assert_eq!(gateway3.workers_per_core, 4);
 }
 
 // ============================================================================
@@ -343,8 +343,8 @@ fn test_core_setter_with_default_workers() {
     let cores = vec![CoreId { id: 0 }, CoreId { id: 1 }];
     let setter = CoreSetter::new(cores, GatewayOpts::DEFAULT_WORKERS_PER_CORE);
 
-    assert_eq!(setter.threads_per_core, 8);
-    assert_eq!(setter.num_threads(), 16);
+    assert_eq!(setter.threads_per_core, 4);
+    assert_eq!(setter.num_threads(), 8);
 }
 
 #[test]
@@ -357,7 +357,7 @@ fn test_core_setter_index_initial_value() {
 
 #[test]
 fn test_gateway_opts_default_workers_per_core() {
-    assert_eq!(GatewayOpts::DEFAULT_WORKERS_PER_CORE, 8);
+    assert_eq!(GatewayOpts::DEFAULT_WORKERS_PER_CORE, 4);
 }
 
 // ============================================================================
