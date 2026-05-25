@@ -13,6 +13,7 @@ use tracing::{info, trace, warn};
 use super::mem_monitor;
 
 use super::router::router::{HandlerFn, SparrowRouter};
+use crate::sparrow_gateway::settings::RuntimeSettings;
 use crate::sparrow_gateway::v1_compat::v1_query_axum_handler;
 #[cfg(feature = "lmdb")]
 use crate::sparrow_gateway::auth::TokenStore;
@@ -51,6 +52,7 @@ pub struct SparrowGateway {
     pub(crate) router: Arc<SparrowRouter>,
     pub(crate) opts: Option<SparrowGraphEngineOpts>,
     pub(crate) cluster_id: Option<String>,
+    pub(crate) settings: Arc<RuntimeSettings>,
     #[cfg(feature = "lmdb")]
     pub(crate) token_store: Arc<TokenStore>,
 }
@@ -64,6 +66,7 @@ impl SparrowGateway {
         mcp_routes: Option<HashMap<String, MCPHandlerFn>>,
         write_routes: Option<HashSet<String>>,
         opts: Option<SparrowGraphEngineOpts>,
+        settings: Arc<RuntimeSettings>,
     ) -> SparrowGateway {
         let router = Arc::new(SparrowRouter::new(routes, mcp_routes, write_routes));
         let cluster_id = std::env::var("SPARROW_CLUSTER_ID").ok();
@@ -105,6 +108,7 @@ impl SparrowGateway {
             workers_per_core,
             opts,
             cluster_id,
+            settings,
             #[cfg(feature = "lmdb")]
             token_store,
         }
@@ -230,6 +234,7 @@ impl SparrowGateway {
             worker_pool,
             schema_json: self.opts.and_then(|o| o.config.schema.map(Bytes::from)),
             cluster_id: self.cluster_id,
+            settings: self.settings,
             #[cfg(feature = "lmdb")]
             token_store: Arc::clone(&self.token_store),
         }));
@@ -402,6 +407,7 @@ pub struct AppState {
     pub worker_pool: WorkerPool,
     pub schema_json: Option<Bytes>,
     pub cluster_id: Option<String>,
+    pub settings: Arc<RuntimeSettings>,
     #[cfg(feature = "lmdb")]
     pub token_store: Arc<TokenStore>,
 }

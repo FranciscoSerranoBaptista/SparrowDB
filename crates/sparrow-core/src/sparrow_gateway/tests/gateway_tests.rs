@@ -1,13 +1,14 @@
 use crate::sparrow_engine::traversal_core::{SparrowGraphEngine, SparrowGraphEngineOpts};
+#[cfg(feature = "lmdb")]
+use crate::sparrow_gateway::auth::TokenStore;
 use crate::sparrow_gateway::gateway::{AppState, CoreSetter, GatewayOpts, SparrowGateway};
 use crate::sparrow_gateway::router::router::SparrowRouter;
+use crate::sparrow_gateway::settings::RuntimeSettings;
 use crate::sparrow_gateway::worker_pool::WorkerPool;
 use axum::body::Bytes;
 use core_affinity::CoreId;
 use std::sync::atomic;
 use std::{collections::HashMap, sync::Arc};
-#[cfg(feature = "lmdb")]
-use crate::sparrow_gateway::auth::TokenStore;
 
 use crate::sparrow_engine::traversal_core::config::Config;
 use tempfile::TempDir;
@@ -31,7 +32,16 @@ fn create_test_graph() -> (Arc<SparrowGraphEngine>, TempDir) {
 #[test]
 fn test_gateway_new_basic() {
     let (graph, _temp_dir) = create_test_graph();
-    let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, None, None, None, None);
+    let gateway = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph,
+        8,
+        None,
+        None,
+        None,
+        None,
+        Arc::new(RuntimeSettings::from_env()),
+    );
 
     assert_eq!(gateway.address, "127.0.0.1:8080");
     assert_eq!(gateway.workers_per_core, 8);
@@ -42,7 +52,16 @@ fn test_gateway_new_basic() {
 fn test_gateway_new_with_routes() {
     let (graph, _temp_dir) = create_test_graph();
     let routes = HashMap::new();
-    let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, Some(routes), None, None, None);
+    let gateway = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph,
+        8,
+        Some(routes),
+        None,
+        None,
+        None,
+        Arc::new(RuntimeSettings::from_env()),
+    );
 
     assert_eq!(gateway.address, "127.0.0.1:8080");
     assert!(gateway.router.routes.is_empty());
@@ -60,6 +79,7 @@ fn test_gateway_new_with_mcp_routes() {
         Some(mcp_routes),
         None,
         None,
+        Arc::new(RuntimeSettings::from_env()),
     );
 
     assert_eq!(gateway.address, "127.0.0.1:8080");
@@ -75,7 +95,16 @@ fn test_gateway_new_with_opts() {
         version_info: Default::default(),
         skip_bm25_on_write: None,
     };
-    let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, None, None, None, Some(opts));
+    let gateway = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph,
+        8,
+        None,
+        None,
+        None,
+        Some(opts),
+        Arc::new(RuntimeSettings::from_env()),
+    );
 
     assert!(gateway.opts.is_some());
 }
@@ -86,7 +115,16 @@ fn test_gateway_new_with_cluster_id() {
         std::env::set_var("SPARROW_CLUSTER_ID", "test-cluster-123");
     }
     let (graph, _temp_dir) = create_test_graph();
-    let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, None, None, None, None);
+    let gateway = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph,
+        8,
+        None,
+        None,
+        None,
+        None,
+        Arc::new(RuntimeSettings::from_env()),
+    );
 
     assert!(gateway.cluster_id.is_some());
     assert_eq!(gateway.cluster_id.unwrap(), "test-cluster-123");
@@ -98,7 +136,16 @@ fn test_gateway_new_with_cluster_id() {
 #[test]
 fn test_gateway_fields() {
     let (graph, _temp_dir) = create_test_graph();
-    let gateway = SparrowGateway::new("0.0.0.0:3000", graph, 10, None, None, None, None);
+    let gateway = SparrowGateway::new(
+        "0.0.0.0:3000",
+        graph,
+        10,
+        None,
+        None,
+        None,
+        None,
+        Arc::new(RuntimeSettings::from_env()),
+    );
 
     assert_eq!(gateway.address, "0.0.0.0:3000");
     assert_eq!(gateway.workers_per_core, 10);
@@ -107,10 +154,29 @@ fn test_gateway_fields() {
 #[test]
 fn test_gateway_address_format() {
     let (graph, _temp_dir) = create_test_graph();
-    let gateway = SparrowGateway::new("localhost:8080", graph.clone(), 1, None, None, None, None);
+    let settings = Arc::new(RuntimeSettings::from_env());
+    let gateway = SparrowGateway::new(
+        "localhost:8080",
+        graph.clone(),
+        1,
+        None,
+        None,
+        None,
+        None,
+        Arc::clone(&settings),
+    );
     assert_eq!(gateway.address, "localhost:8080");
 
-    let gateway2 = SparrowGateway::new("0.0.0.0:80", graph, 1, None, None, None, None);
+    let gateway2 = SparrowGateway::new(
+        "0.0.0.0:80",
+        graph,
+        1,
+        None,
+        None,
+        None,
+        None,
+        Arc::clone(&settings),
+    );
     assert_eq!(gateway2.address, "0.0.0.0:80");
 }
 
@@ -118,10 +184,29 @@ fn test_gateway_address_format() {
 fn test_gateway_workers_per_core() {
     let (graph, _temp_dir) = create_test_graph();
 
-    let gateway1 = SparrowGateway::new("127.0.0.1:8080", graph.clone(), 1, None, None, None, None);
+    let settings = Arc::new(RuntimeSettings::from_env());
+    let gateway1 = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph.clone(),
+        1,
+        None,
+        None,
+        None,
+        None,
+        Arc::clone(&settings),
+    );
     assert_eq!(gateway1.workers_per_core, 1);
 
-    let gateway2 = SparrowGateway::new("127.0.0.1:8080", graph.clone(), 10, None, None, None, None);
+    let gateway2 = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph.clone(),
+        10,
+        None,
+        None,
+        None,
+        None,
+        Arc::clone(&settings),
+    );
     assert_eq!(gateway2.workers_per_core, 10);
 
     let gateway3 = SparrowGateway::new(
@@ -132,6 +217,7 @@ fn test_gateway_workers_per_core() {
         None,
         None,
         None,
+        Arc::clone(&settings),
     );
     assert_eq!(gateway3.workers_per_core, 4);
 }
@@ -160,6 +246,7 @@ fn test_app_state_creation() {
         worker_pool,
         schema_json: None,
         cluster_id: None,
+        settings: Arc::new(RuntimeSettings::from_env()),
         #[cfg(feature = "lmdb")]
         token_store: {
             let rnd: u64 = rand::random();
@@ -191,6 +278,7 @@ fn test_app_state_with_schema() {
         worker_pool,
         schema_json: Some(Bytes::from_static(br#"{"schema": "test"}"#)),
         cluster_id: None,
+        settings: Arc::new(RuntimeSettings::from_env()),
         #[cfg(feature = "lmdb")]
         token_store: {
             let rnd: u64 = rand::random();
@@ -225,6 +313,7 @@ fn test_app_state_with_cluster_id() {
         worker_pool,
         schema_json: None,
         cluster_id: Some("cluster-456".to_string()),
+        settings: Arc::new(RuntimeSettings::from_env()),
         #[cfg(feature = "lmdb")]
         token_store: {
             let rnd: u64 = rand::random();
@@ -370,7 +459,16 @@ fn test_gateway_opts_default_workers_per_core() {
 #[test]
 fn test_gateway_has_token_store() {
     let (graph, _temp_dir) = create_test_graph();
-    let gateway = SparrowGateway::new("127.0.0.1:8080", graph, 8, None, None, None, None);
+    let gateway = SparrowGateway::new(
+        "127.0.0.1:8080",
+        graph,
+        8,
+        None,
+        None,
+        None,
+        None,
+        Arc::new(RuntimeSettings::from_env()),
+    );
     // TokenStore must have been created — no tokens seeded in tests so auth is disabled
     assert!(!gateway.token_store.is_auth_required());
 }
@@ -400,4 +498,3 @@ fn test_verify_request_auth_required_no_key() {
     let err = store.verify("").unwrap_err();
     assert!(matches!(err, TokenError::Unauthorized));
 }
-

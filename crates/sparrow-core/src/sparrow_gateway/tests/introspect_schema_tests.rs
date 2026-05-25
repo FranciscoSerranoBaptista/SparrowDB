@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::sparrow_gateway::{
-    gateway::CoreSetter, router::router::SparrowRouter, worker_pool::WorkerPool,
+    gateway::CoreSetter, router::router::SparrowRouter, settings::RuntimeSettings,
+    worker_pool::WorkerPool,
 };
 use crate::{
     sparrow_engine::{
@@ -45,6 +46,7 @@ fn create_test_app_state(schema_json: Option<String>) -> Arc<AppState> {
         worker_pool,
         schema_json: schema_json.map(Bytes::from),
         cluster_id: None,
+        settings: Arc::new(RuntimeSettings::from_env()),
         #[cfg(feature = "lmdb")]
         token_store: {
             let rnd: u64 = rand::random();
