@@ -67,7 +67,7 @@ pub fn require_admin(record: &TokenRecord) -> Result<(), SparrowError> {
 }
 
 #[cfg(feature = "lmdb")]
-fn extract_verified_admin(
+pub(crate) fn extract_verified_admin(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<TokenRecord, axum::http::Response<Body>> {

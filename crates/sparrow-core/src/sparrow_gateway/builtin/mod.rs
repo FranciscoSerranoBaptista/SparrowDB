@@ -4,6 +4,7 @@ pub mod diagnostics;
 #[cfg(feature = "dev-instance")]
 pub mod migrate;
 pub mod node_by_id;
+pub mod settings_handler;
 pub mod node_connections;
 pub mod nodes_by_label;
 pub mod token_mgmt;
