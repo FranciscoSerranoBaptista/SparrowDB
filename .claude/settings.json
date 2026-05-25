@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/post-build-sweep.sh"
+          },
+          {
+            "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/cargo-panic-extractor.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-async-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-async-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
