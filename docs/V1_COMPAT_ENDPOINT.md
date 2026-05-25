@@ -48,9 +48,13 @@ Write operations (`"request_type": "write"`) are routed to the dedicated LMDB wr
 | `{"NWhere": {"Eq": ["$label", {"String": T}]}}` | `NFromType(T)` |
 | `{"NWhere": {"And": [label_eq, ...rest]}}` | `NFromType` from label eq + `FilterItems` for rest |
 | `{"NWhere": {"And": [...props]}}` (no label) | `FilterItems` scan only |
+| `{"EWhere": {"Eq": ["$label", {"String": T}]}}` | `EFromType(T)` — returns all edges with that label |
+| `{"EWhere": {"And": [label_eq, ...rest]}}` | `EFromType` from label eq + `FilterItems` for rest |
 | `{"N": {"Ids": ["uuid-str", ...]}}` | Direct `storage.get_node` by UUID |
 | `{"Out": "EDGE"}` | `OutStep { edge_label: EDGE }` |
 | `{"In": "EDGE"}` | `InStep { edge_label: EDGE }` |
+| `{"OutN": "EDGE"}` | `OutStep { edge_label: EDGE }` — identical to `Out` |
+| `{"InN": "EDGE"}` | `InStep { edge_label: EDGE }` — identical to `In` |
 | `{"Where": condition}` | `FilterItems` with translated condition |
 | `{"AddN": {label, properties}}` | `MutationOp::AddNode` |
 | `{"Inject": "var"}` | Sets seed_var for next traversal step |
@@ -62,7 +66,14 @@ Write operations (`"request_type": "write"`) are routed to the dedicated LMDB wr
 | `{"ValueMap": [fields]}` | No-op (all fields always returned) |
 | `{"Project": [[from,to],...]}` | No-op (all fields always returned) |
 
-**Not supported:** `Repeat` (recursive traversal), `SearchVecText`, `SearchKeyword`.
+**Not supported:** `Repeat` (recursive traversal), `SearchVecText`, `SearchKeyword`, `OutN`/`InN` with `null` label (must supply a string edge label).
+
+**Notes on `EWhere`:** Returns edges matching the predicate, analogous to `NWhere` for nodes.
+Edges in the response carry `id`, `label`, `from_node`, and `to_node` fields (plus `$id`/`$label` compat aliases).
+
+**Notes on `OutN`/`InN`:** These are now functional and translate identically to `Out`/`In`.
+The `N` suffix has no effect in the v1_compat layer — both forms follow the edge and return destination/source nodes.
+Prefer `Out`/`In` in new code for clarity; `OutN`/`InN` are supported for HelixDB migration compat.
 
 ---
 

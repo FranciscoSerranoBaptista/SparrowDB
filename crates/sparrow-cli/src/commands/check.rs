@@ -439,30 +439,50 @@ async fn ensure_hermetic_workspace(sparrow_repo_copy_dir: &std::path::Path) -> R
 
     let current_head = String::from_utf8_lossy(&head_output.stdout).trim().to_string();
 
-    // Extract short hex from binary_hash (git describe may include tags)
+    // Extract the commit hash from binary_hash.
+    //
+    // `git describe --always --dirty` produces strings like:
+    //   "v3.0.0-222-g06e9093f"        (tagged build, commit prefix with 'g')
+    //   "v3.0.0-222-g06e9093f-dirty"  (tagged build, uncommitted changes)
+    //   "06e9093f"                      (no tag reachable)
+    //
+    // The hash segment is prefixed with 'g' when a tag is present. Strip that
+    // prefix before the hex check so the extraction works in both forms.
     let binary_short = binary_hash
         .split('-')
-        .find(|part| part.len() >= 7 && part.chars().all(|c| c.is_ascii_hexdigit()))
+        .find_map(|part| {
+            // Strip the optional 'g' prefix that git describe adds before the hash.
+            let h = part.strip_prefix('g').unwrap_or(part);
+            (h.len() >= 7 && h.chars().all(|c| c.is_ascii_hexdigit())).then_some(h)
+        })
         .unwrap_or(binary_hash);
 
-    if current_head == binary_short || binary_hash.starts_with(&current_head) {
+    // Accept if either abbreviation is a prefix of the other: git rev-parse --short=7
+    // returns 7 chars while git describe may embed 8+ char hashes, but both refer
+    // to the same commit when one starts with the other.
+    if current_head == binary_short
+        || binary_short.starts_with(current_head.as_str())
+        || current_head.starts_with(binary_short)
+    {
         return Ok(());
     }
 
     print_warning(&format!(
         "sparrow-repo-copy is at {current_head} but binary is {binary_hash}. \
-         Checking out {binary_hash} for hermetic cargo check…"
+         Checking out {binary_short} for hermetic cargo check…"
     ));
 
+    // Checkout the extracted short hash, not the full git describe string (which
+    // includes tags and the -dirty suffix and is not a valid git ref).
     let checkout = Command::new("git")
-        .args(["-C", repo_path_str, "checkout", binary_hash])
+        .args(["-C", repo_path_str, "checkout", binary_short])
         .output()
         .await
-        .map_err(|e| eyre::eyre!("Failed to checkout {binary_hash}: {e}"))?;
+        .map_err(|e| eyre::eyre!("Failed to checkout {binary_short}: {e}"))?;
 
     if !checkout.status.success() {
         print_warning(&format!(
-            "Could not checkout {binary_hash} in sparrow-repo-copy. cargo check may not be hermetic."
+            "Could not checkout {binary_short} in sparrow-repo-copy. cargo check may not be hermetic."
         ));
     }
     Ok(())
