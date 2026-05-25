@@ -119,7 +119,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             }
         }
 
-        if let Some(bm25) = &self.storage.bm25
+        if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes)
             && let Some(props) = node.properties.as_ref()
         {
             let mut data = props.flatten_bm25();
@@ -215,7 +215,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             }
         }
 
-        if let Some(bm25) = &self.storage.bm25
+        if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes)
             && let Some(props) = node.properties.as_ref()
         {
             let mut data = props.flatten_bm25();

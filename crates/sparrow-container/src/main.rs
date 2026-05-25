@@ -59,6 +59,12 @@ fn main() {
     println!("\tconfig: {config:#?}");
     println!("\tpath: {}", path.display());
     println!("\tport: {port}");
+    if matches!(std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref(), Ok("true") | Ok("1")) {
+        println!(
+            "\tSPARROW_SKIP_BM25_ON_WRITE=true — BM25 index updates DISABLED during writes. \
+             Run POST /rebuild_bm25_index after bulk import to rebuild the index."
+        );
+    }
 
     let transition_fns: HashMap<&'static str, ItemInfo> =
         inventory::iter::<TransitionSubmission>.into_iter().fold(

@@ -24,7 +24,7 @@ where
                 match item {
                     TraversalValue::Node(node) => match storage.drop_node(txn, node.id) {
                         Ok(_) => {
-                            if let Some(bm25) = &storage.bm25
+                            if let Some(bm25) = storage.bm25.as_ref().filter(|_| !storage.skip_bm25_writes)
                                 && let Err(e) = bm25.delete_doc(txn, node.id)
                             {
                                 println!("failed to delete doc from bm25: {e}");

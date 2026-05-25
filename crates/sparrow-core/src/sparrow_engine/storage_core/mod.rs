@@ -81,6 +81,11 @@ pub mod lmdb {
         pub version_info: VersionInfo,
 
         pub storage_config: StorageConfig,
+
+        /// When true, all BM25 mutations are skipped during writes (insert, update, delete).
+        /// Set via `SPARROW_SKIP_BM25_ON_WRITE=true`.
+        /// Run `POST /rebuild_bm25_index` after bulk import to build the index from scratch.
+        pub skip_bm25_writes: bool,
     }
 
     pub type Txn<'db> = heed3::RoTxn<'db>;
@@ -240,6 +245,11 @@ pub mod lmdb {
 
             wtxn.commit()?;
 
+            let skip_bm25_writes = matches!(
+                std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref(),
+                Ok("true") | Ok("1")
+            );
+
             let mut storage = Self {
                 graph_env,
                 nodes_db,
@@ -253,6 +263,7 @@ pub mod lmdb {
                 migrations_db,
                 storage_config,
                 version_info,
+                skip_bm25_writes,
             };
 
             storage_migration::migrate(&mut storage)?;

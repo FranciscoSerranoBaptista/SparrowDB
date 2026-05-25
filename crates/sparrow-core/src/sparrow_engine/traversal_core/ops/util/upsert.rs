@@ -284,7 +284,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                     }
 
                     // Update BM25 index for existing node
-                    if let Some(bm25) = &self.storage.bm25
+                    if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes)
                         && let Some(props) = node.properties.as_ref()
                     {
                         update_bm25_node_doc(bm25, self.txn, node.id, props, node.label)?;
@@ -351,7 +351,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                         }
                     }
 
-                    if let Some(bm25) = &self.storage.bm25
+                    if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes)
                         && let Some(props) = node.properties.as_ref()
                     {
                         insert_bm25_node_doc(bm25, self.txn, node.id, props, node.label)?;
