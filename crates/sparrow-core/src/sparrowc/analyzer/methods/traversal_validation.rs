@@ -207,11 +207,14 @@ fn try_optimize_where_to_index(
         return false;
     }
 
-    // All conditions met — rewrite source to NFromIndex and drop the WHERE step
+    // All conditions met — rewrite source to NFromIndex and drop the WHERE step.
+    // `eq_value` was generated for an EQ-comparison context (owned/"clone" form). Convert it
+    // to the reference form because `n_from_index` takes `key: &K`.  See
+    // `GeneratedValue::into_ref_key` for the conversion rules.
     gen_traversal.source_step = Separator::Period(SourceStep::NFromIndex(NFromIndex {
         label: source_label,
         index: GenRef::Literal(prop_name_str),
-        key: eq_value.clone(),
+        key: eq_value.clone().into_ref_key(),
     }));
 
     gen_traversal.steps.pop(); // Remove the WHERE step

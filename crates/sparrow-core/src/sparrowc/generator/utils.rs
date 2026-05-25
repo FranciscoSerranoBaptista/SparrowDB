@@ -271,6 +271,50 @@ impl GeneratedValue {
             }
         }
     }
+
+    /// Convert this value to the reference form required for `n_from_index`'s `key: &K` argument.
+    ///
+    /// Query parameters and local identifiers are generated in two forms depending on context:
+    /// - Owned form (`should_ref = false`): `data.foo.clone()` — used in EQ comparisons
+    /// - Reference form (`should_ref = true`): displayed as `&data.foo` — required by `n_from_index`
+    ///
+    /// When the WHERE optimizer rewrites `N<T>::WHERE(_::{f}::EQ(param))` into an `NFromIndex`
+    /// source step, it reuses the EQ's right-hand `GeneratedValue` as the index key. That value
+    /// was generated in the owned form; this method converts it to the reference form so the
+    /// emitted call matches `n_from_index`'s `key: &K` signature.
+    ///
+    /// Conversion rules for `Parameter(GenRef::Std(s))` and `Identifier(GenRef::Std(s))`:
+    /// - Strip trailing `.clone()` if present.
+    /// - If the result contains no `(` (simple field access like `data.foo`): wrap in
+    ///   `GenRef::Ref` so it emits `&data.foo`.
+    /// - If the result contains `(` (complex expression, e.g. optional-param `as_ref()…?`):
+    ///   keep as `GenRef::Std` — the expression already produces a reference, so no `&` needed.
+    ///
+    /// All other variants are returned unchanged; literals and primitives are already valid
+    /// reference-compatible values for `n_from_index`.
+    pub fn into_ref_key(self) -> Self {
+        match self {
+            GeneratedValue::Parameter(GenRef::Std(s)) => {
+                let stripped = s.strip_suffix(".clone()").unwrap_or(&s).to_string();
+                if stripped.contains('(') {
+                    // Complex expression (e.g. optional-param as_ref chain): already a reference.
+                    GeneratedValue::Parameter(GenRef::Std(stripped))
+                } else {
+                    // Simple field access (e.g. "data.foo"): needs & prefix.
+                    GeneratedValue::Parameter(GenRef::Ref(stripped))
+                }
+            }
+            GeneratedValue::Identifier(GenRef::Std(s)) => {
+                let stripped = s.strip_suffix(".clone()").unwrap_or(&s).to_string();
+                if stripped.contains('(') {
+                    GeneratedValue::Identifier(GenRef::Std(stripped))
+                } else {
+                    GeneratedValue::Identifier(GenRef::Ref(stripped))
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 impl Display for GeneratedValue {
@@ -666,6 +710,66 @@ mod tests {
     fn test_generated_value_parameter() {
         let value = GeneratedValue::Parameter(GenRef::Std("param".to_string()));
         assert_eq!(format!("{}", value), "param");
+    }
+
+    // ============================================================================
+    // GeneratedValue::into_ref_key Tests
+    // ============================================================================
+
+    #[test]
+    fn test_into_ref_key_required_param_becomes_reference() {
+        // The WHERE-optimizer reuses the EQ right-hand value as an n_from_index key.
+        // Required params are generated as "data.foo.clone()" (owned form).
+        // into_ref_key must convert to "&data.foo" (reference form).
+        let owned = GeneratedValue::Parameter(GenRef::Std("data.slug.clone()".to_string()));
+        let key = owned.into_ref_key();
+        assert_eq!(format!("{}", key), "&data.slug");
+    }
+
+    #[test]
+    fn test_into_ref_key_optional_param_strips_clone_keeps_expression() {
+        // Optional params are generated as "data.foo.as_ref().ok_or_else(…)?.clone()".
+        // The as_ref chain already returns &T; strip .clone() but do NOT add another &.
+        let owned = GeneratedValue::Parameter(GenRef::Std(
+            "data.slug.as_ref().ok_or_else(|| GraphError::ParamNotFound(\"slug\"))?.clone()"
+                .to_string(),
+        ));
+        let key = owned.into_ref_key();
+        assert_eq!(
+            format!("{}", key),
+            "data.slug.as_ref().ok_or_else(|| GraphError::ParamNotFound(\"slug\"))?"
+        );
+    }
+
+    #[test]
+    fn test_into_ref_key_already_ref_param_unchanged() {
+        // If the param was already generated in reference form, leave it alone.
+        let already_ref = GeneratedValue::Parameter(GenRef::Ref("data.slug".to_string()));
+        let key = already_ref.into_ref_key();
+        assert_eq!(format!("{}", key), "&data.slug");
+    }
+
+    #[test]
+    fn test_into_ref_key_identifier_becomes_reference() {
+        // Local identifiers in owned form ("varname.clone()") must also become references.
+        let owned = GeneratedValue::Identifier(GenRef::Std("my_var.clone()".to_string()));
+        let key = owned.into_ref_key();
+        assert_eq!(format!("{}", key), "&my_var");
+    }
+
+    #[test]
+    fn test_into_ref_key_literal_unchanged() {
+        // Literals are already valid as n_from_index key values; leave them alone.
+        let lit = GeneratedValue::Literal(GenRef::Literal("hello".to_string()));
+        let key = lit.into_ref_key();
+        assert_eq!(format!("{}", key), "\"hello\"");
+    }
+
+    #[test]
+    fn test_into_ref_key_primitive_unchanged() {
+        let prim = GeneratedValue::Primitive(GenRef::Std("42".to_string()));
+        let key = prim.into_ref_key();
+        assert_eq!(format!("{}", key), "42");
     }
 
     #[test]
