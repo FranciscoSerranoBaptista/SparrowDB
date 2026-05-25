@@ -1,117 +1,90 @@
 # sparrow-core CLAUDE.md
 
-The database engine crate. Read this before modifying storage, the gateway, or the compiler.
+The heart of SparrowDB — storage engine, HTTP gateway, and HQL compiler in one crate.
 
 ---
 
-## Critical invariant: lib name vs package name
+## Key source directories
 
-- **`Cargo.toml` `name`**: `sparrow-core`
-- **`[lib] name`**: `sparrow_db`
-
-All downstream crates (`sparrow-cli`, `sparrow-container`, `sparrow-memory`) import this crate as `use sparrow_db::...`. If you remove the `[lib]` section the crate name reverts to `sparrow_core` and every import site breaks. Do not remove it.
-
----
-
-## Directory layout under `src/`
-
-```
-src/
-  lib.rs                  <- module declarations, global allocator (MiMalloc)
-  grammar.pest            <- PEG grammar for the HQL compiler
-  protocol/               <- wire types: Request, Response, Format, Value
-  sparrow_engine/         <- storage layer (LMDB) and traversal ops
-  sparrow_gateway/        <- HTTP server, router, worker pool
-    gateway.rs            <- SparrowGateway::run(), axum app construction
-    worker_pool/          <- WorkerPool: N read workers + 1 write worker
-    router/               <- SparrowRouter: inventory-based handler dispatch
-    v1_compat/            <- /v1/query HelixDB compatibility endpoint
-    builtin/              <- dev-only built-in query handlers (feature = dev-instance)
-    mcp/                  <- MCP (model context protocol) tool support
-    embedding_providers/  <- embedding model clients (reqwest-based)
-    introspect_schema.rs  <- /introspect GET handler
-  sparrowc/               <- HQL compiler (feature = compiler)
-  utils/                  <- shared helpers
-```
+| Path | Contents |
+|------|----------|
+| `src/sparrow_engine/` | Storage core: LMDB backend (heed3), BM25 index, HNSW vector index, graph traversal, reranker |
+| `src/sparrow_gateway/` | HTTP gateway (axum), WorkerPool (single-writer), auth, MCP server, embedding providers |
+| `src/sparrowc/` | HQL compiler: parser → analyzer → generator |
+| `src/protocol/` | Shared data types, error types (`GraphError`, `VectorError`) |
+| `src/grammar.pest` | PEG grammar for HQL — source of truth for the parser; edit here first |
 
 ---
 
-## LMDB writer thread
+## Agent invocation guide
 
-LMDB allows only one write transaction at a time. `WorkerPool` enforces this:
+Dispatch as a sub-agent via the Agent tool. Agents live in `.agents/<name>.md` — read the frontmatter for model and tool requirements.
 
-- `N` read workers share a `flume` channel and can open concurrent read transactions.
-- **Exactly 1** writer worker receives from a separate `write_tx` channel.
-
-All mutation handlers **must be registered as write routes** so `WorkerPool` dispatches them to the writer. When adding a new endpoint, pass it in `write_routes: Option<HashSet<String>>` when constructing `SparrowGateway`, or mark it with `Handler::new("name", handler_fn, true)` (the `true` flag = is_write).
-
-Never call `storage.graph_env.write_txn()` from a read worker. The LMDB library will deadlock or panic.
-
----
-
-## v1/query compatibility endpoint
-
-`src/sparrow_gateway/v1_compat/mod.rs` provides `POST /v1/query` as a bridge for callers still using the HelixDB JSON DSL. It translates HelixDB step objects (`NWhere`, `Out`, `In`, `AddN`, `AddE`, `SetProperty`, `Drop`, `VectorSearchNodes`) into SparrowDB traversal calls.
-
-**The `/v1/query` route MUST be registered before `/{*path}` in gateway.rs.** The wildcard handler rejects any path that contains `/`, which `v1/query` does. Registering them in the wrong order causes all v1 traffic to be rejected. This is documented with a comment in `gateway.rs`.
-
-The endpoint peeks at the raw request bytes for the string `"write"` to decide which worker pool channel to use, preserving the single-writer invariant.
+| Situation | Agent | Why |
+|-----------|-------|-----|
+| Reviewing any change | `rust-reviewer` | Checks SparrowDB invariants (LMDB, async, error propagation) before generic style |
+| Error handling gaps / swallowed errors | `silent-failure-hunter` | Finds dangerous fallbacks and missing propagation paths |
+| Slow queries / high memory / HNSW degradation | `sparrow-perf-profiler` | Four-phase LMDB/HNSW/BM25/Tokio profiling workflow |
+| Build failure / feature flag confusion | `rust-build-resolver` | Knows the lib-name split and feature chain |
 
 ---
 
-## sonic_rs 0.5.7 API notes
+## Skills reference
 
-The codebase uses `sonic-rs = "0.5.7"`. This version has several differences from `serde_json`:
-
-- **No `as_object_mut()`** — mutating a `sonic_rs::Value` in place is not supported. Reconstruct the object instead.
-- **Use `sonic_rs::json!{}` macro** — not `object!{}` (that macro does not exist in this version).
-- **`sonic_rs::Array` derefs to `[Value]`** — you can iterate over it with `.iter()` or index it, but you must call `.as_array()` on a `Value` to get `Option<&Array>`, then dereference with `&**arr` to get `&[Value]`.
-- **`JsonContainerTrait` and `JsonValueTrait`** must be in scope for `.get()`, `.as_str()`, `.as_i64()`, etc., to work on `sonic_rs::Value`.
+- Debugging a runtime issue → `docs/skills/debugging.md`
+- Writing or reviewing HQL → `docs/skills/querying.md`
 
 ---
 
-## Vector index (HNSW)
+## Local invariants
 
-The vector index uses HNSW (Hierarchical Navigable Small World). Key behaviors:
+1. **Package/library name split.** The package name is `sparrow-core` but the library name is `sparrow_db` (set via `[lib] name = "sparrow_db"` in `Cargo.toml`). Every consumer imports as `use sparrow_db::...`. Never remove the `[lib]` section without first updating all import sites — search with `grep -r "use sparrow_db" crates/`.
 
-- **Soft delete**: when a node is deleted from the graph, its vector entry is soft-deleted in the HNSW index. The entry is marked invalid but the index structure is not rebuilt. This keeps deletion O(1) but the index can accumulate stale entries over time.
-- **Hard delete / compaction**: not yet implemented. A future compaction step will rebuild the index to remove stale entries.
-- **Cosine similarity**: enabled by the `cosine` feature (included in the `vectors` feature set).
+2. **LMDB single-writer.** LMDB enforces one write transaction at the OS level; the gateway mirrors this in Rust via `WorkerPool`. All mutations must flow through the dedicated `_writer_worker` that owns `write_rx`. Never call `write_txn()` outside that thread path. New mutation endpoints must be registered as write routes so `WorkerPool::process_write()` routes them correctly.
 
-Do not assume a deleted node's vector has been physically removed from the index. Filter out soft-deleted entries in search results.
+3. **`std::process::Command` is banned in async.** Blocking the Tokio thread pool causes production hangs. Always use `tokio::process::Command` inside any `async fn`. The only current exception is `sparrow-cli/src/docker.rs`, which runs in a synchronous context — any async refactor there must switch it over.
 
----
+4. **Feature flag chain.** `lmdb` → `server` → `build + compiler + vectors`. Tests that touch the graph need `--features lmdb,server`. Compiler-only builds: `--no-default-features --features compiler`. The `ariadne` dependency is required whenever the `compiler` feature is active — do not remove it.
 
-## Adding a new built-in endpoint
-
-1. Create a new file under `src/sparrow_gateway/builtin/my_endpoint.rs`.
-2. Implement the handler function with the signature `fn my_handler(input: HandlerInput) -> Result<Response, GraphError>`.
-3. Register it with inventory:
-   ```rust
-   inventory::submit! {
-       HandlerSubmission(Handler::new("my_endpoint_name", my_handler, false /* or true if write */))
-   }
-   ```
-4. If the endpoint should only exist in dev builds, gate the `inventory::submit!` and the import behind `#[cfg(feature = "dev-instance")]`.
-5. Add the module to `src/sparrow_gateway/builtin/mod.rs`.
-6. For dev-only routes, also add the axum route registration in `gateway.rs` inside the `#[cfg(feature = "dev-instance")]` block.
-
-The `SparrowRouter` picks up `inventory::submit!` registrations at startup automatically — no explicit router.insert() call needed.
+5. **GraphError propagation.** Always propagate errors using the specific `GraphError` variant that matches the failure. Never map to `GraphError::Unknown` — that loses the structured context that callers and log consumers rely on. The `silent-failure-hunter` agent can audit for violations.
 
 ---
 
-## Feature flags (sparrow-core)
+## HNSW caveats
 
-```
-compiler          = pest + pest_derive + ariadne  (HQL parser)
-build             = compiler
-vectors           = cosine + url  (HNSW + embedding client URLs)
-server            = build + compiler + vectors + reqwest  (full gateway)
-lmdb              = server + heed3  (storage backend — the default)
-dev-instance      = exposes debug query handlers (/nodes-edges, /node-details, etc.)
-production        = production build marker (auth enforced via lmdb TokenStore)
-bench             = polars  (benchmarking utilities)
-debug-output      = verbose macro output
-```
+- `DROP` on a node marks its vector **soft-deleted** in the HNSW graph but does not compact the index.
+- Stale soft-deleted entries accumulate over time and degrade approximate-nearest-neighbour recall.
+- There is no hard-delete or compaction path yet — this is a known limitation.
+- Current mitigation: re-embed affected data into a fresh vector type to get a clean index.
+- `GET /diagnostics` reports `soft_deleted` count per vector type — monitor this in long-running instances.
 
-The `ariadne` crate must be included when the `compiler` feature is active. Removing it breaks the error-reporting path in the HQL compiler. See the project memory note on this recurring issue.
+---
+
+## Code graph
+
+Use the `code-review-graph` MCP tools to navigate sparrow-core without reading entire files.
+
+**Start here:**
+- Architecture overview: `get_architecture_overview_tool` — maps modules, their sizes, and dependency clusters
+- Find a function: `semantic_search_nodes_tool` — search by meaning, e.g. "write transaction LMDB"
+
+**Common queries for this crate:**
+- Trace the write path: `get_flow_tool` with entry point `WorkerPool::process_write`
+- Impact of changing `write_txn`: `get_impact_radius_tool` with target `write_txn`
+- HNSW insert flow: `get_flow_tool` with entry point `vector_core::insert`
+- High-connectivity nodes (change these carefully): `get_hub_nodes_tool`
+- Before touching `GraphError`: `get_impact_radius_tool` with target `GraphError`
+- Minimal context for a symbol: `get_minimal_context_tool` with the function/type name
+
+**Before any PR touching sparrow_engine or sparrow_gateway:**
+Run `get_impact_radius_tool` on the changed symbol to understand blast radius.
+
+---
+
+## Additional notes
+
+**v1/query compatibility.** `src/sparrow_gateway/v1_compat/mod.rs` provides `POST /v1/query` as a bridge for HelixDB callers. This route **must be registered before `/{*path}`** in `gateway.rs` — the wildcard rejects paths containing `/`. The endpoint peeks at raw request bytes for the string `"write"` to route to the correct worker channel, preserving the single-writer invariant.
+
+**sonic_rs 0.5.7.** The codebase uses `sonic-rs = "0.5.7"`. No `as_object_mut()` — mutate by reconstruction. Import `JsonContainerTrait` and `JsonValueTrait` for `.get()`, `.as_str()`, `.as_i64()` to work on `Value`. Use `sonic_rs::json!{}`, not `object!{}`.
+
+**sparrow-macros.** This crate is `proc-macro = true` — it cannot be used as a normal library dependency. Import it only as a proc-macro in `[dependencies]` with `proc-macro = true` semantics.
