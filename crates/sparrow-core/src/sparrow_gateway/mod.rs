@@ -8,6 +8,7 @@ pub mod mem_monitor;
 pub mod introspect_schema;
 pub mod mcp;
 pub mod router;
+pub mod settings;
 pub mod runtime_eval;
 #[cfg(test)]
 pub mod tests;
