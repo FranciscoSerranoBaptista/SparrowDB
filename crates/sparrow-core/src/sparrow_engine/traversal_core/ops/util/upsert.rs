@@ -341,10 +341,13 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                     &node.id,
                                 )
                                 .map_err(|_| GraphError::DuplicateKey(k.to_string()))?,
+                            // PutFlags::empty(): plain sorted insert into DUP_SORT secondary
+                            // index. APPEND_DUP was wrong here because node IDs are v6 UUIDs
+                            // which are not guaranteed monotonic under concurrency.
                             crate::sparrow_engine::types::SecondaryIndex::Index(_) => db
                                 .put_with_flags(
                                     self.txn,
-                                    PutFlags::APPEND_DUP,
+                                    PutFlags::empty(),
                                     &v_serialized,
                                     &node.id,
                                 )?,
@@ -505,15 +508,18 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                         SparrowGraphStorage::edge_key(&edge.id),
                         &bytes,
                     )?;
+                    // PutFlags::empty(): plain sorted insert. APPEND_DUP is unsafe here
+                    // because edge IDs (v6 UUIDs) are not guaranteed monotonically
+                    // increasing per adjacency key under concurrency.
                     self.storage.out_edges_db.put_with_flags(
                         self.txn,
-                        PutFlags::APPEND_DUP,
+                        PutFlags::empty(),
                         &SparrowGraphStorage::out_edge_key(&from_node, &label_hash),
                         &SparrowGraphStorage::pack_edge_data(&edge.id, &to_node),
                     )?;
                     self.storage.in_edges_db.put_with_flags(
                         self.txn,
-                        PutFlags::APPEND_DUP,
+                        PutFlags::empty(),
                         &SparrowGraphStorage::in_edge_key(&to_node, &label_hash),
                         &SparrowGraphStorage::pack_edge_data(&edge.id, &from_node),
                     )?;
@@ -743,10 +749,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                     &vector.id,
                                 )
                                 .map_err(|_| GraphError::DuplicateKey(k.to_string()))?,
+                            // PutFlags::empty(): same fix as node upsert — vector IDs are
+                            // v6 UUIDs and are not guaranteed monotonic under concurrency.
                             crate::sparrow_engine::types::SecondaryIndex::Index(_) => db
                                 .put_with_flags(
                                     self.txn,
-                                    PutFlags::APPEND_DUP,
+                                    PutFlags::empty(),
                                     &v_serialized,
                                     &vector.id,
                                 )?,

@@ -304,6 +304,14 @@ impl GeneratedValue {
                     GeneratedValue::Parameter(GenRef::Ref(stripped))
                 }
             }
+            // Guard: if a Ref variant somehow already carries ".clone()" (e.g. the value was
+            // wrapped as GenRef::Ref before stripping), strip it here so we never emit
+            // `&data.field.clone()` — that form is caught by the Stage 1 codegen assertion
+            // in `sparrow check` but should never reach the generator.
+            GeneratedValue::Parameter(GenRef::Ref(s)) => {
+                let stripped = s.strip_suffix(".clone()").unwrap_or(&s).to_string();
+                GeneratedValue::Parameter(GenRef::Ref(stripped))
+            }
             GeneratedValue::Identifier(GenRef::Std(s)) => {
                 let stripped = s.strip_suffix(".clone()").unwrap_or(&s).to_string();
                 if stripped.contains('(') {
@@ -311,6 +319,10 @@ impl GeneratedValue {
                 } else {
                     GeneratedValue::Identifier(GenRef::Ref(stripped))
                 }
+            }
+            GeneratedValue::Identifier(GenRef::Ref(s)) => {
+                let stripped = s.strip_suffix(".clone()").unwrap_or(&s).to_string();
+                GeneratedValue::Identifier(GenRef::Ref(stripped))
             }
             other => other,
         }
@@ -891,5 +903,81 @@ mod tests {
     fn test_separator_inner() {
         let sep = Separator::Comma("value".to_string());
         assert_eq!(sep.inner(), "value");
+    }
+
+    // ── into_ref_key regression tests ─────────────────────────────────────
+    //
+    // `into_ref_key` converts an owned GeneratedValue into its reference form
+    // for use as the `key` argument of `n_from_index`.  The critical invariant:
+    // `.clone()` must be stripped *regardless* of whether the inner GenRef
+    // variant is Std or Ref — both can carry a `.clone()` suffix.
+
+    #[test]
+    fn test_into_ref_key_std_simple_strips_clone_and_adds_ref() {
+        let val = GeneratedValue::Parameter(GenRef::Std("data.upsert_key.clone()".to_string()));
+        let result = val.into_ref_key();
+        assert_eq!(
+            format!("{result}"),
+            "&data.upsert_key",
+            "Std with .clone() should become Ref without .clone()"
+        );
+    }
+
+    #[test]
+    fn test_into_ref_key_ref_with_clone_strips_clone() {
+        // This is the bug case: a Ref variant that somehow carries .clone().
+        // Before the fix into_ref_key fell through to `other => other`,
+        // leaving .clone() inside the & prefix → `&data.field.clone()`.
+        let val =
+            GeneratedValue::Parameter(GenRef::Ref("data.library_resource_id.clone()".to_string()));
+        let result = val.into_ref_key();
+        assert_eq!(
+            format!("{result}"),
+            "&data.library_resource_id",
+            "Ref with .clone() must have .clone() stripped — \
+             &data.field.clone() is the codegen bug pattern"
+        );
+    }
+
+    #[test]
+    fn test_into_ref_key_ref_without_clone_unchanged() {
+        let val = GeneratedValue::Parameter(GenRef::Ref("data.upsert_key".to_string()));
+        let result = val.into_ref_key();
+        assert_eq!(
+            format!("{result}"),
+            "&data.upsert_key",
+            "Ref without .clone() should pass through unchanged"
+        );
+    }
+
+    #[test]
+    fn test_into_ref_key_identifier_ref_with_clone_strips() {
+        let val = GeneratedValue::Identifier(GenRef::Ref("some_var.clone()".to_string()));
+        let result = val.into_ref_key();
+        assert_eq!(
+            format!("{result}"),
+            "&some_var",
+            "Identifier Ref with .clone() must be stripped"
+        );
+    }
+
+    #[test]
+    fn test_into_ref_key_complex_optional_expression_preserved() {
+        // Optional-param chains contain `(` — they must stay as Std, not gain a &.
+        let val = GeneratedValue::Parameter(GenRef::Std(
+            "data.field.as_ref().ok_or_else(|| GraphError::ParamNotFound(\"field\"))?.clone()"
+                .to_string(),
+        ));
+        let result = val.into_ref_key();
+        // .clone() stripped, `(` present → stays Std (already a reference expression)
+        let rendered = format!("{result}");
+        assert!(
+            !rendered.contains(".clone()"),
+            "stripped form must not contain .clone()"
+        );
+        assert!(
+            !rendered.starts_with('&'),
+            "complex expression must not gain a bare & prefix"
+        );
     }
 }

@@ -10,6 +10,8 @@ use std::sync::Arc;
 use tempfile::TempDir;
 
 use crate::{
+    props,
+    protocol::value::Value,
     sparrow_engine::{
         bm25::BM25,
         storage_core::SparrowGraphStorage,
@@ -24,8 +26,6 @@ use crate::{
             },
         },
     },
-    props,
-    protocol::value::Value,
     utils::{id::v6_uuid, items::Node, properties::ImmutablePropertiesMap},
 };
 
@@ -292,7 +292,10 @@ fn test_add_n_succeeds_when_existing_key_is_higher() {
         };
         let bytes = sentinel_node.to_bincode_bytes().unwrap();
         let mut txn = storage.graph_env.write_txn().unwrap();
-        storage.nodes_db.put(&mut txn, &sentinel_id, &bytes).unwrap();
+        storage
+            .nodes_db
+            .put(&mut txn, &sentinel_id, &bytes)
+            .unwrap();
         txn.commit().unwrap();
     }
 
@@ -332,8 +335,8 @@ fn test_add_n_succeeds_when_existing_key_is_higher() {
 /// `PutFlags::APPEND` on `edges_db`.
 #[test]
 fn test_add_edge_succeeds_when_existing_key_is_higher() {
-    use crate::utils::items::Edge;
     use crate::sparrow_engine::storage_core::SparrowGraphStorage as SGS;
+    use crate::utils::items::Edge;
 
     let temp_dir = TempDir::new().unwrap();
     let storage = setup_test_db(&temp_dir);
@@ -510,5 +513,153 @@ mod performance_tests {
             assert!(results.is_ok(), "BM25 search should succeed");
             println!("BM25 search (limit={}): {:?}", limit, elapsed);
         }
+    }
+}
+
+/// Regression tests for PutFlags::APPEND_DUP on adjacency tables.
+///
+/// Both `out_edges_db` and `in_edges_db` are `DUP_SORT | DUP_FIXED` databases.
+/// `APPEND_DUP` requires every new duplicate value for a key to be strictly
+/// greater than all existing values.  Because edge IDs are v6 UUIDs they are
+/// *mostly* monotonic but are **not guaranteed** to be so under concurrency —
+/// two concurrent writers in the same microsecond can produce identical or
+/// inverted timestamp bytes.
+///
+/// Before the fix: `put_with_flags(PutFlags::APPEND_DUP, …)` → `MDB_KEYEXIST`
+///                 when a new edge UUID sorts below an existing one for the same
+///                 (from_node, label) key.  The adjacency entry is silently lost,
+///                 leaving the edge record in `edges_db` without an adjacency
+///                 index entry (partial write / data corruption).
+///
+/// After the fix:  `put_with_flags(PutFlags::empty(), …)` → LMDB performs a
+///                 proper sorted insert regardless of insertion order.
+#[cfg(test)]
+mod append_dup_regression {
+    use super::*;
+    use crate::{
+        sparrow_engine::{
+            storage_core::SparrowGraphStorage,
+            traversal_core::{
+                config::Config,
+                ops::{g::G, source::add_e::AddEAdapter, source::add_n::AddNAdapter},
+            },
+        },
+        utils::label_hash::hash_label,
+    };
+    use bumpalo::Bump;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    fn setup(temp_dir: &TempDir) -> Arc<SparrowGraphStorage> {
+        Arc::new(
+            SparrowGraphStorage::new(
+                temp_dir.path().to_str().unwrap(),
+                Config::default(),
+                Default::default(),
+                None,
+            )
+            .unwrap(),
+        )
+    }
+
+    /// Insert a sentinel adjacency entry with `u128::MAX` as the edge-ID prefix
+    /// so that any real v6 UUID (always ≪ MAX) sorts *before* it.  Then call
+    /// `add_edge` which generates a fresh UUID.  With `APPEND_DUP` this would
+    /// fail (`MDB_KEYEXIST`); with plain sorted insert it must succeed.
+    #[test]
+    fn test_add_edge_succeeds_when_higher_dup_already_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = setup(&temp_dir);
+
+        // Create a source node and a target node.
+        let (from_id, to_id) = {
+            let arena = Bump::new();
+            let mut txn = storage.graph_env.write_txn().unwrap();
+            let from = G::new_mut(&storage, &arena, &mut txn)
+                .add_n("A", None, None)
+                .next()
+                .unwrap()
+                .unwrap();
+            let to = G::new_mut(&storage, &arena, &mut txn)
+                .add_n("B", None, None)
+                .next()
+                .unwrap()
+                .unwrap();
+            let from_id = match &from {
+                crate::sparrow_engine::traversal_core::traversal_value::TraversalValue::Node(n) => {
+                    n.id
+                }
+                _ => panic!("expected Node"),
+            };
+            let to_id = match &to {
+                crate::sparrow_engine::traversal_core::traversal_value::TraversalValue::Node(n) => {
+                    n.id
+                }
+                _ => panic!("expected Node"),
+            };
+            txn.commit().unwrap();
+            (from_id, to_id)
+        };
+
+        // Write a sentinel adjacency entry directly with the largest possible
+        // edge-ID so every real UUID generated later will sort before it.
+        let label = "CONNECTS";
+        let label_hash = hash_label(label, None);
+        let out_key = SparrowGraphStorage::out_edge_key(&from_id, &label_hash);
+        let sentinel_edge_id: u128 = u128::MAX - 1;
+        // Use a fake to_node (u128::MAX) that differs from the real `to_id`.
+        // add_edge's dup_check scans v[16..32] for the real to_id bytes — the
+        // sentinel must NOT match, otherwise add_edge returns DuplicateKey and
+        // never reaches the sorted-insert path this test exercises.
+        let fake_to_node: u128 = u128::MAX;
+        let sentinel_val = SparrowGraphStorage::pack_edge_data(&sentinel_edge_id, &fake_to_node);
+        {
+            let mut txn = storage.graph_env.write_txn().unwrap();
+            // Plain put into DUP_SORT — correct sorted insert.
+            storage
+                .out_edges_db
+                .put_with_flags(
+                    &mut txn,
+                    heed3::PutFlags::empty(),
+                    &out_key[..],
+                    &sentinel_val[..],
+                )
+                .expect("sentinel insert must succeed");
+            txn.commit().unwrap();
+        }
+
+        // Now add_edge generates a fresh v6 UUID ≪ u128::MAX - 1.
+        // With APPEND_DUP this would fail (new value < sentinel); with
+        // PutFlags::empty() LMDB inserts it in sorted order.
+        let arena = Bump::new();
+        let mut txn = storage.graph_env.write_txn().unwrap();
+        let result = G::new_mut(&storage, &arena, &mut txn)
+            .add_edge(label, None, from_id, to_id, false)
+            .next()
+            .expect("add_edge must yield exactly one result");
+
+        assert!(
+            result.is_ok(),
+            "add_edge failed when a higher duplicate already exists — \
+             APPEND_DUP regression in out_edges_db: {:?}",
+            result.err()
+        );
+
+        txn.commit().unwrap();
+
+        // Both the sentinel and the new edge entry must be present.
+        let rtxn = storage.graph_env.read_txn().unwrap();
+        let dups: Vec<_> = storage
+            .out_edges_db
+            .get_duplicates(&rtxn, &out_key[..])
+            .expect("get_duplicates must not error")
+            .expect("key must exist after two inserts")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            dups.len(),
+            2,
+            "expected exactly 2 adjacency entries (sentinel + new edge), got {}",
+            dups.len()
+        );
     }
 }

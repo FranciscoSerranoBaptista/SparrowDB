@@ -53,7 +53,11 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
 
         // Check for a duplicate edge (same from_node + label + to_node) before writing.
         let dup_check: Result<bool, GraphError> = {
-            match self.storage.out_edges_db.get_duplicates(self.txn, &out_key[..]) {
+            match self
+                .storage
+                .out_edges_db
+                .get_duplicates(self.txn, &out_key[..])
+            {
                 Err(e) => Err(GraphError::from(e)),
                 Ok(None) => Ok(false),
                 Ok(Some(mut iter)) => {
@@ -120,16 +124,24 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
             Err(e) => result = Err(GraphError::from(e)),
         }
 
+        // Use PutFlags::empty() (plain sorted insert) instead of APPEND_DUP.
+        // APPEND_DUP requires every new value to be strictly greater than all
+        // existing values for the same key, which v6 UUIDs do NOT guarantee under
+        // concurrency (two writes in the same timestamp window can invert order).
+        // Plain put lets LMDB find the correct sorted position regardless of order.
         match self.storage.out_edges_db.put_with_flags(
             self.txn,
-            PutFlags::APPEND_DUP,
+            PutFlags::empty(),
             &SparrowGraphStorage::out_edge_key(&from_node, &label_hash),
             &SparrowGraphStorage::pack_edge_data(&edge.id, &to_node),
         ) {
             Ok(_) => {}
             Err(e) => {
-                println!(
-                    "add_e => error adding out edge between {from_node:?} and {to_node:?}: {e:?}"
+                tracing::error!(
+                    from_node = ?from_node,
+                    to_node = ?to_node,
+                    error = %e,
+                    "add_e: failed to write out_edges adjacency entry"
                 );
                 result = Err(GraphError::from(e));
             }
@@ -137,14 +149,17 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
 
         match self.storage.in_edges_db.put_with_flags(
             self.txn,
-            PutFlags::APPEND_DUP,
+            PutFlags::empty(),
             &SparrowGraphStorage::in_edge_key(&to_node, &label_hash),
             &SparrowGraphStorage::pack_edge_data(&edge.id, &from_node),
         ) {
             Ok(_) => {}
             Err(e) => {
-                println!(
-                    "add_e => error adding in edge between {from_node:?} and {to_node:?}: {e:?}"
+                tracing::error!(
+                    from_node = ?from_node,
+                    to_node = ?to_node,
+                    error = %e,
+                    "add_e: failed to write in_edges adjacency entry"
                 );
                 result = Err(GraphError::from(e));
             }

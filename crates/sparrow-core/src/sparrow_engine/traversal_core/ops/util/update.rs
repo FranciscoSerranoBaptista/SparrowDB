@@ -1,14 +1,14 @@
+use crate::sparrow_engine::{
+    bm25::lmdb_bm25::{BM25Flatten, BM25},
+    types::SecondaryIndex,
+};
 use crate::{
+    protocol::value::Value,
     sparrow_engine::{
         traversal_core::{traversal_iter::RwTraversalIterator, traversal_value::TraversalValue},
         types::GraphError,
     },
-    protocol::value::Value,
     utils::properties::ImmutablePropertiesMap,
-};
-use crate::sparrow_engine::{
-    bm25::lmdb_bm25::{BM25, BM25Flatten},
-    types::SecondaryIndex,
 };
 use heed3::PutFlags;
 use itertools::Itertools;
@@ -77,9 +77,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                                     match bincode::serialize(v) {
                                         Ok(v_serialized) => {
+                                            // PutFlags::empty(): plain sorted insert.
+                                            // APPEND_DUP requires monotonic order per key;
+                                            // v6 node IDs don't guarantee that under concurrency.
                                             if let Err(e) = db.0.put_with_flags(
                                                 self.txn,
-                                                PutFlags::APPEND_DUP,
+                                                PutFlags::empty(),
                                                 &v_serialized,
                                                 &node.id,
                                             ) {
@@ -120,23 +123,22 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                         continue;
                                     }
                                     match bincode::serialize(v) {
-                                        Ok(new_ser) => {
-                                            match db.0.get(self.txn, &new_ser) {
-                                                Ok(Some(existing)) if existing != node.id => {
-                                                    results.push(Err(GraphError::DuplicateKey(
-                                                        format!("Unique constraint violation on field '{k}'"),
-                                                    )));
-                                                    update_ok = false;
-                                                    break 'unique_check;
-                                                }
-                                                Err(e) => {
-                                                    results.push(Err(GraphError::from(e)));
-                                                    update_ok = false;
-                                                    break 'unique_check;
-                                                }
-                                                _ => {}
+                                        Ok(new_ser) => match db.0.get(self.txn, &new_ser) {
+                                            Ok(Some(existing)) if existing != node.id => {
+                                                results
+                                                    .push(Err(GraphError::DuplicateKey(format!(
+                                                    "Unique constraint violation on field '{k}'"
+                                                ))));
+                                                update_ok = false;
+                                                break 'unique_check;
                                             }
-                                        }
+                                            Err(e) => {
+                                                results.push(Err(GraphError::from(e)));
+                                                update_ok = false;
+                                                break 'unique_check;
+                                            }
+                                            _ => {}
+                                        },
                                         Err(e) => {
                                             results.push(Err(GraphError::from(e)));
                                             update_ok = false;
@@ -228,7 +230,11 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                         if update_ok {
                             // Update BM25 index to reflect new properties.
-                            if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| !self.storage.skip_bm25_writes.load(Ordering::Relaxed)) {
+                            if let Some(bm25) =
+                                self.storage.bm25.as_ref().filter(|_| {
+                                    !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+                                })
+                            {
                                 if let Some(props_ref) = node.properties.as_ref() {
                                     let mut data = props_ref.flatten_bm25();
                                     data.push_str(node.label);
@@ -331,4 +337,3 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
         }
     }
 }
-
