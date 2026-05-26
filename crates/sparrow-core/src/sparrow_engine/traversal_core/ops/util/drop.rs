@@ -25,12 +25,17 @@ where
                 match item {
                     TraversalValue::Node(node) => match storage.drop_node(txn, node.id) {
                         Ok(_) => {
-                            if let Some(bm25) = storage.bm25.as_ref().filter(|_| !storage.skip_bm25_writes.load(Ordering::Relaxed))
-                                && let Err(e) = bm25.delete_doc(txn, node.id)
+                            if let Some(bm25) = storage.bm25.as_ref().filter(|_| {
+                                !storage.skip_bm25_writes.load(Ordering::Relaxed)
+                                    && !storage.bm25_exclude_labels.contains(node.label)
+                            }) && let Err(e) = bm25.delete_doc(txn, node.id)
                             {
-                                println!("failed to delete doc from bm25: {e}");
+                                tracing::warn!(
+                                    node_id = ?node.id,
+                                    "drop: failed to remove node from BM25 index: {e}"
+                                );
                             }
-                            println!("Dropped node: {:?}", node.id);
+                            tracing::debug!(node_id = ?node.id, "drop: node removed");
                             Ok(())
                         }
                         Err(e) => Err(e),

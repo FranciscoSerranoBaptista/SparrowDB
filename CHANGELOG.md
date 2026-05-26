@@ -8,6 +8,19 @@ All notable changes to SparrowDB are documented here.
 
 ### New Features
 
+**`SPARROW_BM25_EXCLUDE_LABELS` — per-label BM25 opt-out**
+- New env var `SPARROW_BM25_EXCLUDE_LABELS` (comma-separated list, e.g. `"Book,Author"`) excludes matching node labels from the BM25 full-text index at every write path: `add_n`, `upsert_n`, `update`, `drop`, startup `migrate_bm25`, and `POST /rebuild_bm25_index`
+- Populated into `SparrowGraphStorage::bm25_exclude_labels: Arc<HashSet<String>>` at startup; logged at `INFO` level when non-empty
+- Primary use-case: large imported corpora (e.g. 685k book nodes) that are searched via semantic vectors rather than BM25 full-text — excluding them can reduce BM25 index size from 5× to <1× of graph data
+- All existing BM25 guards (`skip_bm25_writes`) are unchanged; exclude-labels is an orthogonal check
+
+**`POST /compact` — LMDB compacted copy**
+- New write-path endpoint that calls `mdb_env_copyfd2` (heed3's `copy_to_path` with `CompactionOption::Enabled`) to write a compacted copy of the live LMDB file to `<data_dir>/data.mdb.compact`
+- Returns `{ "ok": true, "original_bytes": N, "compact_bytes": M, "saved_bytes": K, "saved_pct": P, "compact_path": "..." }`
+- The live database is never modified — the compact file is a consistent point-in-time snapshot; reads and writes continue uninterrupted during the copy
+- Errors if `data.mdb.compact` already exists (operator must delete it first)
+- Use during a planned maintenance window: stop container → `mv data.mdb data.mdb.pre-compact && mv data.mdb.compact data.mdb` → restart; reclaims dead pages accumulated from repeated BM25 clear+rebuild cycles
+
 **Runtime Settings API (`GET /settings`, `POST /settings`)**
 - `RuntimeSettings` struct with hot-swappable `skip_bm25_on_write` backed by `Arc<AtomicBool>` — the flag can now be toggled at runtime without restarting the server
 - `GET /settings` — returns current settings as JSON (any authenticated role); reports `skip_bm25_on_write`, `worker_threads`, and the source of each value (`env`, `default`, or `runtime`)
@@ -72,6 +85,10 @@ All notable changes to SparrowDB are documented here.
 - Added `ImportFormat::Ndjson` variant; `--format ndjson` and `--format jsonl` accepted as explicit overrides
 
 ### Bug Fixes
+
+**Storage Engine**
+- Fixed `migrate_bm25` (startup BM25 schema-version rebuild) ignoring `SPARROW_SKIP_BM25_ON_WRITE`: when the flag is set, the startup rebuild is now skipped entirely — the stored schema version is left at its current value and the rebuild defers to the next restart where the flag is clear. Previously, every container start after an image upgrade (which changes `BM25_SCHEMA_VERSION`) triggered a 20-30 minute full-graph BM25 rebuild at 100% CPU regardless of the flag, causing OOM crash-loops when the LMDB map filled during the rebuild. Regression tests: `test_migrate_bm25_skipped_when_skip_bm25_writes_is_set`, `test_migrate_bm25_runs_when_skip_flag_clear`.
+- Replaced all `println!` calls in `storage_migration.rs` and `drop.rs` with structured `tracing::info!` / `tracing::warn!` / `tracing::error!` calls — these messages now appear in the server's structured log stream rather than on raw stdout, and carry machine-readable field context (vector IDs, counts, etc.).
 
 **Storage Engine**
 - Fixed `PutFlags::APPEND_DUP` used in all edge and secondary-index write paths (`add_e`, `upsert`, `update`): `APPEND_DUP` requires each new value for a key to sort strictly after all existing values, but v6 UUIDs are not guaranteed monotonic under concurrency (same-microsecond writes can produce out-of-order IDs). Any write issued after a higher-UUID entry was already committed would hit `MDB_KEYEXIST` and return a spurious `DuplicateKey` error. All seven sites now use `PutFlags::empty()`, which lets LMDB perform a correct sorted insert into `DUP_SORT | DUP_FIXED` adjacency and index databases regardless of insertion order. Regression test: `test_add_edge_succeeds_when_higher_dup_already_exists`.

@@ -1,5 +1,6 @@
 pub mod all_nodes_and_edges;
 pub mod bm25_rebuild;
+pub mod compact;
 pub mod diagnostics;
 #[cfg(feature = "dev-instance")]
 pub mod migrate;

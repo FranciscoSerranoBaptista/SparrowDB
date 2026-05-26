@@ -91,6 +91,15 @@ pub mod lmdb {
         /// passing a shared `Arc<AtomicBool>` via `SparrowGraphEngineOpts`.
         /// Run `POST /rebuild_bm25_index` after bulk import to build the index from scratch.
         pub skip_bm25_writes: Arc<AtomicBool>,
+
+        /// Node labels that are never indexed in the BM25 full-text index.
+        /// Populated from `SPARROW_BM25_EXCLUDE_LABELS` (comma-separated list, e.g.
+        /// `"Book,Author"`). Checked at every BM25 insert/update site and during
+        /// startup `migrate_bm25` and `POST /rebuild_bm25_index`.
+        ///
+        /// Use this to exclude high-volume, low-value labels (e.g. imported book
+        /// records) from a corpus where BM25 would otherwise dominate map size.
+        pub bm25_exclude_labels: Arc<HashSet<String>>,
     }
 
     pub type Txn<'db> = heed3::RoTxn<'db>;
@@ -259,6 +268,26 @@ pub mod lmdb {
                 Arc::new(AtomicBool::new(from_env))
             });
 
+            // Parse SPARROW_BM25_EXCLUDE_LABELS — comma-separated label names whose
+            // nodes are never indexed in the BM25 full-text index.
+            // Example: SPARROW_BM25_EXCLUDE_LABELS=Book,Author
+            let bm25_exclude_labels: Arc<HashSet<String>> = Arc::new(
+                std::env::var("SPARROW_BM25_EXCLUDE_LABELS")
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            );
+
+            if !bm25_exclude_labels.is_empty() {
+                tracing::info!(
+                    labels = ?bm25_exclude_labels,
+                    "BM25 exclude-list active: these node labels will not be indexed"
+                );
+            }
+
             let mut storage = Self {
                 graph_env,
                 nodes_db,
@@ -273,6 +302,7 @@ pub mod lmdb {
                 storage_config,
                 version_info,
                 skip_bm25_writes,
+                bm25_exclude_labels,
             };
 
             storage_migration::migrate(&mut storage)?;

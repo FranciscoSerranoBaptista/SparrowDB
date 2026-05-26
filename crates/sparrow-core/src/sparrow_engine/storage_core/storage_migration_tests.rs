@@ -9,18 +9,17 @@
 //! - Performance tests for large datasets
 
 use super::{
-    SparrowGraphStorage,
-    metadata::{NATIVE_VECTOR_ENDIANNESS, StorageMetadata, VectorEndianness},
+    metadata::{StorageMetadata, VectorEndianness, NATIVE_VECTOR_ENDIANNESS},
     storage_migration::{
         convert_all_vector_properties, convert_old_vector_properties_to_new_format,
         convert_vector_endianness, migrate,
     },
+    SparrowGraphStorage,
 };
 use crate::{
+    protocol::value::Value,
     sparrow_engine::{
-        bm25::{
-            BM25, BM25_SCHEMA_VERSION, BM25_SCHEMA_VERSION_KEY, BM25Metadata, METADATA_KEY,
-        },
+        bm25::{BM25Metadata, BM25, BM25_SCHEMA_VERSION, BM25_SCHEMA_VERSION_KEY, METADATA_KEY},
         storage_core::version_info::VersionInfo,
         traversal_core::{
             config::Config,
@@ -28,7 +27,6 @@ use crate::{
         },
         types::GraphError,
     },
-    protocol::value::Value,
     utils::{items::Node, properties::ImmutablePropertiesMap},
 };
 use bumpalo::Bump;
@@ -45,8 +43,13 @@ fn setup_test_storage() -> (SparrowGraphStorage, TempDir) {
     let config = Config::default();
     let version_info = VersionInfo::default();
 
-    let storage =
-        SparrowGraphStorage::new(temp_dir.path().to_str().unwrap(), config, version_info, None).unwrap();
+    let storage = SparrowGraphStorage::new(
+        temp_dir.path().to_str().unwrap(),
+        config,
+        version_info,
+        None,
+    )
+    .unwrap();
 
     (storage, temp_dir)
 }
@@ -1268,8 +1271,7 @@ fn setup_storage_with_old_node() -> (SparrowGraphStorage, TempDir) {
 #[test]
 fn node_at_old_version_is_migrated() {
     use crate::sparrow_engine::storage_core::{
-        schema_migration::run_schema_migrations,
-        version_info::Transition,
+        schema_migration::run_schema_migrations, version_info::Transition,
     };
 
     let (mut storage, _dir) = setup_storage_with_old_node();
@@ -1283,14 +1285,20 @@ fn node_at_old_version_is_migrated() {
     let node = crate::utils::items::Node::from_bincode_bytes(42, bytes, &arena).unwrap();
 
     assert_eq!(node.version, 2, "node version must be updated to 2");
-    assert!(node.properties.as_ref().unwrap().get("b").is_some(), "'b' must exist");
-    assert!(node.properties.as_ref().unwrap().get("a").is_none(), "'a' must be gone");
+    assert!(
+        node.properties.as_ref().unwrap().get("b").is_some(),
+        "'b' must exist"
+    );
+    assert!(
+        node.properties.as_ref().unwrap().get("a").is_none(),
+        "'a' must be gone"
+    );
 }
 
 #[test]
 fn migration_record_marked_complete() {
     use crate::sparrow_engine::storage_core::{
-        migration_log::{MigrationStatus, read_record},
+        migration_log::{read_record, MigrationStatus},
         schema_migration::run_schema_migrations,
         version_info::Transition,
     };
@@ -1311,8 +1319,7 @@ fn migration_record_marked_complete() {
 #[test]
 fn second_run_is_idempotent() {
     use crate::sparrow_engine::storage_core::{
-        schema_migration::run_schema_migrations,
-        version_info::Transition,
+        schema_migration::run_schema_migrations, version_info::Transition,
     };
 
     let (mut storage, _dir) = setup_storage_with_old_node();
@@ -1370,7 +1377,8 @@ fn new_storage_reads_as_at_least_vector_endianness() {
     let meta = StorageMetadata::read(&rtxn, &storage.metadata_db).unwrap();
     match meta {
         StorageMetadata::PreMetadata => panic!("must not be PreMetadata after open"),
-        StorageMetadata::VectorNativeEndianness { .. } | StorageMetadata::WithSchemaVersion { .. } => {}
+        StorageMetadata::VectorNativeEndianness { .. }
+        | StorageMetadata::WithSchemaVersion { .. } => {}
     }
 }
 
@@ -1399,7 +1407,7 @@ fn storage_opens_without_panic_with_inventory_wiring() {
 #[test]
 fn migrations_db_stores_and_retrieves_record() {
     use crate::sparrow_engine::storage_core::migration_log::{
-        MigrationRecord, read_record, write_record,
+        read_record, write_record, MigrationRecord,
     };
 
     let (storage, _dir) = setup_test_storage();
@@ -1424,4 +1432,175 @@ fn migrations_db_returns_none_for_missing_key() {
     let rtxn = storage.graph_env.read_txn().unwrap();
     let result = read_record(&rtxn, &storage.migrations_db, "nonexistent").unwrap();
     assert!(result.is_none());
+}
+
+// ============================================================================
+// migrate_bm25 skip-on-flag tests
+// ============================================================================
+
+/// When SPARROW_SKIP_BM25_ON_WRITE=true, startup must NOT rebuild the BM25
+/// index even if the stored schema version doesn't match BM25_SCHEMA_VERSION.
+/// The BM25 schema version key must remain absent (or at its old value) after
+/// storage is opened with the skip flag — i.e. we don't partially commit and
+/// leave the DB in an inconsistent state.
+#[test]
+fn test_migrate_bm25_skipped_when_skip_bm25_writes_is_set() {
+    use crate::sparrow_engine::bm25::{BM25, BM25_SCHEMA_VERSION};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().to_str().unwrap();
+
+    // First open: no skip flag → normal startup, BM25 schema version committed.
+    {
+        let config = Config::default();
+        let _storage =
+            SparrowGraphStorage::new(path, config, VersionInfo::default(), None).unwrap();
+        // storage goes out of scope; LMDB env is closed.
+    }
+
+    // Simulate a schema-version mismatch by clearing the BM25 version key.
+    {
+        let config = Config::default();
+        let storage = SparrowGraphStorage::new(path, config, VersionInfo::default(), None).unwrap();
+        if let Some(bm25) = storage.bm25.as_ref() {
+            let mut wtxn = storage.graph_env.write_txn().unwrap();
+            // Wipe the schema version so the next open would normally rebuild.
+            bm25.clear_all(&mut wtxn).unwrap();
+            wtxn.commit().unwrap();
+        }
+    }
+
+    // Second open: skip flag set → migrate_bm25 must be a no-op.
+    let skip_flag = Arc::new(AtomicBool::new(true));
+    {
+        let config = Config::default();
+        let storage = SparrowGraphStorage::new(
+            path,
+            config,
+            VersionInfo::default(),
+            Some(Arc::clone(&skip_flag)),
+        )
+        .unwrap();
+
+        // BM25 schema version must still be absent (migrate_bm25 was skipped).
+        if let Some(bm25) = storage.bm25.as_ref() {
+            let rtxn = storage.graph_env.read_txn().unwrap();
+            let version = bm25.schema_version(&rtxn).unwrap();
+            assert!(
+                version.is_none() || version != Some(BM25_SCHEMA_VERSION),
+                "migrate_bm25 must not write the schema version when skip_bm25_writes is set"
+            );
+        }
+    }
+}
+
+/// When SPARROW_SKIP_BM25_ON_WRITE is NOT set and the schema version is stale,
+/// migrate_bm25 must run and commit BM25_SCHEMA_VERSION.
+#[test]
+fn test_migrate_bm25_runs_when_skip_flag_clear() {
+    use crate::sparrow_engine::bm25::{BM25, BM25_SCHEMA_VERSION};
+
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().to_str().unwrap();
+
+    // Open once to create the DB, then wipe the BM25 version to force a rebuild.
+    {
+        let config = Config::default();
+        let storage = SparrowGraphStorage::new(path, config, VersionInfo::default(), None).unwrap();
+        if let Some(bm25) = storage.bm25.as_ref() {
+            let mut wtxn = storage.graph_env.write_txn().unwrap();
+            bm25.clear_all(&mut wtxn).unwrap();
+            wtxn.commit().unwrap();
+        }
+    }
+
+    // Reopen without skip flag → migrate_bm25 must run and write the version.
+    {
+        let config = Config::default();
+        let storage = SparrowGraphStorage::new(path, config, VersionInfo::default(), None).unwrap();
+        if let Some(bm25) = storage.bm25.as_ref() {
+            let rtxn = storage.graph_env.read_txn().unwrap();
+            let version = bm25.schema_version(&rtxn).unwrap();
+            assert_eq!(
+                version,
+                Some(BM25_SCHEMA_VERSION),
+                "migrate_bm25 must write BM25_SCHEMA_VERSION when skip flag is clear"
+            );
+        }
+    }
+}
+
+// ============================================================================
+// SPARROW_BM25_EXCLUDE_LABELS tests
+// ============================================================================
+
+/// Nodes whose label is in bm25_exclude_labels must not appear in the BM25
+/// index after add_n.
+#[test]
+fn test_bm25_exclude_labels_prevents_indexing_on_add_n() {
+    use crate::sparrow_engine::bm25::BM25;
+
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().to_str().unwrap();
+
+    // SAFETY: tests run with --test-threads=1 (LMDB single-writer requirement),
+    // so no other thread reads env vars concurrently.
+    unsafe { std::env::set_var("SPARROW_BM25_EXCLUDE_LABELS", "ExcludedLabel") };
+    let storage =
+        SparrowGraphStorage::new(path, Config::default(), VersionInfo::default(), None).unwrap();
+    unsafe { std::env::remove_var("SPARROW_BM25_EXCLUDE_LABELS") };
+
+    assert!(
+        storage.bm25_exclude_labels.contains("ExcludedLabel"),
+        "bm25_exclude_labels must contain 'ExcludedLabel'"
+    );
+
+    let node_id = add_test_node(
+        &storage,
+        "ExcludedLabel",
+        &[("name", Value::String("test".to_string()))],
+    );
+
+    // The node must NOT be in the BM25 index.
+    if let Some(bm25) = storage.bm25.as_ref() {
+        let rtxn = storage.graph_env.read_txn().unwrap();
+        let entries = bm25.reverse_entries(&rtxn, node_id).unwrap();
+        assert!(
+            entries.is_empty(),
+            "excluded label must not appear in BM25 index after add_n"
+        );
+    }
+}
+
+/// Nodes with a non-excluded label must still be indexed normally when
+/// bm25_exclude_labels is populated but doesn't match.
+#[test]
+fn test_bm25_exclude_labels_does_not_affect_other_labels() {
+    use crate::sparrow_engine::bm25::BM25;
+
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().to_str().unwrap();
+
+    // SAFETY: tests run with --test-threads=1.
+    unsafe { std::env::set_var("SPARROW_BM25_EXCLUDE_LABELS", "ExcludedLabel") };
+    let storage =
+        SparrowGraphStorage::new(path, Config::default(), VersionInfo::default(), None).unwrap();
+    unsafe { std::env::remove_var("SPARROW_BM25_EXCLUDE_LABELS") };
+
+    let node_id = add_test_node(
+        &storage,
+        "IncludedLabel",
+        &[("title", Value::String("hello world".to_string()))],
+    );
+
+    if let Some(bm25) = storage.bm25.as_ref() {
+        let rtxn = storage.graph_env.read_txn().unwrap();
+        let entries = bm25.reverse_entries(&rtxn, node_id).unwrap();
+        assert!(
+            !entries.is_empty(),
+            "non-excluded label must be present in BM25 index"
+        );
+    }
 }

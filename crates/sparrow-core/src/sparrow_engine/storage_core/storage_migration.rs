@@ -1,18 +1,18 @@
 use crate::{
+    protocol::value::Value,
     sparrow_engine::{
-        bm25::{BM25_SCHEMA_VERSION, HBM25Config},
+        bm25::{HBM25Config, BM25_SCHEMA_VERSION},
         storage_core::SparrowGraphStorage,
         types::GraphError,
         vector_core::{vector::HVector, VectorCore, ENTRY_POINT_KEY},
     },
-    protocol::value::Value,
     utils::{items::Node, properties::ImmutablePropertiesMap},
 };
 use bincode::Options;
 use itertools::Itertools;
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::Bound, sync::atomic::Ordering};
 
-use super::metadata::{NATIVE_VECTOR_ENDIANNESS, StorageMetadata, VectorEndianness};
+use super::metadata::{StorageMetadata, VectorEndianness, NATIVE_VECTOR_ENDIANNESS};
 
 pub fn migrate(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
     let mut metadata = {
@@ -53,12 +53,11 @@ pub fn migrate(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
     migrate_bm25(storage)?;
 
     // Run HQL schema migrations. Executes before WorkerPool starts so direct write_txn is safe.
-    let compiled_transitions: Vec<_> = inventory::iter::<
-        crate::sparrow_engine::storage_core::version_info::TransitionSubmission,
-    >
-    .into_iter()
-    .map(|s| s.0.clone())
-    .collect();
+    let compiled_transitions: Vec<_> =
+        inventory::iter::<crate::sparrow_engine::storage_core::version_info::TransitionSubmission>
+            .into_iter()
+            .map(|s| s.0.clone())
+            .collect();
 
     crate::sparrow_engine::storage_core::schema_migration::run_schema_migrations(
         storage,
@@ -75,6 +74,18 @@ fn migrate_bm25(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
         return Ok(());
     };
 
+    // If BM25 writes are disabled at runtime, skip the startup schema-version
+    // rebuild entirely.  The schema version in LMDB is left at its current
+    // value; the rebuild will run on the next startup where the flag is cleared.
+    // This prevents the 20-30 minute full-graph BM25 rebuild that occurs on
+    // every container restart when SPARROW_SKIP_BM25_ON_WRITE=true is set.
+    if storage.skip_bm25_writes.load(Ordering::Relaxed) {
+        tracing::info!(
+            "migrate_bm25: SPARROW_SKIP_BM25_ON_WRITE is set — skipping startup BM25 rebuild"
+        );
+        return Ok(());
+    }
+
     let current_schema_version = {
         let txn = storage.graph_env.read_txn()?;
         bm25.schema_version(&txn)?
@@ -83,6 +94,12 @@ fn migrate_bm25(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
     if current_schema_version == Some(BM25_SCHEMA_VERSION) {
         return Ok(());
     }
+
+    tracing::info!(
+        current_version = ?current_schema_version,
+        target_version = BM25_SCHEMA_VERSION,
+        "migrate_bm25: BM25 schema version mismatch — rebuilding full-text index"
+    );
 
     {
         let mut txn = storage.graph_env.write_txn()?;
@@ -113,6 +130,11 @@ fn migrate_bm25(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
     bm25.write_schema_version(&mut txn, BM25_SCHEMA_VERSION)?;
     txn.commit()?;
 
+    tracing::info!(
+        version = BM25_SCHEMA_VERSION,
+        "migrate_bm25: BM25 schema migration complete"
+    );
+
     Ok(())
 }
 
@@ -126,6 +148,9 @@ fn rebuild_bm25_batch(
 
     for (id, value) in batch {
         let node = Node::from_bincode_bytes(*id, value, &arena)?;
+        if storage.bm25_exclude_labels.contains(node.label) {
+            continue;
+        }
         if let Some(properties) = node.properties.as_ref() {
             bm25.insert_doc_for_node(&mut txn, *id, properties, node.label)?;
         }
@@ -403,7 +428,7 @@ pub(crate) fn convert_old_vector_properties_to_new_format(
 
 fn verify_vectors_and_repair(storage: &SparrowGraphStorage) -> Result<(), GraphError> {
     // Verify that all vectors at level > 0 also exist at level 0 and collect ones that need repair
-    println!("\nVerifying vector integrity after migration...");
+    tracing::info!("verify_vectors: checking HNSW level integrity");
     let vectors_to_repair: Vec<(u128, usize)> = {
         let txn = storage.graph_env.read_txn()?;
         let mut missing = Vec::new();
@@ -423,10 +448,10 @@ fn verify_vectors_and_repair(storage: &SparrowGraphStorage) -> Result<(), GraphE
                         .get(&txn, &level_0_key)?
                         .is_none()
                     {
-                        println!(
-                            "ERROR: Vector {} exists at level {} but NOT at level 0!",
-                            uuid::Uuid::from_u128(id),
-                            level
+                        tracing::error!(
+                            vector_id = %uuid::Uuid::from_u128(id),
+                            level,
+                            "verify_vectors: vector exists at level > 0 but NOT at level 0"
                         );
                         missing.push((id, level));
                     }
@@ -437,11 +462,10 @@ fn verify_vectors_and_repair(storage: &SparrowGraphStorage) -> Result<(), GraphE
     };
 
     if !vectors_to_repair.is_empty() {
-        println!(
-            "Found {} vectors at level > 0 missing their level 0 counterparts!",
-            vectors_to_repair.len()
+        tracing::warn!(
+            count = vectors_to_repair.len(),
+            "verify_vectors: repairing vectors missing their level-0 entry"
         );
-        println!("Repairing missing level 0 vectors...");
 
         const REPAIR_BATCH_SIZE: usize = 128;
 
@@ -474,22 +498,22 @@ fn verify_vectors_and_repair(storage: &SparrowGraphStorage) -> Result<(), GraphE
                     .vectors
                     .vectors_db
                     .put(&mut txn, &level_0_key, vector_data)?;
-                println!(
-                    "  Repaired: Copied vector {} from level {} to level 0",
-                    uuid::Uuid::from_u128(id),
-                    source_level
+                tracing::info!(
+                    vector_id = %uuid::Uuid::from_u128(id),
+                    source_level,
+                    "verify_vectors: repaired — copied to level 0"
                 );
             }
 
             txn.commit()?;
         }
 
-        println!(
-            "Repair complete! Repaired {} vectors.",
-            vectors_to_repair.len()
+        tracing::info!(
+            repaired = vectors_to_repair.len(),
+            "verify_vectors: repair complete"
         );
     } else {
-        println!("All vectors verified successfully!");
+        tracing::info!("verify_vectors: all vectors OK");
     }
 
     Ok(())
@@ -505,9 +529,9 @@ fn remove_orphaned_vector_edges(storage: &SparrowGraphStorage) -> Result<(), Gra
         // Edge key format: [source_id (16 bytes), level (8 bytes), sink_id (16 bytes)]
         // Total: 40 bytes
         if key.len() != 40 {
-            println!(
-                "WARNING: Vector edge key has unexpected length: {} bytes",
-                key.len()
+            tracing::warn!(
+                key_len = key.len(),
+                "remove_orphaned_vector_edges: unexpected edge key length, skipping"
             );
             continue;
         }
@@ -542,11 +566,8 @@ fn remove_orphaned_vector_edges(storage: &SparrowGraphStorage) -> Result<(), Gra
         let mut txn = storage.graph_env.write_txn()?;
 
         for (source_id, level, sink_id) in chunk {
-            let edge_key = VectorCore::out_edges_key(
-                source_id.as_u128(),
-                level,
-                Some(sink_id.as_u128()),
-            );
+            let edge_key =
+                VectorCore::out_edges_key(source_id.as_u128(), level, Some(sink_id.as_u128()));
 
             storage
                 .vectors

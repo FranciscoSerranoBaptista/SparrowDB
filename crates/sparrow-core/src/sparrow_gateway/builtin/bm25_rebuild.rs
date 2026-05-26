@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use tracing::{info, warn};
 
+use crate::protocol;
 use crate::sparrow_engine::types::GraphError;
 use crate::sparrow_gateway::router::router::{Handler, HandlerInput, HandlerSubmission};
 use crate::utils::items::Node;
-use crate::protocol;
 
 // POST /rebuild-bm25-index
 //
@@ -28,9 +28,7 @@ pub fn rebuild_bm25_index_inner(input: HandlerInput) -> Result<protocol::Respons
     let db = Arc::clone(&input.graph.storage);
 
     let bm25 = db.bm25.as_ref().ok_or_else(|| {
-        GraphError::New(
-            "BM25 is not enabled (set bm25: true in config and restart)".to_string(),
-        )
+        GraphError::New("BM25 is not enabled (set bm25: true in config and restart)".to_string())
     })?;
 
     let mut arena = bumpalo::Bump::new();
@@ -77,10 +75,16 @@ pub fn rebuild_bm25_index_inner(input: HandlerInput) -> Result<protocol::Respons
                 }
             };
 
+            // Honour the label exclude-list even during a manual rebuild so that
+            // a rebuild after configuration change is idempotent (excluded labels
+            // are not re-indexed on the next rebuild_bm25_index call).
+            if db.bm25_exclude_labels.contains(node.label) {
+                arena.reset();
+                continue;
+            }
+
             if let Some(props) = node.properties.as_ref() {
-                if let Err(e) =
-                    bm25.insert_doc_for_node(&mut wtxn, *id, props, node.label)
-                {
+                if let Err(e) = bm25.insert_doc_for_node(&mut wtxn, *id, props, node.label) {
                     warn!(node_id = ?id, "BM25 rebuild: failed to index node, skipping: {e}");
                 } else {
                     indexed += 1;
@@ -94,15 +98,13 @@ pub fn rebuild_bm25_index_inner(input: HandlerInput) -> Result<protocol::Respons
         wtxn.commit().map_err(GraphError::from)?;
 
         if let Err(e) = db.graph_env.force_sync() {
-            warn!(chunk_idx, "BM25 rebuild: force_sync after chunk failed: {e}");
+            warn!(
+                chunk_idx,
+                "BM25 rebuild: force_sync after chunk failed: {e}"
+            );
         }
 
-        info!(
-            chunk_idx,
-            indexed,
-            total,
-            "BM25 rebuild: chunk committed"
-        );
+        info!(chunk_idx, indexed, total, "BM25 rebuild: chunk committed");
     }
 
     info!(indexed, total, "BM25 rebuild: complete");
@@ -124,23 +126,20 @@ inventory::submit! {
 mod tests {
     use super::*;
     use crate::{
+        protocol::{request::Request, request::RequestType, Format},
         sparrow_engine::{
             storage_core::version_info::VersionInfo,
             traversal_core::{
-                SparrowGraphEngine, SparrowGraphEngineOpts,
                 config::Config,
-                ops::{
-                    g::G,
-                    source::add_n::AddNAdapter,
-                },
+                ops::{g::G, source::add_n::AddNAdapter},
+                SparrowGraphEngine, SparrowGraphEngineOpts,
             },
         },
         sparrow_gateway::router::router::HandlerInput,
-        protocol::{Format, request::Request, request::RequestType},
     };
     use axum::body::Bytes;
-    use std::sync::Arc;
     use std::sync::atomic::Ordering;
+    use std::sync::Arc;
     use tempfile::TempDir;
 
     fn setup_test_engine() -> (SparrowGraphEngine, TempDir) {
@@ -199,7 +198,9 @@ mod tests {
             let props = vec![("content", Value::String("hello world foo bar".to_string()))];
             let props_map = ImmutablePropertiesMap::new(
                 props.len(),
-                props.iter().map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
+                props
+                    .iter()
+                    .map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
                 &arena,
             );
             let _ = G::new_mut(&engine.storage, &arena, &mut txn)
@@ -209,7 +210,9 @@ mod tests {
             let props2 = vec![("content", Value::String("another document".to_string()))];
             let props_map2 = ImmutablePropertiesMap::new(
                 props2.len(),
-                props2.iter().map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
+                props2
+                    .iter()
+                    .map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
                 &arena,
             );
             let _ = G::new_mut(&engine.storage, &arena, &mut txn)
@@ -225,11 +228,17 @@ mod tests {
         };
 
         let result = rebuild_bm25_index_inner(input);
-        assert!(result.is_ok(), "rebuild with nodes should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "rebuild with nodes should succeed: {result:?}"
+        );
 
         let body = String::from_utf8(result.unwrap().body).unwrap();
         assert!(body.contains("\"ok\":true"), "got: {body}");
-        assert!(body.contains("\"indexed\":2"), "expected 2 indexed, got: {body}");
+        assert!(
+            body.contains("\"indexed\":2"),
+            "expected 2 indexed, got: {body}"
+        );
         assert!(body.contains("\"total\":2"), "got: {body}");
         Ok(())
     }
@@ -240,20 +249,32 @@ mod tests {
         use crate::utils::properties::ImmutablePropertiesMap;
 
         // Simulate bulk import: set env var so storage skips BM25 writes
-        unsafe { std::env::set_var("SPARROW_SKIP_BM25_ON_WRITE", "true"); }
+        unsafe {
+            std::env::set_var("SPARROW_SKIP_BM25_ON_WRITE", "true");
+        }
         let (engine, _temp_dir) = setup_test_engine();
         // skip_bm25_writes=true at this point; verify it's set
-        assert!(engine.storage.skip_bm25_writes.load(Ordering::Relaxed), "skip flag should be set from env var");
-        unsafe { std::env::remove_var("SPARROW_SKIP_BM25_ON_WRITE"); }
+        assert!(
+            engine.storage.skip_bm25_writes.load(Ordering::Relaxed),
+            "skip flag should be set from env var"
+        );
+        unsafe {
+            std::env::remove_var("SPARROW_SKIP_BM25_ON_WRITE");
+        }
 
         {
             let arena = bumpalo::Bump::new();
             let mut txn = engine.storage.graph_env.write_txn().unwrap();
 
-            let props = vec![("content", Value::String("skipped during import".to_string()))];
+            let props = vec![(
+                "content",
+                Value::String("skipped during import".to_string()),
+            )];
             let props_map = ImmutablePropertiesMap::new(
                 props.len(),
-                props.iter().map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
+                props
+                    .iter()
+                    .map(|(k, v)| (arena.alloc_str(k) as &str, v.clone())),
                 &arena,
             );
             let _ = G::new_mut(&engine.storage, &arena, &mut txn)
@@ -270,7 +291,10 @@ mod tests {
         };
 
         let result = rebuild_bm25_index_inner(input);
-        assert!(result.is_ok(), "rebuild after skip-mode import should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "rebuild after skip-mode import should succeed: {result:?}"
+        );
 
         let body = String::from_utf8(result.unwrap().body).unwrap();
         assert!(body.contains("\"indexed\":1"), "got: {body}");

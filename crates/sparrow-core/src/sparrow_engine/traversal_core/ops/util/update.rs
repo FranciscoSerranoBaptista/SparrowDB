@@ -125,10 +125,11 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                     match bincode::serialize(v) {
                                         Ok(new_ser) => match db.0.get(self.txn, &new_ser) {
                                             Ok(Some(existing)) if existing != node.id => {
-                                                results
-                                                    .push(Err(GraphError::DuplicateKey(format!(
+                                                results.push(Err(GraphError::DuplicateKey(
+                                                    format!(
                                                     "Unique constraint violation on field '{k}'"
-                                                ))));
+                                                ),
+                                                )));
                                                 update_ok = false;
                                                 break 'unique_check;
                                             }
@@ -230,11 +231,10 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                         if update_ok {
                             // Update BM25 index to reflect new properties.
-                            if let Some(bm25) =
-                                self.storage.bm25.as_ref().filter(|_| {
-                                    !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
-                                })
-                            {
+                            if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| {
+                                !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+                                    && !self.storage.bm25_exclude_labels.contains(node.label)
+                            }) {
                                 if let Some(props_ref) = node.properties.as_ref() {
                                     let mut data = props_ref.flatten_bm25();
                                     data.push_str(node.label);
