@@ -74,6 +74,12 @@ All notable changes to SparrowDB are documented here.
 ### Bug Fixes
 
 **Storage Engine**
+- Fixed `PutFlags::APPEND_DUP` used in all edge and secondary-index write paths (`add_e`, `upsert`, `update`): `APPEND_DUP` requires each new value for a key to sort strictly after all existing values, but v6 UUIDs are not guaranteed monotonic under concurrency (same-microsecond writes can produce out-of-order IDs). Any write issued after a higher-UUID entry was already committed would hit `MDB_KEYEXIST` and return a spurious `DuplicateKey` error. All seven sites now use `PutFlags::empty()`, which lets LMDB perform a correct sorted insert into `DUP_SORT | DUP_FIXED` adjacency and index databases regardless of insertion order. Regression test: `test_add_edge_succeeds_when_higher_dup_already_exists`.
+
+**Codegen**
+- Fixed `sparrow check` generating invalid Rust for `String` schema fields used as `NFromIndex` lookup keys: `into_ref_key` produced `&data.library_resource_id.clone()` (borrow of temporary + move in the same expression), causing `cargo build` to fail even though `sparrow check` exited 0. Root cause: `into_ref_key` handled `GenRef::Std` (strip `.clone()`, prepend `&`) but had no arms for `GenRef::Ref`, so `.clone()` passed through unchanged. Added the two missing `GenRef::Ref` arms — they strip a trailing `.clone()` suffix exactly as the existing `GenRef::Std` path does. 11 unit tests cover the fix including `test_into_ref_key_ref_with_clone_strips_clone`.
+
+**Storage Engine**
 - Fixed cross-type `UNIQUE INDEX` namespace collision: secondary-index LMDB databases and HashMap entries are now keyed `"TypeName:field_name"` instead of the bare field name — previously, a `UNIQUE INDEX session_id` on `N::Session` caused `DuplicateKey("session_id")` errors on every other node type that carried a plain `session_id: String` field, even with no unique constraint declared; `drop_node` also incorrectly cleaned up index entries across types
   - `SecondaryIndex::from_field_for_type(type_name, field)` added to qualify keys at compile time
   - All write paths (`add_n`, `upsert_n`, `update`) and the read path (`n_from_index`) now compute `format!("{}:{}", label, field)` before the HashMap lookup
