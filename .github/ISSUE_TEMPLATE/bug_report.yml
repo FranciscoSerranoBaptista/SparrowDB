@@ -1,5 +1,5 @@
 name: Bug Report
-description: File a bug report to help us improve HelixDB
+description: File a bug report to help us improve SparrowDB
 title: "[Bug]: "
 labels: ["bug", "triage"]
 body:
@@ -21,7 +21,7 @@ body:
       label: Steps to reproduce
       description: How can we reproduce this issue?
       placeholder: |
-        1. Start HelixDB with '...'
+        1. Start SparrowDB with '...'
         2. Run query '...'
         3. See error
     validations:
@@ -30,7 +30,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: What version of HelixDB are you running?
+      description: What version of SparrowDB are you running?
       placeholder: "e.g. 1.0.0"
     validations:
       required: true
@@ -38,7 +38,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Where are you running HelixDB?
+      description: Where are you running SparrowDB?
       options:
         - Self-hosted
         - Managed Service
@@ -55,4 +55,4 @@ body:
     id: additional
     attributes:
       label: Additional context
-      description: Add any other context about the problem here 
+      description: Add any other context about the problem here

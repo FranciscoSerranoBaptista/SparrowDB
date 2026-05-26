@@ -465,17 +465,20 @@ Every project using the sparrow CLI maintains a full clone of the SparrowDB Rust
 
 `sparrow build` compiles the `sparrow-container` binary from source inside Docker by copying the full engine source into the build context and running `cargo build`. There is no pre-built base image that has dependencies pre-compiled. Every project compiles the engine from scratch (or from Docker layer cache when it holds).
 
-The `sparrow-repo-copy` remote is initialised by `create_git_cache` in `build.rs`, which clones from `SPARROW_REPO_URL = "https://github.com/helixdb/helix-db.git"`. In practice the remote can drift to an unrelated URL (observed: the project's own GitHub remote), causing `git pull` to pull the wrong codebase and `cargo check` to fail with stale engine source.
+**Fixed in `d9804f17`:** `SPARROW_REPO_URL` in `build.rs` now points to `https://github.com/FranciscoSerranoBaptista/SparrowDB.git`. Existing caches that were cloned from the old URL need a one-time remote repoint (see workaround below).
 
-### Workaround (local dev)
+### Workaround (existing cache only — one-time fix)
 
-Repoint the remote to the local SparrowDB checkout so `git pull` is a local filesystem operation and any local engine fixes are immediately available:
+If `~/.sparrow/repo` was created by an older `sparrow` binary and still has the old remote:
 
 ```bash
-cd .sparrow/<instance>/sparrow-repo-copy
-git remote set-url origin /Users/franciscobaptista/Development/SparrowDB
-git pull
+cd ~/.sparrow/repo
+git remote set-url origin https://github.com/FranciscoSerranoBaptista/SparrowDB.git
+git fetch origin
+git checkout main && git pull
 ```
+
+New installs (or after deleting `~/.sparrow/repo`) will clone the correct URL automatically.
 
 ### Permanent fix (upstream, not yet applied)
 

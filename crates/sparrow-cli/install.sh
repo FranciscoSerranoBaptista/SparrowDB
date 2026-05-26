@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-# Helix CLI Installer
-# Cross-platform installer for Helix CLI
+# Sparrow CLI Installer
+# Cross-platform installer for Sparrow CLI
 
-readonly REPO="HelixDB/helix-db"
-readonly BINARY_NAME="helix"
+readonly REPO="FranciscoSerranoBaptista/SparrowDB"
+readonly BINARY_NAME="sparrow"
 readonly DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 
 # Colors
@@ -29,13 +29,13 @@ log_warn() { echo -e "${YELLOW}WARN:${NC} $*"; }
 # Print usage information
 usage() {
     cat << EOF
-Helix CLI Installer
+Sparrow CLI Installer
 
 USAGE:
-    curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/$REPO/main/crates/sparrow-cli/install.sh | bash
 
     # Or with options:
-    curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash -s -- [OPTIONS]
+    curl -fsSL https://raw.githubusercontent.com/$REPO/main/crates/sparrow-cli/install.sh | bash -s -- [OPTIONS]
 
 OPTIONS:
     -d, --dir <DIR>     Install directory (default: ~/.local/bin)
@@ -45,13 +45,13 @@ OPTIONS:
 
 EXAMPLES:
     # User install (default)
-    curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/$REPO/main/crates/sparrow-cli/install.sh | bash
 
     # System install
-    curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash -s -- --system
+    curl -fsSL https://raw.githubusercontent.com/$REPO/main/crates/sparrow-cli/install.sh | bash -s -- --system
 
     # Custom directory
-    curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | bash -s -- --dir ~/bin
+    curl -fsSL https://raw.githubusercontent.com/$REPO/main/crates/sparrow-cli/install.sh | bash -s -- --dir ~/bin
 EOF
 }
 
@@ -92,7 +92,7 @@ set_install_dir() {
     elif [[ "$SYSTEM_INSTALL" == true ]]; then
         # System install
         if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-            INSTALL_DIR="/c/Program Files/helix"
+            INSTALL_DIR="/c/Program Files/sparrow"
         else
             INSTALL_DIR="/usr/local/bin"
         fi
@@ -309,7 +309,7 @@ setup_path() {
     # Add to shell config if not already present
     if [[ -f "$shell_config" ]] && ! grep -Fq "$path_line" "$shell_config"; then
         echo "" >> "$shell_config"
-        echo "# Added by Helix CLI installer" >> "$shell_config"
+        echo "# Added by Sparrow CLI installer" >> "$shell_config"
         echo "$path_line" >> "$shell_config"
         log_success "Added $INSTALL_DIR to PATH in $shell_config"
         log_info "Restart your shell or run: source $shell_config"
@@ -372,7 +372,7 @@ check_docker_desktop() {
     fi
 
     log_warn "Docker Desktop is not installed"
-    log_info "Helix CLI requires Docker to be running for local development"
+    log_info "Sparrow CLI requires Docker to be running for local development"
 
     # Check if Homebrew is available
     if ! check_homebrew; then
@@ -394,14 +394,14 @@ check_docker_desktop() {
         if brew install --cask docker; then
             log_success "Docker Desktop installed successfully"
             log_info "Please start Docker Desktop from your Applications folder"
-            log_info "You'll need to complete the Docker Desktop setup before using Helix CLI"
+            log_info "You'll need to complete the Docker Desktop setup before using Sparrow CLI"
         else
             log_error "Failed to install Docker Desktop via Homebrew"
             log_warn "Please install Docker Desktop manually from: https://www.docker.com/products/docker-desktop"
         fi
     else
         log_warn "Skipping Docker Desktop installation"
-        log_warn "IMPORTANT: You need to have the Docker daemon running to use Helix CLI"
+        log_warn "IMPORTANT: You need to have the Docker daemon running to use Sparrow CLI"
         log_info "Install Docker Desktop from: https://www.docker.com/products/docker-desktop"
     fi
 
@@ -410,7 +410,7 @@ check_docker_desktop() {
 
 # Main installation function
 main() {
-    log_info "Helix CLI Installer"
+    log_info "Sparrow CLI Installer"
     log_info "Repository: $REPO"
 
     parse_args "$@"
@@ -437,7 +437,7 @@ main() {
     # Check permissions for system install
     if [[ "$SYSTEM_INSTALL" == true ]] && [[ ! -w "$INSTALL_DIR" ]] && [[ $EUID -ne 0 ]]; then
         log_error "System install requires sudo permissions"
-        log_info "Run: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | sudo bash -s -- --system"
+        log_info "Run: curl -fsSL https://raw.githubusercontent.com/$REPO/main/crates/sparrow-cli/install.sh | sudo bash -s -- --system"
         exit 1
     fi
 
@@ -452,18 +452,18 @@ main() {
     log_info ""
     log_info "Next steps:"
     log_info "1. Restart your shell or run: source ~/.bashrc (or ~/.zshrc)"
-    log_info "2. Run: helix --version"
-    log_info "3. Run: helix --help"
+    log_info "2. Run: sparrow --version"
+    log_info "3. Run: sparrow --help"
     log_info ""
-    log_info "To update in the future, run: helix update"
+    log_info "To update in the future, run: sparrow update"
     log_info ""
     log_info "Anonymous metrics are enabled by default."
-    log_info "To help us improve Helix, please consider enabling full metrics."
-    log_info "Run: helix metrics --full"
+    log_info "To help us improve SparrowDB, please consider enabling full metrics."
+    log_info "Run: sparrow metrics --full"
     log_info ""
-    log_info "To disable metrics, run: helix metrics --off"
+    log_info "To disable metrics, run: sparrow metrics --off"
     log_info ""
-    log_info "To show metrics status, run: helix metrics status"
+    log_info "To show metrics status, run: sparrow metrics status"
 }
 
 main "$@"
