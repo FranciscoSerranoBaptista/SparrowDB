@@ -88,21 +88,31 @@ where
         'txn,
         impl Iterator<Item = Result<TraversalValue<'arena>, GraphError>>,
     > {
-        // Collect all items from the iterator
-        let items = self.inner.filter_map(|item| item.ok());
+        // Partition the upstream items into errors and successes.
+        // Errors are never silently dropped — they are re-emitted before
+        // the reranked results so callers can detect upstream failures.
+        let (errors, items): (Vec<_>, Vec<_>) = self.inner.partition(|item| item.is_err());
+        let ok_items = items.into_iter().filter_map(|item| item.ok());
 
-        // Apply reranking
-        let reranked = match reranker.rerank(items, query) {
-            Ok(results) => results
-                .into_iter()
-                .map(Ok::<TraversalValue<'arena>, GraphError>)
-                .collect::<Vec<_>>()
-                .into_iter(),
-            Err(e) => {
-                let error = GraphError::RerankerError(e.to_string());
-                once(Err(error)).collect::<Vec<_>>().into_iter()
-            }
-        };
+        // Apply reranking to the successful items only.
+        let reranked_results: Vec<Result<TraversalValue<'arena>, GraphError>> =
+            match reranker.rerank(ok_items, query) {
+                Ok(results) => results
+                    .into_iter()
+                    .map(Ok::<TraversalValue<'arena>, GraphError>)
+                    .collect(),
+                Err(e) => {
+                    let error = GraphError::RerankerError(e.to_string());
+                    vec![Err(error)]
+                }
+            };
+
+        // Re-emit any upstream errors first, then the reranked results.
+        let reranked = errors
+            .into_iter()
+            .chain(reranked_results)
+            .collect::<Vec<_>>()
+            .into_iter();
 
         let iter = RerankIterator { iter: reranked };
 

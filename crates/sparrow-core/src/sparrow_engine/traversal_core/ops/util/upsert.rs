@@ -286,7 +286,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
 
                     // Update BM25 index for existing node
                     if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| {
-                        !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+                        !self.storage.skip_bm25_writes.load(Ordering::Acquire)
                             && !self.storage.bm25_exclude_labels.contains(node.label)
                     }) && let Some(props) = node.properties.as_ref()
                     {
@@ -358,7 +358,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                     }
 
                     if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| {
-                        !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+                        !self.storage.skip_bm25_writes.load(Ordering::Acquire)
                             && !self.storage.bm25_exclude_labels.contains(node.label)
                     }) && let Some(props) = node.properties.as_ref()
                     {

@@ -101,10 +101,9 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
                             }
 
                             if let Err(e) = db.0.put(self.txn, &serialized, &node.id) {
-                                println!(
-                                    "{} Error adding node to secondary index: {:?}",
-                                    line!(),
-                                    e
+                                tracing::error!(
+                                    error = ?e,
+                                    "add_n: failed to write secondary index entry"
                                 );
                                 result = Err(GraphError::from(e));
                             }
@@ -121,7 +120,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         }
 
         if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| {
-            !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+            !self.storage.skip_bm25_writes.load(Ordering::Acquire)
                 && !self.storage.bm25_exclude_labels.contains(node.label)
         }) && let Some(props) = node.properties.as_ref()
         {
@@ -219,7 +218,7 @@ impl<'db, 'arena, 'txn, 's, I: Iterator<Item = Result<TraversalValue<'arena>, Gr
         }
 
         if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| {
-            !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+            !self.storage.skip_bm25_writes.load(Ordering::Acquire)
                 && !self.storage.bm25_exclude_labels.contains(node.label)
         }) && let Some(props) = node.properties.as_ref()
         {

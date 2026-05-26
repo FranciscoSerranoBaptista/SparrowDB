@@ -67,7 +67,10 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                             None => {
                                 // Insert secondary indices.
                                 // Keys in the HashMap are "TypeName:field_name".
-                                for (k, v) in props.iter() {
+                                // IMPORTANT: if any secondary-index write fails, set update_ok =
+                                // false and stop — the node must not be written to nodes_db with
+                                // an inconsistent index state.
+                                'none_idx: for (k, v) in props.iter() {
                                     let qualified = format!("{}:{k}", node.label);
                                     let Some(db) =
                                         self.storage.secondary_indices.get(qualified.as_str())
@@ -87,20 +90,28 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                                 &node.id,
                                             ) {
                                                 results.push(Err(GraphError::from(e)));
+                                                update_ok = false;
+                                                break 'none_idx;
                                             }
                                         }
-                                        Err(e) => results.push(Err(GraphError::from(e))),
+                                        Err(e) => {
+                                            results.push(Err(GraphError::from(e)));
+                                            update_ok = false;
+                                            break 'none_idx;
+                                        }
                                     }
                                 }
 
-                                // Create properties map and insert node
-                                let map = ImmutablePropertiesMap::new(
-                                    props.len(),
-                                    props.iter().map(|(k, v)| (*k, v.clone())),
-                                    self.arena,
-                                );
+                                if update_ok {
+                                    // Create properties map and insert node
+                                    let map = ImmutablePropertiesMap::new(
+                                        props.len(),
+                                        props.iter().map(|(k, v)| (*k, v.clone())),
+                                        self.arena,
+                                    );
 
-                                node.properties = Some(map);
+                                    node.properties = Some(map);
+                                }
                             }
                             Some(old) => {
                                 // Phase 1: Check unique constraints (read-only) before any writes.
@@ -184,9 +195,12 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                                         // create new secondary indexes for the props changed
                                         match bincode::serialize(v) {
                                             Ok(v_serialized) => {
+                                                // PutFlags::empty(): correct sorted insert.
+                                                // APPEND_DUP requires monotonic order per key;
+                                                // v6 node IDs don't guarantee that under concurrency.
                                                 if let Err(e) = db.0.put_with_flags(
                                                     self.txn,
-                                                    PutFlags::APPEND_DUP,
+                                                    PutFlags::empty(),
                                                     &v_serialized,
                                                     &node.id,
                                                 ) {
@@ -232,7 +246,7 @@ impl<'db, 'arena, 'txn, I: Iterator<Item = Result<TraversalValue<'arena>, GraphE
                         if update_ok {
                             // Update BM25 index to reflect new properties.
                             if let Some(bm25) = self.storage.bm25.as_ref().filter(|_| {
-                                !self.storage.skip_bm25_writes.load(Ordering::Relaxed)
+                                !self.storage.skip_bm25_writes.load(Ordering::Acquire)
                                     && !self.storage.bm25_exclude_labels.contains(node.label)
                             }) {
                                 if let Some(props_ref) = node.properties.as_ref() {

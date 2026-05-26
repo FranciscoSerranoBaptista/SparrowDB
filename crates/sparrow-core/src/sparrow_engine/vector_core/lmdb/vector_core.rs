@@ -328,8 +328,8 @@ impl VectorCore {
             rev[16..24].copy_from_slice(&level.to_be_bytes());
             rev[24..40].copy_from_slice(&node_id.to_be_bytes());
 
-            let _ = self.edges_db.delete(txn, &fwd);
-            let _ = self.edges_db.delete(txn, &rev);
+            self.edges_db.delete(txn, &fwd)?;
+            self.edges_db.delete(txn, &rev)?;
         }
 
         Ok(())
@@ -1277,7 +1277,7 @@ impl HNSW for VectorCore {
             self.vectors_db.delete(txn, key.as_ref())?;
         }
 
-        let _ = self.vector_properties_db.delete(txn, &id);
+        self.vector_properties_db.delete(txn, &id)?;
 
         let forward_keys: Vec<Vec<u8>> = self
             .edges_db
@@ -1290,7 +1290,7 @@ impl HNSW for VectorCore {
                 rev[..16].copy_from_slice(&fwd[24..40]);
                 rev[16..24].copy_from_slice(&fwd[16..24]);
                 rev[24..40].copy_from_slice(&fwd[..16]);
-                let _ = self.edges_db.delete(txn, rev.as_ref());
+                self.edges_db.delete(txn, rev.as_ref())?;
             }
             self.edges_db.delete(txn, fwd.as_ref())?;
         }

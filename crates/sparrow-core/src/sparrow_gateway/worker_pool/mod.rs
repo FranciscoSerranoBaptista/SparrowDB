@@ -45,8 +45,7 @@ impl WorkerPool {
             panic!("The number of workers must be at least 2 for parity to act as a select.");
         }
         if !num_workers.is_multiple_of(2) {
-            println!("Expected an even number of workers, got {num_workers}");
-            panic!("The number of workers should be a multiple of 2 for fairness.");
+            panic!("Expected an even number of workers, got {num_workers}; must be a multiple of 2 for fairness.");
         }
 
         let workers = iter::repeat_n(workers_core_setter, num_workers)

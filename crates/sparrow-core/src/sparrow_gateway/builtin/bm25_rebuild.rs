@@ -31,6 +31,22 @@ pub fn rebuild_bm25_index_inner(input: HandlerInput) -> Result<protocol::Respons
         GraphError::New("BM25 is not enabled (set bm25: true in config and restart)".to_string())
     })?;
 
+    // Refuse to wipe and rebuild the index while skip_bm25_on_write is set.
+    // The flag signals that BM25 is intentionally paused (e.g. during bulk import).
+    // Silently proceeding would defeat the operator's intent: the entire existing
+    // index would be cleared and then immediately rebuilt — the exact expensive
+    // operation the flag is meant to defer.
+    if db
+        .skip_bm25_writes
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err(GraphError::New(
+            "BM25 rebuild rejected: skip_bm25_on_write is active. \
+             Clear the flag via POST /settings before rebuilding."
+                .to_string(),
+        ));
+    }
+
     let mut arena = bumpalo::Bump::new();
 
     // Phase 1: snapshot all node IDs + serialized bytes under a read transaction.

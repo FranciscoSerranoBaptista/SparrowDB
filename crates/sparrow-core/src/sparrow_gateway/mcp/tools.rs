@@ -1,4 +1,5 @@
 use crate::{
+    protocol::value::Value,
     sparrow_engine::{
         storage_core::{SparrowGraphStorage, Txn},
         traversal_core::{
@@ -14,7 +15,6 @@ use crate::{
         },
         types::GraphError,
     },
-    protocol::value::Value,
 };
 use bumpalo::Bump;
 use serde::Deserialize;
@@ -77,6 +77,10 @@ pub enum ToolArgs {
         vector: Vec<f64>,
         k: usize,
         min_score: Option<f64>,
+    },
+    /// Truncate the traversal stream to at most `n` items (0-based range [0, n)).
+    Limit {
+        n: usize,
     },
 }
 
@@ -148,7 +152,11 @@ where
     'db: 'arena,
     'arena: 'txn,
 {
-    pub fn new(storage: &'db SparrowGraphStorage, txn: &'txn Txn<'db>, arena: &'arena Bump) -> Self {
+    pub fn new(
+        storage: &'db SparrowGraphStorage,
+        txn: &'txn Txn<'db>,
+        arena: &'arena Bump,
+    ) -> Self {
         Self::from_ro_iterator(G::new(storage, txn, arena))
     }
 
@@ -362,6 +370,10 @@ where
                 Order::Desc => iter.map(|iter| iter.order_by_desc(props)),
             };
             Ok(ordered_stream)
+        }
+        ToolArgs::Limit { n } => {
+            let limit = *n;
+            Ok(stream.map(move |iter| iter.range(0usize, limit)))
         }
         ToolArgs::SearchKeyword { .. } => {
             // SearchKeyword requires special BM25 indexing and connection state

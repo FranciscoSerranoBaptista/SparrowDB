@@ -1,8 +1,8 @@
 use crate::sparrow_engine::{
     bm25::BM25,
-    storage_core::SparrowGraphStorage,
     storage_core::storage_methods::StorageMethods,
-    traversal_core::{WTxn, traversal_value::TraversalValue},
+    storage_core::SparrowGraphStorage,
+    traversal_core::{traversal_value::TraversalValue, WTxn},
     types::GraphError,
 };
 use std::sync::atomic::Ordering;
@@ -25,15 +25,15 @@ where
                 match item {
                     TraversalValue::Node(node) => match storage.drop_node(txn, node.id) {
                         Ok(_) => {
+                            // BM25 delete must succeed: if it fails, the node record is gone
+                            // but its BM25 document would survive, producing ghost search results.
+                            // Return an error so the transaction can be rolled back and the
+                            // caller retries or surfaces the failure.
                             if let Some(bm25) = storage.bm25.as_ref().filter(|_| {
-                                !storage.skip_bm25_writes.load(Ordering::Relaxed)
+                                !storage.skip_bm25_writes.load(Ordering::Acquire)
                                     && !storage.bm25_exclude_labels.contains(node.label)
-                            }) && let Err(e) = bm25.delete_doc(txn, node.id)
-                            {
-                                tracing::warn!(
-                                    node_id = ?node.id,
-                                    "drop: failed to remove node from BM25 index: {e}"
-                                );
+                            }) {
+                                bm25.delete_doc(txn, node.id)?;
                             }
                             tracing::debug!(node_id = ?node.id, "drop: node removed");
                             Ok(())

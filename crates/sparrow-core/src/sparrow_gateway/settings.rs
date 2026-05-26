@@ -49,19 +49,23 @@ pub struct RuntimeSettings {
 impl RuntimeSettings {
     /// Construct from environment variables, applying defaults where not set.
     pub fn from_env() -> Self {
-        let (skip_value, skip_source) =
-            match std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref() {
-                Ok("1") | Ok("true") | Ok("True") | Ok("TRUE") => (true, SettingSource::Env),
-                Ok(_) => (false, SettingSource::Env),
-                Err(_) => (false, SettingSource::Default),
-            };
+        let (skip_value, skip_source) = match std::env::var("SPARROW_SKIP_BM25_ON_WRITE").as_deref()
+        {
+            Ok("1") | Ok("true") | Ok("True") | Ok("TRUE") => (true, SettingSource::Env),
+            Ok(_) => (false, SettingSource::Env),
+            Err(_) => (false, SettingSource::Default),
+        };
 
         let worker_threads = std::env::var("SPARROW_WORKER_THREADS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .map(|n| {
                 let n = n.max(2);
-                if n % 2 == 0 { n } else { n + 1 }
+                if n % 2 == 0 {
+                    n
+                } else {
+                    n + 1
+                }
             })
             .unwrap_or_else(|| {
                 let cores = std::thread::available_parallelism()
@@ -69,7 +73,11 @@ impl RuntimeSettings {
                     .unwrap_or(1)
                     .max(1);
                 let n = (cores * 4).min(64).max(2);
-                if n % 2 == 0 { n } else { n + 1 }
+                if n % 2 == 0 {
+                    n
+                } else {
+                    n + 1
+                }
             });
 
         RuntimeSettings {
@@ -81,7 +89,9 @@ impl RuntimeSettings {
 
     /// Toggle `skip_bm25_on_write` at runtime and mark source as "runtime".
     pub fn set_skip_bm25_on_write(&self, value: bool) {
-        self.skip_bm25_on_write.store(value, Ordering::Relaxed);
+        // Release: pairs with Acquire loads in the write-path ops so that
+        // the flag change is visible on all ISAs, including aarch64.
+        self.skip_bm25_on_write.store(value, Ordering::Release);
         if let Ok(mut src) = self.skip_bm25_source.lock() {
             *src = SettingSource::Runtime;
         }

@@ -79,7 +79,7 @@ fn migrate_bm25(storage: &mut SparrowGraphStorage) -> Result<(), GraphError> {
     // value; the rebuild will run on the next startup where the flag is cleared.
     // This prevents the 20-30 minute full-graph BM25 rebuild that occurs on
     // every container restart when SPARROW_SKIP_BM25_ON_WRITE=true is set.
-    if storage.skip_bm25_writes.load(Ordering::Relaxed) {
+    if storage.skip_bm25_writes.load(Ordering::Acquire) {
         tracing::info!(
             "migrate_bm25: SPARROW_SKIP_BM25_ON_WRITE is set — skipping startup BM25 rebuild"
         );
@@ -143,10 +143,13 @@ fn rebuild_bm25_batch(
     bm25: &HBM25Config,
     batch: &[(u128, Vec<u8>)],
 ) -> Result<(), GraphError> {
+    // One arena per batch — reset between nodes to bound per-node allocation.
+    // This matches the pattern in bm25_rebuild.rs::rebuild_bm25_index_inner.
     let arena = bumpalo::Bump::new();
     let mut txn = storage.graph_env.write_txn()?;
 
     for (id, value) in batch {
+        // SAFETY: node does not escape this iteration.
         let node = Node::from_bincode_bytes(*id, value, &arena)?;
         if storage.bm25_exclude_labels.contains(node.label) {
             continue;
@@ -157,6 +160,12 @@ fn rebuild_bm25_batch(
     }
 
     txn.commit()?;
+    // Flush dirty pages after each batch — mirrors WorkerPool's SYNC_INTERVAL
+    // mechanism. Without this, repeated migration batches can accumulate
+    // dirty pages unbounded, risking OOM or map exhaustion on large graphs.
+    if let Err(e) = storage.graph_env.force_sync() {
+        tracing::warn!("rebuild_bm25_batch: force_sync failed: {e}");
+    }
     Ok(())
 }
 
@@ -267,6 +276,9 @@ pub(crate) fn convert_all_vectors(
         drop(cursor);
 
         txn.commit()?;
+        if let Err(e) = storage.graph_env.force_sync() {
+            tracing::warn!("convert_all_vectors: force_sync failed: {e}");
+        }
     }
 
     Ok(())

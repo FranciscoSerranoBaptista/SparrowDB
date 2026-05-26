@@ -130,7 +130,19 @@
       "Bash(cp /tmp/test_schema.hx /tmp/test_sparrow/db/schema.hx)",
       "Bash(chmod +x *)",
       "Bash(bash /Users/franciscobaptista/Development/SparrowDB/scripts/hooks/rust-async-guard.sh)",
-      "Bash(bash /Users/franciscobaptista/Development/SparrowDB/scripts/hooks/cargo-panic-extractor.sh)"
+      "Bash(bash /Users/franciscobaptista/Development/SparrowDB/scripts/hooks/cargo-panic-extractor.sh)",
+      "Read(//private/tmp/**)",
+      "Bash(PATH=/usr/bin:/bin cargo build --package sparrow-cli)",
+      "Bash(cargo clippy *)",
+      "Bash(bash scripts/hooks/rust-fmt-on-edit.sh *)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(bash scripts/hooks/rust-check-on-edit.sh *)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(cargo fmt *)",
+      "Bash(grep \"\\\\.md$\")",
+      "Bash(grep -E \"^[0-9a-f]{7,40}$|v3\\\\.[0-9]\\\\.[0-9].*g[0-9a-f]\")",
+      "Bash(SPARROW_URL=http://localhost:6969 SPARROW_API_KEY=sparrow_4f9ad44d5fbcc3143f6b6e879efd16de pnpm dev)",
+      "Bash(echo \"---exit:$?\")"
     ]
   }
 }

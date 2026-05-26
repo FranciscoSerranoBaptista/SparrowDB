@@ -33,6 +33,7 @@ use crate::{
     utils::properties::ImmutablePropertiesMap,
 };
 
+use crate::sparrow_engine::bm25::lmdb_bm25::BM25;
 use crate::sparrow_engine::traversal_core::ops::{
     g::G,
     source::{add_e::AddEAdapter, add_n::AddNAdapter},
@@ -164,17 +165,25 @@ pub fn v1_compat_handler(input: HandlerInput) -> Result<Response, GraphError> {
 
     let mut output: HashMap<String, sonic_rs::Value> = HashMap::new();
     for var_name in &return_vars {
-        if let Some(nodes) = result.get(var_name) {
-            let ids: Vec<sonic_rs::Value> = nodes
-                .iter()
-                .filter_map(|n| n.get("id"))
-                .map(|v| v.clone())
-                .collect();
-            let entry = sonic_rs::json!({
-                "ids": ids,
-                "properties": nodes
-            });
-            output.insert(var_name.clone(), entry);
+        match result.get(var_name) {
+            Some(QueryResult::Count(n)) => {
+                // A `"Count"` step was used: return a scalar integer, not a node list.
+                let entry = sonic_rs::json!({ "count": n });
+                output.insert(var_name.clone(), entry);
+            }
+            Some(QueryResult::NodeList(nodes)) => {
+                let ids: Vec<sonic_rs::Value> = nodes
+                    .iter()
+                    .filter_map(|n| n.get("id"))
+                    .map(|v| v.clone())
+                    .collect();
+                let entry = sonic_rs::json!({
+                    "ids": ids,
+                    "properties": nodes
+                });
+                output.insert(var_name.clone(), entry);
+            }
+            None => {}
         }
     }
 
@@ -212,6 +221,12 @@ impl From<GraphError> for CompatError {
 
 // ─── internal op model ────────────────────────────────────────────────────────
 
+/// The result of one named query — either a list of nodes or a scalar count.
+enum QueryResult {
+    NodeList(Vec<sonic_rs::Value>),
+    Count(usize),
+}
+
 /// A resolved traversal or mutation step for one named query.
 enum CompatStep {
     /// Traverse the graph, optionally seeded from a prior result.
@@ -219,6 +234,9 @@ enum CompatStep {
         seed_var: Option<String>,
         tool_args: Vec<ToolArgs>,
         bind_to: String,
+        /// When true, exhaust the iterator and store a scalar count instead of
+        /// materialising the full node list.  Set by the `"Count"` step.
+        count: bool,
     },
     /// Look up nodes directly by UUID string.
     LookupByUuid { ids: Vec<u128>, bind_to: String },
@@ -270,12 +288,12 @@ fn execute_helix_queries<'db, 'arena>(
     raw_queries: &[sonic_rs::Value],
     storage: &'db SparrowGraphStorage,
     arena: &'arena Bump,
-) -> Result<HashMap<String, Vec<sonic_rs::Value>>, CompatError>
+) -> Result<HashMap<String, QueryResult>, CompatError>
 where
     'db: 'arena,
 {
     let mut live_store: HashMap<String, Vec<TraversalValue<'arena>>> = HashMap::new();
-    let mut result_store: HashMap<String, Vec<sonic_rs::Value>> = HashMap::new();
+    let mut result_store: HashMap<String, QueryResult> = HashMap::new();
 
     // Open ONE write transaction for the entire request.  All steps — both
     // reads and writes — run inside it.  On success we commit once (one
@@ -337,6 +355,9 @@ fn translate_named_query(
     let mut pending_uuid_ids: Option<Vec<u128>> = None;
     // Accumulate SetProperty updates until we see the end of the query.
     let mut pending_updates: Vec<(String, Value)> = Vec::new();
+    // Set to true when a bare `"Count"` step is encountered; honoured at the
+    // final flush so that the result is a scalar count, not a node list.
+    let mut pending_count = false;
 
     for step in raw_steps {
         // ── N:{Ids:[...]} ──────────────────────────────────────────────────
@@ -553,13 +574,34 @@ fn translate_named_query(
             continue;
         }
 
-        // ── Id:null, ValueMap:[...], Project:[...], Count ─────────────────
-        // These are result-shaping operations. We always return all fields and
-        // let the caller select what it needs. No-op in v1_compat.
+        // ── Count ─────────────────────────────────────────────────────────
+        // Mark the pending traversal as a count query.  The final flush will
+        // exhaust the iterator and store a scalar integer instead of a node
+        // list.  Count is always the last meaningful step; any traversal step
+        // that comes after it would start a new sub-query (via flush_traversal)
+        // and reset pending_count to false, so it is naturally scoped.
+        if step.as_str() == Some("Count") {
+            pending_count = true;
+            continue;
+        }
+
+        // ── Limit: N ──────────────────────────────────────────────────────
+        // Truncate the current traversal stream to at most N items.
+        if let Some(n_val) = step.get("Limit") {
+            maybe_flush_uuid_lookup(&mut out, &mut pending_uuid_ids, &mut seed_var, name)?;
+            match n_val.as_u64() {
+                Some(n) => tool_args.push(ToolArgs::Limit { n: n as usize }),
+                None => warn!("v1_compat: Limit value is not an integer — skipping"),
+            }
+            continue;
+        }
+
+        // ── Id:null, ValueMap:[...], Project:[...] ─────────────────────────
+        // Result-shaping hints only — we return all fields and let the caller
+        // project what it needs client-side.  No-op in v1_compat.
         if step.get("Id").is_some()
             || step.get("ValueMap").is_some()
             || step.get("Project").is_some()
-            || step.as_str() == Some("Count")
         {
             continue;
         }
@@ -584,8 +626,14 @@ fn translate_named_query(
             updates,
             bind_to: name.to_string(),
         });
-    } else {
-        flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
+    } else if seed_var.is_some() || !tool_args.is_empty() {
+        // Use pending_count here — the only place where a Count step takes effect.
+        out.push(CompatStep::Traverse {
+            seed_var: seed_var.take(),
+            tool_args: std::mem::take(&mut tool_args),
+            bind_to: name.to_string(),
+            count: pending_count,
+        });
     }
 
     Ok(out)
@@ -603,6 +651,7 @@ fn flush_traversal(
             seed_var: seed_var.take(),
             tool_args: std::mem::take(tool_args),
             bind_to: bind_to.to_string(),
+            count: false, // intermediate flushes never produce a count
         });
     }
     Ok(())
@@ -943,7 +992,7 @@ fn execute_compat_step<'db, 'txn, 'arena>(
     wtxn: &'txn mut heed3::RwTxn<'db>,
     arena: &'arena Bump,
     live_store: &mut HashMap<String, Vec<TraversalValue<'arena>>>,
-    result_store: &mut HashMap<String, Vec<sonic_rs::Value>>,
+    result_store: &mut HashMap<String, QueryResult>,
 ) -> Result<(), CompatError>
 where
     'db: 'arena,
@@ -956,26 +1005,60 @@ where
             seed_var,
             tool_args,
             bind_to,
+            count,
         } => {
-            let values: Vec<TraversalValue<'arena>> = {
-                let ro: &heed3::RoTxn<'db> = wtxn;
-                if let Some(sv) = &seed_var {
+            let ro: &heed3::RoTxn<'db> = wtxn;
+            if count {
+                // Count mode: exhaust the iterator without building a node Vec.
+                // This avoids allocating memory proportional to the result set
+                // (e.g. 685K book nodes) just to return a single integer.
+                let stream = if let Some(sv) = &seed_var {
                     let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
-                    execute_query_chain_from_seed(&tool_args, storage, ro, arena, seeds.into_iter())
-                        .map_err(CompatError::from)?
-                        .collect()
-                        .map_err(CompatError::from)?
+                    execute_query_chain_from_seed(
+                        &tool_args,
+                        storage,
+                        ro,
+                        arena,
+                        seeds.into_iter(),
+                    )
+                    .map_err(CompatError::from)?
                 } else {
                     execute_query_chain(&tool_args, storage, ro, arena)
                         .map_err(CompatError::from)?
+                };
+                let mut n: usize = 0;
+                for item in stream.into_inner_iter() {
+                    item.map_err(CompatError::from)?;
+                    n += 1;
+                }
+                // Count results have no live nodes for downstream steps to seed from.
+                live_store.insert(bind_to.clone(), vec![]);
+                result_store.insert(bind_to, QueryResult::Count(n));
+            } else {
+                let values: Vec<TraversalValue<'arena>> = {
+                    if let Some(sv) = &seed_var {
+                        let seeds = live_store.get(sv.as_str()).cloned().unwrap_or_default();
+                        execute_query_chain_from_seed(
+                            &tool_args,
+                            storage,
+                            ro,
+                            arena,
+                            seeds.into_iter(),
+                        )
+                        .map_err(CompatError::from)?
                         .collect()
                         .map_err(CompatError::from)?
-                }
-            };
-
-            let json_values = serialise_results(&values);
-            live_store.insert(bind_to.clone(), values);
-            result_store.insert(bind_to, json_values);
+                    } else {
+                        execute_query_chain(&tool_args, storage, ro, arena)
+                            .map_err(CompatError::from)?
+                            .collect()
+                            .map_err(CompatError::from)?
+                    }
+                };
+                let json_values = serialise_results(&values);
+                live_store.insert(bind_to.clone(), values);
+                result_store.insert(bind_to, QueryResult::NodeList(json_values));
+            }
         }
 
         CompatStep::LookupByUuid { ids, bind_to } => {
@@ -993,7 +1076,7 @@ where
 
             let json_values = serialise_results(&values);
             live_store.insert(bind_to.clone(), values);
-            result_store.insert(bind_to, json_values);
+            result_store.insert(bind_to, QueryResult::NodeList(json_values));
         }
 
         // ── Mutations: write directly into the shared transaction ─────────
@@ -1032,7 +1115,7 @@ where
             let json = sonic_rs::to_value(&result).unwrap_or_default();
             let json_with_aliases = add_dollar_aliases(json);
             live_store.insert(bind_to.clone(), vec![result]);
-            result_store.insert(bind_to, vec![json_with_aliases]);
+            result_store.insert(bind_to, QueryResult::NodeList(vec![json_with_aliases]));
         }
 
         CompatStep::AddEdge {
@@ -1080,7 +1163,7 @@ where
 
             let json = sonic_rs::to_value(&result).unwrap_or_default();
             live_store.insert(bind_to.clone(), vec![result]);
-            result_store.insert(bind_to, vec![json]);
+            result_store.insert(bind_to, QueryResult::NodeList(vec![json]));
         }
 
         CompatStep::UpdateProperties {
@@ -1129,7 +1212,7 @@ where
 
             let json_values = serialise_results(&updated);
             live_store.insert(bind_to.clone(), updated);
-            result_store.insert(bind_to, json_values);
+            result_store.insert(bind_to, QueryResult::NodeList(json_values));
         }
 
         CompatStep::DropNodes {
@@ -1158,7 +1241,23 @@ where
             for target in &targets {
                 match target {
                     TraversalValue::Node(n) => {
-                        storage.drop_node(wtxn, n.id).map_err(CompatError::from)?
+                        storage.drop_node(wtxn, n.id).map_err(CompatError::from)?;
+                        // Also remove the BM25 document so stale terms don't
+                        // inflate scores or return ghost results.  Mirror the
+                        // same guard used in drop.rs::Drop::drop_traversal.
+                        if let Some(bm25) = storage.bm25.as_ref().filter(|_| {
+                            !storage
+                                .skip_bm25_writes
+                                .load(std::sync::atomic::Ordering::Acquire)
+                                && !storage.bm25_exclude_labels.contains(n.label)
+                        }) {
+                            if let Err(e) = bm25.delete_doc(wtxn, n.id) {
+                                warn!(
+                                    node_id = ?n.id,
+                                    "v1_compat drop: BM25 deletion failed: {e}"
+                                );
+                            }
+                        }
                     }
                     TraversalValue::Edge(e) => {
                         storage.drop_edge(wtxn, e.id).map_err(CompatError::from)?
@@ -1559,6 +1658,103 @@ mod tests {
         assert_eq!(
             label, "TestA",
             "InN must return the source node (TestA); got '{label}' — Bug B: starting node returned unchanged"
+        );
+    }
+
+    // ── Bug-fix tests: Count and Limit ───────────────────────────────────────────
+
+    /// `"Count"` as a bare step must return `{"total": {"count": N}}`, not the full
+    /// node list.
+    ///
+    /// Bug (before fix): Count was a no-op — the same full NWhere scan was returned.
+    #[test]
+    #[serial_test::serial]
+    fn count_step_returns_integer_not_full_node_list() {
+        let (graph, _dir) = make_test_graph();
+        add_node(&graph, "Widget");
+        add_node(&graph, "Widget");
+        add_node(&graph, "Widget");
+
+        let body = r#"{
+            "request_type": "read",
+            "query": {
+                "queries": [{"Query": {"name": "total", "steps": [
+                    {"NWhere": {"Eq": ["$label", {"String": "Widget"}]}},
+                    "Count"
+                ], "condition": null}}],
+                "returns": ["total"]
+            }
+        }"#;
+
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("Count query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        // Bug: before the fix, total.count was absent and total.ids had 3 elements.
+        let count = json
+            .get("total")
+            .and_then(|t| t.get("count"))
+            .and_then(|c| c.as_u64())
+            .expect("total.count must be an integer — got missing or wrong shape");
+
+        assert_eq!(count, 3, "Count must return 3 (one per Widget node)");
+
+        // Also assert ids/properties are NOT present — this is a count result, not a node list.
+        assert!(
+            json.get("total").and_then(|t| t.get("ids")).is_none(),
+            "Count result must not include an 'ids' array"
+        );
+    }
+
+    /// `{"Limit": N}` must truncate the result set to N items.
+    ///
+    /// Bug (before fix): Limit was an unrecognised step and was silently skipped —
+    /// all items were returned regardless of N.
+    #[test]
+    #[serial_test::serial]
+    fn limit_step_truncates_result_to_n_items() {
+        let (graph, _dir) = make_test_graph();
+        for _ in 0..5 {
+            add_node(&graph, "Gadget");
+        }
+
+        let body = r#"{
+            "request_type": "read",
+            "query": {
+                "queries": [{"Query": {"name": "r", "steps": [
+                    {"NWhere": {"Eq": ["$label", {"String": "Gadget"}]}},
+                    {"Limit": 3}
+                ], "condition": null}}],
+                "returns": ["r"]
+            }
+        }"#;
+
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("Limit query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        let ids = json
+            .get("r")
+            .and_then(|r| r.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .expect("r.ids must be an array");
+
+        // Bug: before the fix, all 5 items were returned because Limit was a no-op.
+        assert_eq!(
+            ids.len(),
+            3,
+            "Limit 3 must return exactly 3 items (got {}); Limit was a no-op before fix",
+            ids.len()
         );
     }
 }
