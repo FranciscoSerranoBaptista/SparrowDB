@@ -114,6 +114,7 @@ All notable changes to SparrowDB are documented here.
 - Fixed stale LMDB lock file cleanup on startup: uses correct filename `lock.mdb` (subdirectory mode), logs errors instead of silently swallowing them, and only removes orphaned locks (lock file present without data file)
 
 **CLI**
+- Fixed `sparrow build` pulling from the wrong repository: `SPARROW_REPO_URL` was still pointing at `helixdb/helix-db.git` (old upstream). All post-rename fixes (BM25 startup crash, `/compact`, `SPARROW_BM25_EXCLUDE_LABELS`, etc.) were invisible to production builds because `sparrow build` cloned the old repo, not the SparrowDB fork. Updated to `FranciscoSerranoBaptista/SparrowDB.git`. **If you have an existing `~/.sparrow/repo` cache, see the manual fix below.**
 - `sparrow check` now shows actual compiler errors on failure (previously `handle_cargo_check_failure` ignored all parameters and showed only a generic message)
 - `sparrow check` now warns when file restore fails instead of silently swallowing errors (a failed restore leaves stale generated code in `sparrow-repo-copy` which busts Docker layer cache)
 - `sparrow check` sends success telemetry (was only sent on failure)
