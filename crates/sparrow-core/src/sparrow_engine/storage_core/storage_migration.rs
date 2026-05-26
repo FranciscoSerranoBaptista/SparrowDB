@@ -4,7 +4,7 @@ use crate::{
         bm25::{HBM25Config, BM25_SCHEMA_VERSION},
         storage_core::SparrowGraphStorage,
         types::GraphError,
-        vector_core::{vector::HVector, VectorCore, ENTRY_POINT_KEY},
+        vector_core::{vector::HVector, VectorCore},
     },
     utils::{items::Node, properties::ImmutablePropertiesMap},
 };
@@ -262,7 +262,11 @@ pub(crate) fn convert_all_vectors(
         let mut cursor = storage.vectors.vectors_db.range_mut(&mut txn, &bounds)?;
 
         while let Some((key, value)) = cursor.next().transpose()? {
-            if key == ENTRY_POINT_KEY {
+            // Skip entry-point metadata keys — they store vector IDs (16 bytes),
+            // not f64 vector data, so endianness conversion must not touch them.
+            // This covers both the legacy global key (`b"entry_point"`) and the
+            // current per-label keys (`b"entry_point::label"`).
+            if key.starts_with(b"entry_point") {
                 continue;
             }
 

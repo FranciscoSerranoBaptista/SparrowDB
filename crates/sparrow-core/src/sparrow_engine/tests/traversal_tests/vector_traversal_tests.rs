@@ -23,7 +23,7 @@ use crate::{
             },
         },
         types::GraphError,
-        vector_core::{vector::HVector, ENTRY_POINT_KEY, HNSW},
+        vector_core::{entry_point_key_for_label, vector::HVector, HNSW},
     },
     utils::properties::ImmutablePropertiesMap,
 };
@@ -651,8 +651,8 @@ fn test_v_from_type_with_edges_and_nodes() {
 
 #[test]
 fn test_v_from_type_after_migration() {
-    use crate::sparrow_engine::storage_core::storage_migration::migrate;
     use crate::protocol::value::Value;
+    use crate::sparrow_engine::storage_core::storage_migration::migrate;
     use std::collections::HashMap;
 
     // Helper to create old-format vector properties (HashMap-based)
@@ -906,7 +906,10 @@ fn test_rebuild_preserves_active_and_purges_deleted() {
 
     // Build custom properties for v2 so we can verify they survive rebuild.
     let mut raw_props = HashMap::new();
-    raw_props.insert("source".to_string(), Value::String("rebuild-test".to_string()));
+    raw_props.insert(
+        "source".to_string(),
+        Value::String("rebuild-test".to_string()),
+    );
     raw_props.insert("priority".to_string(), Value::U32(42));
     let props_map = ImmutablePropertiesMap::new(
         raw_props.len(),
@@ -931,12 +934,22 @@ fn test_rebuild_preserves_active_and_purges_deleted() {
         .rebuild(&mut txn, &arena)
         .expect("rebuild failed");
 
-    assert_eq!(stats.kept, 1, "exactly one active vector must survive rebuild");
-    assert_eq!(stats.purged_deleted, 1, "exactly one deleted vector must be purged");
+    assert_eq!(
+        stats.kept, 1,
+        "exactly one active vector must survive rebuild"
+    );
+    assert_eq!(
+        stats.purged_deleted, 1,
+        "exactly one deleted vector must be purged"
+    );
 
     // v2 must still be findable with its original id
     let found = storage.vectors.get_full_vector(&txn, v2.id, &arena);
-    assert!(found.is_ok(), "active vector must survive rebuild: {:?}", found.err());
+    assert!(
+        found.is_ok(),
+        "active vector must survive rebuild: {:?}",
+        found.err()
+    );
 
     // v2's custom properties must survive rebuild without data loss.
     let found_v2 = found.unwrap();
@@ -952,8 +965,15 @@ fn test_rebuild_preserves_active_and_purges_deleted() {
     );
 
     // v1 must be gone from properties db
-    let props = storage.vectors.vector_properties_db.get(&txn, &v1.id).unwrap();
-    assert!(props.is_none(), "deleted vector must be purged after rebuild");
+    let props = storage
+        .vectors
+        .vector_properties_db
+        .get(&txn, &v1.id)
+        .unwrap();
+    assert!(
+        props.is_none(),
+        "deleted vector must be purged after rebuild"
+    );
 
     txn.commit().unwrap();
 }
@@ -1214,7 +1234,10 @@ fn test_drop_vector_hard_deletes_hnsw_data() {
     assert_eq!(count, 0, "vectors_db still has data for dropped vector");
 
     let props = storage.vectors.vector_properties_db.get(&txn, &id).unwrap();
-    assert!(props.is_none(), "vector_properties_db still has entry for dropped vector");
+    assert!(
+        props.is_none(),
+        "vector_properties_db still has entry for dropped vector"
+    );
 
     let edge_count = storage
         .vectors
@@ -1222,7 +1245,10 @@ fn test_drop_vector_hard_deletes_hnsw_data() {
         .prefix_iter(&txn, id.to_be_bytes().as_ref())
         .unwrap()
         .count();
-    assert_eq!(edge_count, 0, "VectorCore.edges_db still has edges for dropped vector");
+    assert_eq!(
+        edge_count, 0,
+        "VectorCore.edges_db still has edges for dropped vector"
+    );
 
     txn.commit().unwrap();
 }
@@ -1241,8 +1267,16 @@ fn test_drop_vector_that_is_entry_point_clears_entry_point() {
 
     storage.drop_vector(&mut txn, id).expect("drop failed");
 
-    let ep = storage.vectors.vectors_db.get(&txn, ENTRY_POINT_KEY).unwrap();
-    assert!(ep.is_none(), "entry point still set after dropping entry point vector");
+    let per_label_key = entry_point_key_for_label("test");
+    let ep = storage
+        .vectors
+        .vectors_db
+        .get(&txn, per_label_key.as_slice())
+        .unwrap();
+    assert!(
+        ep.is_none(),
+        "entry point still set after dropping entry point vector"
+    );
 
     txn.commit().unwrap();
 }
@@ -1263,14 +1297,25 @@ fn test_soft_delete_entry_point_reassigns_or_clears_it() {
         .insert::<fn(&_, &_) -> bool>(&mut txn, "test", &[0.0f64, 1.0, 0.0], None, &arena)
         .expect("insert v2 failed");
 
-    storage.vectors.delete(&mut txn, v1.id, &arena).expect("soft delete failed");
+    storage
+        .vectors
+        .delete(&mut txn, v1.id, &arena)
+        .expect("soft delete failed");
 
-    let ep_bytes = storage.vectors.vectors_db.get(&txn, ENTRY_POINT_KEY).unwrap();
+    let per_label_key = entry_point_key_for_label("test");
+    let ep_bytes = storage
+        .vectors
+        .vectors_db
+        .get(&txn, per_label_key.as_slice())
+        .unwrap();
     if let Some(ep_bytes) = ep_bytes {
         let mut arr = [0u8; 16];
         arr.copy_from_slice(&ep_bytes[..16]);
         let ep_id = u128::from_be_bytes(arr);
-        assert_ne!(ep_id, v1.id, "entry point still points to soft-deleted vector");
+        assert_ne!(
+            ep_id, v1.id,
+            "entry point still points to soft-deleted vector"
+        );
     }
 
     txn.commit().unwrap();

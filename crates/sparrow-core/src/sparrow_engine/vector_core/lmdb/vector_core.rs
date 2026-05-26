@@ -23,7 +23,28 @@ const DB_VECTORS: &str = "vectors"; // for vector data (v:)
 const DB_VECTOR_DATA: &str = "vector_data"; // for vector data (v:)
 const DB_HNSW_EDGES: &str = "hnsw_out_nodes"; // for hnsw out node data
 const VECTOR_PREFIX: &[u8] = b"v:";
+
+/// Legacy global entry-point key — kept only for backward-compat read paths
+/// (migration code that must skip non-vector-data keys, legacy BFS utility).
+/// New code must NOT write this key; use `entry_point_key_for_label` instead.
 pub const ENTRY_POINT_KEY: &[u8] = b"entry_point";
+
+/// Per-label entry-point key prefix.  Each label's entry point is stored as
+/// `b"entry_point::{label}"` so that labels with different embedding dimensions
+/// maintain independent HNSW graphs and never share an entry point.
+const ENTRY_POINT_PREFIX: &[u8] = b"entry_point::";
+
+/// Builds the LMDB key for the HNSW entry point of `label`.
+///
+/// Key format: `b"entry_point::{label}"` (UTF-8, no null terminator).
+/// This ensures every label has its own entry point, preventing dimension
+/// mismatches when the same `VectorCore` holds vectors of different sizes.
+#[inline]
+pub fn entry_point_key_for_label(label: &str) -> Vec<u8> {
+    let mut key = ENTRY_POINT_PREFIX.to_vec();
+    key.extend_from_slice(label.as_bytes());
+    key
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HNSWConfig {
@@ -131,7 +152,8 @@ impl VectorCore {
         label: &'arena str,
         arena: &'arena bumpalo::Bump,
     ) -> Result<HVector<'arena>, VectorError> {
-        let ep_id = self.vectors_db.get(txn, ENTRY_POINT_KEY)?;
+        let key = entry_point_key_for_label(label);
+        let ep_id = self.vectors_db.get(txn, key.as_slice())?;
         if let Some(ep_id) = ep_id {
             let mut arr = [0u8; 16];
             let len = std::cmp::min(ep_id.len(), 16);
@@ -144,8 +166,9 @@ impl VectorCore {
 
     #[inline]
     fn set_entry_point(&self, txn: &mut RwTxn, entry: &HVector) -> Result<(), VectorError> {
+        let key = entry_point_key_for_label(entry.label);
         self.vectors_db
-            .put(txn, ENTRY_POINT_KEY, &entry.id.to_be_bytes())
+            .put(txn, key.as_slice(), &entry.id.to_be_bytes())
             .map_err(VectorError::from)?;
         Ok(())
     }
@@ -459,8 +482,15 @@ impl VectorCore {
         Ok(results)
     }
 
+    /// Returns the number of actual vector data entries (keys with the `b"v:"` prefix).
+    /// This excludes entry-point metadata keys so the count reflects only vectors,
+    /// regardless of how many per-label entry points exist.
     pub fn num_inserted_vectors(&self, txn: &RoTxn) -> Result<u64, VectorError> {
-        Ok(self.vectors_db.len(txn)?)
+        let count = self
+            .vectors_db
+            .prefix_iter(txn, VECTOR_PREFIX)?
+            .count() as u64;
+        Ok(count)
     }
 
     pub fn stats<'db>(&self, txn: &RoTxn<'db>) -> Result<VectorStats, VectorError> {
@@ -480,7 +510,15 @@ impl VectorCore {
         }
 
         let hnsw_edges = self.edges_db.len(txn)? as u64;
-        let entry_point_present = self.vectors_db.get(txn, ENTRY_POINT_KEY)?.is_some();
+        // Check whether any per-label entry point exists by scanning for the
+        // `b"entry_point::"` prefix.  The old global `b"entry_point"` key is
+        // intentionally not checked here; it only exists in legacy data.
+        let entry_point_present = self
+            .vectors_db
+            .prefix_iter(txn, ENTRY_POINT_PREFIX)?
+            .next()
+            .transpose()?
+            .is_some();
 
         Ok(VectorStats {
             total,
@@ -595,29 +633,48 @@ impl VectorCore {
         Ok(visited.len())
     }
 
-    /// Returns the count of active (non-deleted) vectors reachable by BFS from the global
-    /// entry point at level 0, traversing edges directly without requiring a label.
-    /// This covers all labels in a single pass.
+    /// Returns the count of active (non-deleted) vectors reachable by BFS from
+    /// all per-label entry points at level 0, traversing edges without requiring
+    /// a specific label.  Covers all labels in a single pass.
     pub fn bfs_reachable_count_global<'db>(
         &self,
         txn: &RoTxn<'db>,
     ) -> Result<usize, VectorError> {
-        let ep_bytes = match self.vectors_db.get(txn, ENTRY_POINT_KEY)? {
-            None => return Ok(0),
-            Some(b) => b,
-        };
-        let mut arr = [0u8; 16];
-        let len = ep_bytes.len().min(16);
-        arr[..len].copy_from_slice(&ep_bytes[..len]);
-        let ep_id = u128::from_be_bytes(arr);
-
         let arena = bumpalo::Bump::new();
         let mut visited: HashSet<u128> = HashSet::new();
         let mut queue: std::collections::VecDeque<u128> = std::collections::VecDeque::new();
         let mut active_reachable = 0usize;
 
-        visited.insert(ep_id);
-        queue.push_back(ep_id);
+        // Seed BFS from every per-label entry point.
+        for result in self.vectors_db.prefix_iter(txn, ENTRY_POINT_PREFIX)? {
+            let (_key, ep_bytes) = result?;
+            if ep_bytes.len() >= 16 {
+                let mut arr = [0u8; 16];
+                arr.copy_from_slice(&ep_bytes[..16]);
+                let ep_id = u128::from_be_bytes(arr);
+                if visited.insert(ep_id) {
+                    queue.push_back(ep_id);
+                }
+            }
+        }
+
+        // Legacy fallback: if no per-label entry points exist yet (old data),
+        // seed from the global key so diagnostic tooling continues to work.
+        if queue.is_empty() {
+            if let Some(ep_bytes) = self.vectors_db.get(txn, ENTRY_POINT_KEY)? {
+                let len = ep_bytes.len().min(16);
+                let mut arr = [0u8; 16];
+                arr[..len].copy_from_slice(&ep_bytes[..len]);
+                let ep_id = u128::from_be_bytes(arr);
+                if visited.insert(ep_id) {
+                    queue.push_back(ep_id);
+                }
+            }
+        }
+
+        if queue.is_empty() {
+            return Ok(0);
+        }
 
         while let Some(id) = queue.pop_front() {
             let is_deleted = self
@@ -1207,7 +1264,12 @@ impl HNSW for VectorCore {
                 )?;
                 debug_println!("vector deleted with id {}", &id);
 
-                if let Ok(Some(ep_bytes)) = self.vectors_db.get(txn, ENTRY_POINT_KEY) {
+                // Capture the label here so we can build the per-label entry-point
+                // key before entering the nested block.
+                let label = properties.label;
+                let ep_key = entry_point_key_for_label(label);
+
+                if let Ok(Some(ep_bytes)) = self.vectors_db.get(txn, ep_key.as_slice()) {
                     let ep_bytes_ref: &[u8] = &ep_bytes;
                     if ep_bytes_ref.len() == 16 {
                         let ep_id = u128::from_be_bytes(ep_bytes_ref.try_into().unwrap());
@@ -1228,7 +1290,6 @@ impl HNSW for VectorCore {
                                 })
                                 .collect();
 
-                            let label = properties.label;
                             let mut replacement = None;
                             for neighbor_id in neighbor_ids {
                                 let props_bytes = self
@@ -1253,7 +1314,7 @@ impl HNSW for VectorCore {
                             match replacement {
                                 Some(new_ep) => self.set_entry_point(txn, &new_ep)?,
                                 None => {
-                                    self.vectors_db.delete(txn, ENTRY_POINT_KEY)?;
+                                    self.vectors_db.delete(txn, ep_key.as_slice())?;
                                 }
                             }
                         }
@@ -1267,6 +1328,18 @@ impl HNSW for VectorCore {
     }
 
     fn hard_delete(&self, txn: &mut RwTxn, id: u128) -> Result<(), VectorError> {
+        // Read the vector's label before deleting properties so we can clean up
+        // the correct per-label entry point key afterwards.
+        let bump = bumpalo::Bump::new();
+        let label_owned: Option<String> = self
+            .vector_properties_db
+            .get(txn, &id)?
+            .and_then(|bytes| {
+                VectorWithoutData::from_bincode_bytes(&bump, bytes, id)
+                    .ok()
+                    .map(|p| p.label.to_string())
+            });
+
         let data_prefix = [VECTOR_PREFIX, id.to_be_bytes().as_ref()].concat();
         let data_keys: Vec<Vec<u8>> = self
             .vectors_db
@@ -1295,12 +1368,16 @@ impl HNSW for VectorCore {
             self.edges_db.delete(txn, fwd.as_ref())?;
         }
 
-        if let Ok(Some(ep_bytes)) = self.vectors_db.get(txn, ENTRY_POINT_KEY) {
-            let ep_bytes_ref: &[u8] = &ep_bytes;
-            if ep_bytes_ref.len() == 16 {
-                let ep_id = u128::from_be_bytes(ep_bytes_ref.try_into().unwrap());
-                if ep_id == id {
-                    self.vectors_db.delete(txn, ENTRY_POINT_KEY)?;
+        // Clear the per-label entry point if it pointed to this vector.
+        if let Some(label) = &label_owned {
+            let ep_key = entry_point_key_for_label(label.as_str());
+            if let Ok(Some(ep_bytes)) = self.vectors_db.get(txn, ep_key.as_slice()) {
+                let ep_bytes_ref: &[u8] = &ep_bytes;
+                if ep_bytes_ref.len() == 16 {
+                    let ep_id = u128::from_be_bytes(ep_bytes_ref.try_into().unwrap());
+                    if ep_id == id {
+                        self.vectors_db.delete(txn, ep_key.as_slice())?;
+                    }
                 }
             }
         }
@@ -1462,5 +1539,145 @@ mod stats_tests {
         assert_eq!(stats.soft_deleted, 0);
         assert_eq!(stats.hnsw_edges, 0);
         assert!(!stats.entry_point_present);
+    }
+}
+
+/// Regression tests for the global-HNSW-entry-point bug.
+///
+/// Before the fix, `get_entry_point` / `set_entry_point` used a single global
+/// `b"entry_point"` key regardless of label.  When labels A and B have
+/// different embedding dimensions, inserting B's first vector would retrieve
+/// A's entry point (wrong dimension) and fail in `cosine_similarity` with
+/// `InvalidVectorLength`.
+///
+/// The fix: store entry points under per-label keys `b"entry_point::{label}"`.
+#[cfg(test)]
+mod multi_label_entry_point_tests {
+    use super::*;
+    use bumpalo::Bump;
+    use heed3::EnvOpenOptions;
+    use crate::sparrow_engine::vector_core::lmdb::hnsw::HNSW;
+
+    fn setup_env() -> (heed3::Env, tempfile::TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path();
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(64 * 1024 * 1024)
+                .max_dbs(16)
+                .open(path)
+                .unwrap()
+        };
+        (env, temp_dir)
+    }
+
+    /// Core regression test: inserting label_b vectors (dim 3) after label_a
+    /// vectors (dim 4) must not fail with InvalidVectorLength.
+    ///
+    /// Before fix: `get_entry_point` returns label_a's 4-dim entry point for
+    /// label_b queries → `cosine_similarity` panics / errors on mismatched dims.
+    #[test]
+    fn test_insert_two_labels_with_different_dimensions_both_succeed() {
+        let (env, _tmp) = setup_env();
+        let mut wtxn = env.write_txn().unwrap();
+        let config = HNSWConfig::new(Some(5), Some(40), Some(40));
+        let vc = VectorCore::new(&env, &mut wtxn, config).unwrap();
+        let arena = Bump::new();
+
+        // Insert several 4-dim vectors under label_a first.
+        // This seeds the (old-buggy) global entry point with a 4-dim vector.
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_a", &[1.0, 0.0, 0.0, 0.0], None, &arena)
+            .expect("label_a insert 1 failed");
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_a", &[0.0, 1.0, 0.0, 0.0], None, &arena)
+            .expect("label_a insert 2 failed");
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_a", &[0.0, 0.0, 1.0, 0.0], None, &arena)
+            .expect("label_a insert 3 failed");
+
+        // Now insert 3-dim vectors under label_b.
+        // The old code would read the global entry point (a 4-dim label_a vector)
+        // and try to compare it with a 3-dim query → InvalidVectorLength.
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_b", &[1.0, 0.0, 0.0], None, &arena)
+            .expect("label_b insert 1 failed — dimension mismatch bug still present");
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_b", &[0.0, 1.0, 0.0], None, &arena)
+            .expect("label_b insert 2 failed");
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_b", &[0.0, 0.0, 1.0], None, &arena)
+            .expect("label_b insert 3 failed");
+
+        wtxn.commit().unwrap();
+    }
+
+    /// Each label must have its own separate per-label entry point key.
+    /// After inserting into two labels, both `entry_point::label_a` and
+    /// `entry_point::label_b` must be present, and the old global
+    /// `entry_point` key must NOT be written by new code.
+    #[test]
+    fn test_each_label_has_its_own_entry_point_key() {
+        let (env, _tmp) = setup_env();
+        let mut wtxn = env.write_txn().unwrap();
+        let config = HNSWConfig::new(Some(5), Some(40), Some(40));
+        let vc = VectorCore::new(&env, &mut wtxn, config).unwrap();
+        let arena = Bump::new();
+
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_a", &[1.0, 0.0, 0.0, 0.0], None, &arena)
+            .expect("label_a insert failed");
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_b", &[1.0, 0.0, 0.0], None, &arena)
+            .expect("label_b insert failed");
+
+        // Per-label keys must exist.
+        let key_a = entry_point_key_for_label("label_a");
+        let key_b = entry_point_key_for_label("label_b");
+        let ep_a = vc.vectors_db.get(&wtxn, key_a.as_slice()).expect("db read failed");
+        let ep_b = vc.vectors_db.get(&wtxn, key_b.as_slice()).expect("db read failed");
+        assert!(ep_a.is_some(), "entry_point::label_a must be present after insert");
+        assert!(ep_b.is_some(), "entry_point::label_b must be present after insert");
+
+        // The old global key must NOT be written by the fixed code.
+        let ep_global = vc.vectors_db.get(&wtxn, ENTRY_POINT_KEY).expect("db read failed");
+        assert!(
+            ep_global.is_none(),
+            "old global entry_point key must NOT be written by new code"
+        );
+
+        wtxn.commit().unwrap();
+    }
+
+    /// Search for label_b must return only label_b vectors, not label_a vectors.
+    /// Before the fix, label_b searches navigated via label_a's entry point and
+    /// returned garbage/error results.
+    #[test]
+    fn test_search_returns_correct_label_results_after_multi_label_insert() {
+        let (env, _tmp) = setup_env();
+        let mut wtxn = env.write_txn().unwrap();
+        let config = HNSWConfig::new(Some(5), Some(40), Some(40));
+        let vc = VectorCore::new(&env, &mut wtxn, config).unwrap();
+        let arena = Bump::new();
+
+        // label_a: 4-dim vectors
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_a", &[1.0, 0.0, 0.0, 0.0], None, &arena)
+            .unwrap();
+        vc.insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_a", &[0.0, 1.0, 0.0, 0.0], None, &arena)
+            .unwrap();
+
+        // label_b: 3-dim vectors
+        let b1 = vc
+            .insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_b", &[1.0, 0.0, 0.0], None, &arena)
+            .unwrap();
+        let _b2 = vc
+            .insert::<fn(&_, &_) -> bool>(&mut wtxn, "label_b", &[0.0, 1.0, 0.0], None, &arena)
+            .unwrap();
+
+        wtxn.commit().unwrap();
+        let rtxn = env.read_txn().unwrap();
+
+        // Searching label_b must succeed and return only label_b results.
+        let results = vc
+            .search::<fn(&_, &_) -> bool>(&rtxn, &[1.0, 0.0, 0.0], 1, "label_b", None, false, &arena)
+            .expect("search label_b failed — per-label entry point fix not working");
+
+        assert!(!results.is_empty(), "search label_b must return at least one result");
+        assert_eq!(
+            results[0].id, b1.id,
+            "top result for [1,0,0] in label_b must be b1"
+        );
     }
 }

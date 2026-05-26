@@ -20,8 +20,8 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use tempfile::TempDir;
 
-use crate::sparrow_engine::storage_core::SparrowGraphStorage;
 use crate::sparrow_engine::storage_core::version_info::VersionInfo;
+use crate::sparrow_engine::storage_core::SparrowGraphStorage;
 use crate::sparrow_engine::traversal_core::config::Config;
 use crate::sparrow_engine::traversal_core::ops::g::G;
 use crate::sparrow_engine::traversal_core::ops::vectors::insert::InsertVAdapter;
@@ -337,12 +337,13 @@ fn test_concurrent_inserts_multiple_labels() {
 
     let total_count = storage.vectors.num_inserted_vectors(&rtxn).unwrap();
     let expected_total = (num_labels * vectors_per_label) as u64;
-    assert!(
-        total_count == expected_total || total_count == expected_total + 1,
-        "Expected {} or {} vectors (with entry point), found {}",
-        expected_total,
-        expected_total + 1,
-        total_count
+    // `num_inserted_vectors` counts only `b"v:"` prefixed entries, so the count
+    // is exactly the number of inserted vectors (per-label entry-point metadata
+    // keys are excluded and no longer inflate the count).
+    assert_eq!(
+        total_count, expected_total,
+        "Expected exactly {} vectors, found {}",
+        expected_total, total_count
     );
 }
 
@@ -488,8 +489,9 @@ fn test_graph_connectivity_after_concurrent_inserts() {
 
         // All results should have valid distances
         for result in results {
-            if let crate::sparrow_engine::traversal_core::traversal_value::TraversalValue::Vector(v) =
-                result
+            if let crate::sparrow_engine::traversal_core::traversal_value::TraversalValue::Vector(
+                v,
+            ) = result
             {
                 assert!(
                     v.distance.is_some() && v.distance.unwrap() >= 0.0,
