@@ -1,3 +1,8 @@
+> ⚠️ **Deprecated.** This endpoint is a migration bridge for HelixDB callers.
+> New code should use compiled HQL routes (`POST /<QueryName>`) or
+> `POST /__hql_runtime_eval`. See [`HQL.md`](HQL.md) and [`HTTP_API.md`](HTTP_API.md).
+> This file will be deleted when simorgh's migration is complete (Phase 4).
+
 # HelixDB v1/query Compatibility Endpoint
 
 ## What This Is
