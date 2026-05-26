@@ -262,6 +262,25 @@ enum CompatStep {
         seed_var: Option<String>,
         tool_args: Vec<ToolArgs>,
     },
+    /// Perform an HNSW approximate nearest-neighbour search and return matching
+    /// nodes sorted by distance.
+    ///
+    /// The HNSW label used for both insert and search is
+    /// `"<node_label>::<vector_label>"` (e.g. `"library_resource::embedding"`),
+    /// which keeps each (node-type × property-name) combination in its own
+    /// vector space within the shared HNSW graph.
+    VectorSearch {
+        /// Node type from `VectorSearchNodes.label` — used to build the combined
+        /// HNSW label and for documentation; no post-filtering is needed because
+        /// the combined label already scopes the search correctly.
+        node_label: String,
+        /// Property name from `VectorSearchNodes.property` — the second half of
+        /// the combined HNSW label (e.g. `"embedding"`).
+        vector_label: String,
+        vector: Vec<f64>,
+        k: usize,
+        bind_to: String,
+    },
 }
 
 // ─── multi-query translation ───────────────────────────────────────────────────
@@ -539,6 +558,11 @@ fn translate_named_query(
 
         // ── SetProperty:["key", val] ───────────────────────────────────────
         if let Some(set_prop) = step.get("SetProperty") {
+            // Flush any pending UUID lookup so the update targets the correct
+            // nodes.  Without this, N:{Ids:[...]} → SetProperty would silently
+            // drop the update at end-of-query because pending_uuid_ids takes
+            // priority over pending_updates in the final flush.
+            maybe_flush_uuid_lookup(&mut out, &mut pending_uuid_ids, &mut seed_var, name)?;
             let arr = set_prop.as_array().map(|a| &**a).unwrap_or(&[]);
             if arr.len() == 2 {
                 let key = arr[0].as_str().unwrap_or("").to_string();
@@ -559,6 +583,24 @@ fn translate_named_query(
             return Ok(out);
         }
 
+        // ── CreateVectorIndexNodes:{label, property, dims, m, ef_construction} ──
+        // SparrowDB's HNSW index is label-agnostic: each (node-type, property)
+        // pair maps to a combined label in a single shared HNSW graph, built
+        // incrementally as vectors are inserted.  No explicit index creation is
+        // required; we acknowledge the step here to suppress the "unknown step"
+        // warning that would otherwise fire.
+        if let Some(cvi) = step.get("CreateVectorIndexNodes") {
+            let label = cvi.get("label").and_then(|l| l.as_str()).unwrap_or("?");
+            let property = cvi.get("property").and_then(|p| p.as_str()).unwrap_or("?");
+            info!(
+                label = label,
+                property = property,
+                "v1_compat: CreateVectorIndexNodes acknowledged — \
+                 HNSW builds incrementally on insert, no explicit init needed"
+            );
+            continue;
+        }
+
         // ── VectorSearchNodes:{label, property, query_vector, k} ──────────
         if let Some(vs) = step.get("VectorSearchNodes") {
             flush_traversal(&mut out, &mut seed_var, &mut tool_args, name)?;
@@ -567,11 +609,16 @@ fn translate_named_query(
                     ids: uuids,
                     bind_to: name.to_string(),
                 });
-                seed_var = Some(name.to_string());
             }
-            let args = translate_vector_search(vs)?;
-            tool_args.extend(args);
-            continue;
+            let (node_label, vector_label, vector, k) = parse_vector_search_params(vs)?;
+            out.push(CompatStep::VectorSearch {
+                node_label,
+                vector_label,
+                vector,
+                k,
+                bind_to: name.to_string(),
+            });
+            return Ok(out);
         }
 
         // ── Count ─────────────────────────────────────────────────────────
@@ -849,12 +896,25 @@ fn translate_where_condition(cond: &sonic_rs::Value) -> Result<ToolArgs, CompatE
     })
 }
 
-/// Translate `VectorSearchNodes` into `[NFromType(label), SearchVec(vector, k)]`.
-fn translate_vector_search(vs: &sonic_rs::Value) -> Result<Vec<ToolArgs>, CompatError> {
-    let label = vs
+/// Parse `VectorSearchNodes` parameters: `(node_label, vector_label, vector, k)`.
+///
+/// The HNSW label used for both insert (in `AddN` / `SetProperty`) and search is
+/// `"<node_label>::<vector_label>"` (e.g. `"library_resource::embedding"`), so that
+/// each (node-type × property-name) combination lives in its own vector space
+/// within the shared HNSW graph.
+fn parse_vector_search_params(
+    vs: &sonic_rs::Value,
+) -> Result<(String, String, Vec<f64>, usize), CompatError> {
+    let node_label = vs
         .get("label")
         .and_then(|l| l.as_str())
         .ok_or_else(|| CompatError::Translation("VectorSearchNodes: missing label".to_string()))?
+        .to_string();
+
+    let vector_label = vs
+        .get("property")
+        .and_then(|p| p.as_str())
+        .unwrap_or("embedding")
         .to_string();
 
     let k = vs
@@ -880,14 +940,7 @@ fn translate_vector_search(vs: &sonic_rs::Value) -> Result<Vec<ToolArgs>, Compat
         ));
     }
 
-    Ok(vec![
-        ToolArgs::NFromType { node_type: label },
-        ToolArgs::SearchVec {
-            vector,
-            k,
-            min_score: None,
-        },
-    ])
+    Ok((node_label, vector_label, vector, k))
 }
 
 // ─── property value parsing ────────────────────────────────────────────────────
@@ -1087,6 +1140,27 @@ where
         } => {
             let label: &'arena str = arena.alloc_str(&node_type);
 
+            // Detect F64Array fields — these are stored as regular node properties
+            // AND must be inserted into the HNSW index so that VectorSearchNodes
+            // can find them.  The HNSW label is "<node_type>::<field_name>"
+            // (e.g. "library_resource::embedding"), which keeps each
+            // (node-type × property-name) pair in its own vector space.
+            let vector_fields: Vec<(String, Vec<f64>)> = fields
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let Value::Array(vals) = v {
+                        if !vals.is_empty() && vals.iter().all(|f| matches!(f, Value::F64(_))) {
+                            let floats: Vec<f64> = vals
+                                .iter()
+                                .map(|f| if let Value::F64(x) = f { *x } else { 0.0 })
+                                .collect();
+                            return Some((k.clone(), floats));
+                        }
+                    }
+                    None
+                })
+                .collect();
+
             let sec_index_names: Vec<&'static str> = fields
                 .keys()
                 .filter(|k| storage.secondary_indices.contains_key(k.as_str()))
@@ -1108,6 +1182,33 @@ where
                 .add_n(label, Some(props), sec_indices)
                 .collect_to_obj()
                 .map_err(CompatError::from)?;
+
+            // Insert each F64Array property into the HNSW vector index so that
+            // VectorSearchNodes queries work.  This runs after add_n so the
+            // node_id is known.  The mutable borrow of wtxn from add_n is
+            // released after collect_to_obj(), so we can re-borrow it here.
+            if !vector_fields.is_empty() {
+                use crate::sparrow_engine::vector_core::lmdb::hnsw::HNSW;
+                let node_id = result.id();
+                for (field_name, floats) in &vector_fields {
+                    let combined_label = format!("{node_type}::{field_name}");
+                    let vec_label: &'arena str = arena.alloc_str(&combined_label);
+                    let f64_slice: &'arena [f64] = arena.alloc_slice_copy(floats);
+                    storage
+                        .vectors
+                        .insert_with_id::<fn(
+                            &crate::sparrow_engine::vector_core::vector::HVector<'_>,
+                            &heed3::RoTxn<'_>,
+                        ) -> bool>(
+                            wtxn, node_id, vec_label, f64_slice, None, arena,
+                        )
+                        .map_err(|e| {
+                            CompatError::Execution(format!(
+                                "AddN: HNSW insert failed for '{combined_label}': {e:?}"
+                            ))
+                        })?;
+                }
+            }
 
             // No commit here — the caller (execute_helix_queries) commits once
             // after all steps succeed.
@@ -1197,6 +1298,26 @@ where
                 .map(|(k, v)| (Box::leak(k.into_boxed_str()) as &'static str, v))
                 .collect();
 
+            // Detect F64Array field updates — these must be mirrored into the
+            // HNSW index after the property write so VectorSearchNodes stays
+            // consistent.  The HNSW label is "<node_type>::<field_name>", built
+            // below using the actual node label from each traversal result.
+            let vector_updates: Vec<(&'static str, Vec<f64>)> = static_updates
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let Value::Array(vals) = v {
+                        if !vals.is_empty() && vals.iter().all(|f| matches!(f, Value::F64(_))) {
+                            let floats: Vec<f64> = vals
+                                .iter()
+                                .map(|f| if let Value::F64(x) = f { *x } else { 0.0 })
+                                .collect();
+                            return Some((*k, floats));
+                        }
+                    }
+                    None
+                })
+                .collect();
+
             // Write phase: apply updates through the shared write transaction.
             let mut updated = Vec::new();
             for target in targets {
@@ -1205,6 +1326,36 @@ where
                     .update(&static_updates)
                     .collect_to_obj()
                     .map_err(CompatError::from)?;
+
+                // Mirror F64Array field updates into the HNSW index.
+                // The mutable borrow of wtxn from update() is released after
+                // collect_to_obj(), so we can re-borrow it for insert_with_id.
+                if !vector_updates.is_empty() {
+                    if let TraversalValue::Node(ref n) = node {
+                        use crate::sparrow_engine::vector_core::lmdb::hnsw::HNSW;
+                        let node_id = n.id;
+                        let node_type = n.label;
+                        for (field_name, floats) in &vector_updates {
+                            let combined_label = format!("{node_type}::{field_name}");
+                            let vec_label: &'arena str = arena.alloc_str(&combined_label);
+                            let f64_slice: &'arena [f64] = arena.alloc_slice_copy(floats);
+                            storage
+                                .vectors
+                                .insert_with_id::<fn(
+                                    &crate::sparrow_engine::vector_core::vector::HVector<'_>,
+                                    &heed3::RoTxn<'_>,
+                                ) -> bool>(
+                                    wtxn, node_id, vec_label, f64_slice, None, arena,
+                                )
+                                .map_err(|e| {
+                                    CompatError::Execution(format!(
+                                        "SetProperty: HNSW insert failed for '{combined_label}': {e:?}"
+                                    ))
+                                })?;
+                        }
+                    }
+                }
+
                 updated.push(node);
             }
 
@@ -1268,6 +1419,79 @@ where
 
             // No commit here.
         }
+
+        CompatStep::VectorSearch {
+            node_label,
+            vector_label,
+            vector,
+            k,
+            bind_to,
+        } => {
+            use crate::sparrow_engine::vector_core::lmdb::hnsw::HNSW;
+
+            let query_slice: &'arena [f64] = arena.alloc_slice_copy(&vector);
+            // Build the combined HNSW label that was used when inserting.
+            // AddN and SetProperty both use "<node_type>::<field_name>" so the
+            // search label must match exactly.
+            let combined_label = format!("{node_label}::{vector_label}");
+            let search_label: &'arena str = arena.alloc_str(&combined_label);
+
+            // Step 1: HNSW approximate nearest-neighbour search.
+            // If the index has no entry point yet (first run after compaction,
+            // or label was never inserted), fall back to an empty result set
+            // rather than propagating an error — callers already expect empty
+            // results from a fresh database.
+            let hnsw_results: bumpalo::collections::Vec<'_, _> = {
+                let ro: &heed3::RoTxn<'db> = wtxn;
+                match storage
+                    .vectors
+                    .search::<fn(
+                        &crate::sparrow_engine::vector_core::vector::HVector<'_>,
+                        &heed3::RoTxn<'_>,
+                    ) -> bool>(
+                        ro, query_slice, k, search_label, None, false, arena,
+                    ) {
+                    Ok(results) => results,
+                    Err(e) => {
+                        warn!(
+                            label = %combined_label,
+                            k = k,
+                            "VectorSearchNodes: HNSW search failed (index may be \
+                             empty — run a reindex after compaction): {e:?}"
+                        );
+                        bumpalo::collections::Vec::new_in(arena)
+                    }
+                }
+                // `ro` immutable borrow released here
+            };
+
+            // Step 2: Map each HNSW result back to a full node record.
+            // The HNSW label "<node_type>::<field_name>" already scopes the
+            // results to the correct node type, so no additional label filter
+            // is needed here.
+            let mut live_nodes: Vec<TraversalValue<'arena>> =
+                Vec::with_capacity(hnsw_results.len());
+            let mut json_values: Vec<sonic_rs::Value> =
+                Vec::with_capacity(hnsw_results.len());
+            {
+                let ro: &heed3::RoTxn<'db> = wtxn;
+                for hvec in hnsw_results.iter() {
+                    if let Ok(node) = storage.get_node(ro, hvec.id, arena) {
+                        let distance = hvec.distance.unwrap_or(f64::MAX);
+                        let tv = TraversalValue::Node(node);
+                        let raw = sonic_rs::to_value(&tv).unwrap_or_default();
+                        let raw_with_aliases = add_dollar_aliases(raw);
+                        let json_with_dist = inject_distance(raw_with_aliases, distance);
+                        json_values.push(json_with_dist);
+                        live_nodes.push(tv);
+                    }
+                }
+                // `ro` immutable borrow released here
+            }
+
+            live_store.insert(bind_to.clone(), live_nodes);
+            result_store.insert(bind_to, QueryResult::NodeList(json_values));
+        }
     }
 
     Ok(())
@@ -1312,6 +1536,25 @@ fn add_dollar_aliases(obj: sonic_rs::Value) -> sonic_rs::Value {
         bytes.extend_from_slice(b",\"$label\":");
         bytes.extend_from_slice(&label_b);
     }
+    bytes.push(b'}');
+    sonic_rs::from_slice(&bytes).unwrap_or_default()
+}
+
+/// Inject `distance` and `$distance` fields into a serialised node JSON object.
+///
+/// Called by `VectorSearch` execution to attach the HNSW similarity score to
+/// each returned node so callers can sort or display results.
+fn inject_distance(obj: sonic_rs::Value, distance: f64) -> sonic_rs::Value {
+    let mut bytes = match sonic_rs::to_vec(&obj) {
+        Ok(b) => b,
+        Err(_) => return obj,
+    };
+    if bytes.last() != Some(&b'}') {
+        return obj;
+    }
+    bytes.pop();
+    let dist_str = format!(",\"distance\":{distance},\"$distance\":{distance}");
+    bytes.extend_from_slice(dist_str.as_bytes());
     bytes.push(b'}');
     sonic_rs::from_slice(&bytes).unwrap_or_default()
 }
@@ -1873,6 +2116,308 @@ mod tests {
             3,
             "Limit 3 must return exactly 3 items (got {}); Limit was a no-op before fix",
             ids.len()
+        );
+    }
+
+    // ── Bug-fix tests: VectorSearchNodes ────────────────────────────────────────
+
+    /// `AddN` with an F64Array property must insert the vector into HNSW, and
+    /// `VectorSearchNodes` must return the node via approximate nearest-neighbour
+    /// search.
+    ///
+    /// Root cause (before fix):
+    /// 1. `CreateVectorIndexNodes` was an unrecognised step → "Unknown step" warning,
+    ///    no-op.
+    /// 2. `AddN` called `add_n` (stores node properties only) instead of
+    ///    `add_n_with_vectors` → HNSW was never populated.
+    /// 3. `VectorSearchNodes` translated to `[NFromType, SearchVec]` which used
+    ///    `brute_force_search_v` on Node items — but `brute_force_search_v` only
+    ///    processes Vector items → always returned empty.
+    ///
+    /// Fix: `AddN` now detects F64Array properties and inserts them into the HNSW
+    /// under the combined label `"<node_type>::<field_name>"`.  `VectorSearchNodes`
+    /// now emits a dedicated `CompatStep::VectorSearch` that calls
+    /// `storage.vectors.search` directly and maps results back to full nodes.
+    #[test]
+    #[serial_test::serial]
+    fn add_n_with_vector_property_and_search_returns_nearest_node() {
+        let (graph, _dir) = make_test_graph();
+
+        // CreateVectorIndexNodes must be a no-op (not an error).
+        let cvi_body = r#"{
+            "request_type": "write",
+            "query": {"queries": [{"Query": {"name": "r", "steps": [
+                {"CreateVectorIndexNodes": {
+                    "label": "VecNode",
+                    "property": "emb",
+                    "dims": 4,
+                    "m": 16,
+                    "ef_construction": 100
+                }}
+            ], "condition": null}}], "returns": ["r"]},
+            "parameters": {}
+        }"#;
+        v1_compat_handler(HandlerInput {
+            request: make_write_request(cvi_body),
+            graph: graph.clone(),
+        })
+        .expect("CreateVectorIndexNodes must not return an error");
+
+        // AddN with a 4-dimensional F64Array embedding.
+        let add_body = r#"{
+            "request_type": "write",
+            "query": {"queries": [{"Query": {"name": "n", "steps": [
+                {"AddN": {"label": "VecNode", "properties": [
+                    ["title", {"Value": {"String": "nearest-neighbour test"}}],
+                    ["emb",   {"Value": {"F64Array": [1.0, 0.0, 0.0, 0.0]}}]
+                ]}}
+            ], "condition": null}}], "returns": ["n"]},
+            "parameters": {}
+        }"#;
+        let add_resp = v1_compat_handler(HandlerInput {
+            request: make_write_request(add_body),
+            graph: graph.clone(),
+        })
+        .expect("AddN with vector property must succeed");
+
+        let add_json: sonic_rs::Value =
+            sonic_rs::from_slice(&add_resp.body).expect("response must be valid JSON");
+        let node_id = add_json
+            .get("n")
+            .and_then(|n| n.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .and_then(|a| a.first())
+            .and_then(|v| v.as_str())
+            .expect("AddN must return a node id in n.ids[0]")
+            .to_string();
+
+        // VectorSearchNodes with the exact same vector → the inserted node must
+        // be returned as the nearest neighbour.
+        let search_body = r#"{
+            "request_type": "read",
+            "query": {"queries": [{"Query": {"name": "results", "steps": [
+                {"VectorSearchNodes": {
+                    "label": "VecNode",
+                    "property": "emb",
+                    "tenant_value": null,
+                    "query_vector": {"Value": {"F64Array": [1.0, 0.0, 0.0, 0.0]}},
+                    "k": {"Literal": 5}
+                }},
+                {"Project": [["$id", "id"], ["$distance", "distance"], ["title", "title"]]}
+            ], "condition": null}}], "returns": ["results"]},
+            "parameters": {}
+        }"#;
+        let search_resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(search_body),
+            graph: graph.clone(),
+        })
+        .expect("VectorSearchNodes must not return an error");
+
+        let search_json: sonic_rs::Value =
+            sonic_rs::from_slice(&search_resp.body).expect("response must be valid JSON");
+        let ids = search_json
+            .get("results")
+            .and_then(|r| r.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .expect("results.ids must be present and an array");
+
+        assert_eq!(
+            ids.len(),
+            1,
+            "VectorSearchNodes must return exactly 1 result for a single-node graph; \
+             got {} — HNSW was not populated (AddN bug)",
+            ids.len()
+        );
+        assert_eq!(
+            ids[0].as_str().unwrap_or(""),
+            node_id.as_str(),
+            "VectorSearchNodes must return the inserted node's id"
+        );
+    }
+
+    /// `SetProperty` with an F64Array value must insert the vector into HNSW, so
+    /// that nodes whose embedding is set AFTER creation are also discoverable via
+    /// `VectorSearchNodes`.
+    #[test]
+    #[serial_test::serial]
+    fn set_property_vector_inserts_into_hnsw_and_is_searchable() {
+        let (graph, _dir) = make_test_graph();
+
+        // Create a node without an embedding first.
+        let add_body = r#"{
+            "request_type": "write",
+            "query": {"queries": [{"Query": {"name": "n", "steps": [
+                {"AddN": {"label": "VecNode2", "properties": [
+                    ["title", {"Value": {"String": "set-property vector test"}}]
+                ]}}
+            ], "condition": null}}], "returns": ["n"]},
+            "parameters": {}
+        }"#;
+        let add_resp = v1_compat_handler(HandlerInput {
+            request: make_write_request(add_body),
+            graph: graph.clone(),
+        })
+        .expect("AddN must succeed");
+
+        let add_json: sonic_rs::Value =
+            sonic_rs::from_slice(&add_resp.body).expect("valid JSON");
+        let node_id = add_json
+            .get("n")
+            .and_then(|n| n.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .and_then(|a| a.first())
+            .and_then(|v| v.as_str())
+            .expect("n.ids[0] must be present")
+            .to_string();
+
+        // Set the embedding via SetProperty.
+        let set_body = format!(
+            r#"{{
+            "request_type": "write",
+            "query": {{"queries": [{{"Query": {{"name": "r", "steps": [
+                {{"N": {{"Ids": ["{node_id}"]}}}},
+                {{"SetProperty": ["emb", {{"Value": {{"F64Array": [0.0, 1.0, 0.0, 0.0]}}}}]}}
+            ], "condition": null}}}}], "returns": ["r"]}},
+            "parameters": {{}}
+        }}"#
+        );
+        v1_compat_handler(HandlerInput {
+            request: make_write_request(set_body),
+            graph: graph.clone(),
+        })
+        .expect("SetProperty with F64Array must succeed");
+
+        // VectorSearchNodes must now find the node.
+        let search_body = r#"{
+            "request_type": "read",
+            "query": {"queries": [{"Query": {"name": "results", "steps": [
+                {"VectorSearchNodes": {
+                    "label": "VecNode2",
+                    "property": "emb",
+                    "tenant_value": null,
+                    "query_vector": {"Value": {"F64Array": [0.0, 1.0, 0.0, 0.0]}},
+                    "k": {"Literal": 5}
+                }}
+            ], "condition": null}}], "returns": ["results"]},
+            "parameters": {}
+        }"#;
+        let search_resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(search_body),
+            graph: graph.clone(),
+        })
+        .expect("VectorSearchNodes must not return an error");
+
+        let search_json: sonic_rs::Value =
+            sonic_rs::from_slice(&search_resp.body).expect("valid JSON");
+        let ids = search_json
+            .get("results")
+            .and_then(|r| r.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .expect("results.ids must be present");
+
+        assert_eq!(
+            ids.len(),
+            1,
+            "VectorSearchNodes must find the node whose embedding was set via \
+             SetProperty; got {} — HNSW was not updated on SetProperty",
+            ids.len()
+        );
+        assert_eq!(
+            ids[0].as_str().unwrap_or(""),
+            node_id.as_str(),
+            "VectorSearchNodes must return the node whose SetProperty added the vector"
+        );
+    }
+
+    /// Multiple nodes with different embeddings: VectorSearchNodes with k=1 must
+    /// return only the single nearest neighbour, not all nodes.
+    #[test]
+    #[serial_test::serial]
+    fn vector_search_returns_nearest_of_multiple_nodes() {
+        let (graph, _dir) = make_test_graph();
+
+        // Insert three nodes with orthogonal unit vectors.
+        let bodies = [
+            // "north" — closest to [1,0,0,0]
+            r#"{"request_type":"write","query":{"queries":[{"Query":{"name":"n","steps":[
+                {"AddN":{"label":"VecMul","properties":[
+                    ["name",{"Value":{"String":"north"}}],
+                    ["emb",{"Value":{"F64Array":[1.0,0.0,0.0,0.0]}}]
+                ]}}
+            ],"condition":null}}],"returns":["n"]},"parameters":{}}"#,
+            // "east" — [0,1,0,0]
+            r#"{"request_type":"write","query":{"queries":[{"Query":{"name":"n","steps":[
+                {"AddN":{"label":"VecMul","properties":[
+                    ["name",{"Value":{"String":"east"}}],
+                    ["emb",{"Value":{"F64Array":[0.0,1.0,0.0,0.0]}}]
+                ]}}
+            ],"condition":null}}],"returns":["n"]},"parameters":{}}"#,
+            // "south" — [0,0,1,0]
+            r#"{"request_type":"write","query":{"queries":[{"Query":{"name":"n","steps":[
+                {"AddN":{"label":"VecMul","properties":[
+                    ["name",{"Value":{"String":"south"}}],
+                    ["emb",{"Value":{"F64Array":[0.0,0.0,1.0,0.0]}}]
+                ]}}
+            ],"condition":null}}],"returns":["n"]},"parameters":{}}"#,
+        ];
+
+        let mut ids: Vec<String> = Vec::new();
+        for body in &bodies {
+            let resp = v1_compat_handler(HandlerInput {
+                request: make_write_request(*body),
+                graph: graph.clone(),
+            })
+            .expect("AddN must succeed");
+            let json: sonic_rs::Value = sonic_rs::from_slice(&resp.body).expect("valid JSON");
+            let id = json
+                .get("n")
+                .and_then(|n| n.get("ids"))
+                .and_then(|ids| ids.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .expect("n.ids[0]")
+                .to_string();
+            ids.push(id);
+        }
+
+        // Query closest to [1,0,0,0] with k=1 → must return "north" (ids[0]).
+        let search_body = r#"{
+            "request_type": "read",
+            "query": {"queries": [{"Query": {"name": "results", "steps": [
+                {"VectorSearchNodes": {
+                    "label": "VecMul",
+                    "property": "emb",
+                    "tenant_value": null,
+                    "query_vector": {"Value": {"F64Array": [1.0, 0.0, 0.0, 0.0]}},
+                    "k": {"Literal": 1}
+                }}
+            ], "condition": null}}], "returns": ["results"]},
+            "parameters": {}
+        }"#;
+        let search_resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(search_body),
+            graph: graph.clone(),
+        })
+        .expect("VectorSearchNodes must not error");
+
+        let search_json: sonic_rs::Value =
+            sonic_rs::from_slice(&search_resp.body).expect("valid JSON");
+        let result_ids = search_json
+            .get("results")
+            .and_then(|r| r.get("ids"))
+            .and_then(|i| i.as_array())
+            .expect("results.ids must be an array");
+
+        assert_eq!(
+            result_ids.len(),
+            1,
+            "k=1 must return exactly 1 result; got {}",
+            result_ids.len()
+        );
+        assert_eq!(
+            result_ids[0].as_str().unwrap_or(""),
+            ids[0].as_str(),
+            "nearest to [1,0,0,0] must be the 'north' node (ids[0])"
         );
     }
 }

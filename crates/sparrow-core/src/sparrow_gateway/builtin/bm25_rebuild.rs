@@ -299,8 +299,16 @@ mod tests {
             txn.commit().unwrap();
         }
 
-        // Now rebuild (skip_bm25_writes is still true on this engine, but rebuild
-        // bypasses that flag — it calls insert_doc_for_node directly on the BM25 config)
+        // Clear the skip flag before rebuilding — this is the documented recovery
+        // workflow:  (1) POST /settings skip=true → bulk import → (2) POST /settings
+        // skip=false → (3) POST /rebuild_bm25_index.  The rebuild guard rejects
+        // requests while skip is active to prevent the index becoming immediately
+        // stale from concurrent writes that bypass BM25.
+        engine
+            .storage
+            .skip_bm25_writes
+            .store(false, std::sync::atomic::Ordering::Release);
+
         let input = HandlerInput {
             graph: Arc::new(engine),
             request: make_post_request(),
@@ -309,7 +317,7 @@ mod tests {
         let result = rebuild_bm25_index_inner(input);
         assert!(
             result.is_ok(),
-            "rebuild after skip-mode import should succeed: {result:?}"
+            "rebuild after clearing skip flag should succeed: {result:?}"
         );
 
         let body = String::from_utf8(result.unwrap().body).unwrap();

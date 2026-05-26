@@ -1280,7 +1280,7 @@ fn test_worker_pool_with_empty_cores() {
 }
 
 #[test]
-#[should_panic(expected = "The number of workers should be a multiple of 2")]
+#[should_panic(expected = "must be a multiple of 2 for fairness")]
 fn test_worker_pool_with_odd_workers() {
     let (graph, _temp_dir) = create_test_graph();
     let router = Arc::new(SparrowRouter::new(None, None, None));
