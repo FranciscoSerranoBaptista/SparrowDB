@@ -142,7 +142,8 @@
       "Bash(grep \"\\\\.md$\")",
       "Bash(grep -E \"^[0-9a-f]{7,40}$|v3\\\\.[0-9]\\\\.[0-9].*g[0-9a-f]\")",
       "Bash(SPARROW_URL=http://localhost:6969 SPARROW_API_KEY=sparrow_4f9ad44d5fbcc3143f6b6e879efd16de pnpm dev)",
-      "Bash(echo \"---exit:$?\")"
+      "Bash(echo \"---exit:$?\")",
+      "Bash(grep -n '\"Out\"\\\\|\"OutN\"\\\\|\"OutE\"\\\\|\"Where\"\\\\|EWhere\\\\|\"$id\"\\\\|\\\\$id\\\\|parse_where\\\\|eval_where\\\\|Eq\\\\b' /Users/franciscobaptista/Development/SparrowDB/crates/sparrow-core/src/sparrow_gateway/v1_compat/mod.rs)"
     ]
   }
 }

@@ -505,13 +505,56 @@ fn matches_properties(
 ) -> bool {
     match groups {
         Some(groups) => groups.iter().any(|filters| {
-            filters.iter().all(|filter| {
-                item.get_property(&filter.key)
+            filters.iter().all(|filter| match filter.key.as_str() {
+                // `id` and `label` are struct-level fields, not stored properties.
+                // get_property("id") always returns None because the property bag
+                // never contains an "id" key — this was the root cause of the
+                // Out + Where {Eq: ["$id", ...]} false-negative bug.
+                "id" => compare_meta_id(item.id(), &filter.value, filter.operator),
+                "label" => compare_meta_label(item.label(), &filter.value, filter.operator),
+                _ => item
+                    .get_property(&filter.key)
                     .map(|value| value.compare(&filter.value, filter.operator))
-                    .unwrap_or(false)
+                    .unwrap_or(false),
             })
         }),
         None => true,
+    }
+}
+
+/// Compare a node/edge struct-level `id` (u128) against a filter value.
+///
+/// The v1_compat DSL sends `$id` as `{"String": "<uuid-str>"}`, so we parse
+/// the string back to u128 and compare.  Returns `false` for non-string values
+/// or unparseable UUID strings rather than panicking.
+fn compare_meta_id(id: u128, filter_value: &Value, operator: Option<Operator>) -> bool {
+    let op = operator.unwrap_or(Operator::Eq);
+    let Value::String(s) = filter_value else {
+        return false;
+    };
+    let Ok(parsed) = uuid::Uuid::parse_str(s) else {
+        return false;
+    };
+    let parsed_u128 = parsed.as_u128();
+    match op {
+        Operator::Eq => id == parsed_u128,
+        Operator::Neq => id != parsed_u128,
+        // Ordering on UUIDs (v6 time-based) is technically defined but not
+        // meaningful in this context — reject rather than silently mislead.
+        _ => false,
+    }
+}
+
+/// Compare a node/edge struct-level `label` (&str) against a filter value.
+fn compare_meta_label(label: &str, filter_value: &Value, operator: Option<Operator>) -> bool {
+    let op = operator.unwrap_or(Operator::Eq);
+    let Value::String(s) = filter_value else {
+        return false;
+    };
+    match op {
+        Operator::Eq => label == s.as_str(),
+        Operator::Neq => label != s.as_str(),
+        _ => false,
     }
 }
 

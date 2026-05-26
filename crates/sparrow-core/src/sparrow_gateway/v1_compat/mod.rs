@@ -1661,6 +1661,124 @@ mod tests {
         );
     }
 
+    // ── Bug-fix tests: Out + Where {Eq: [$id, ...]} false negative ──────────────
+
+    /// `N(ids) → Out(label) → Where {Eq: ["$id", target]} → Id` must return the
+    /// target node's id when the edge exists — this is the canonical `ensure_edge`
+    /// check-then-act pattern used in simorgh.
+    ///
+    /// Root cause (before fix): `Where` evaluated `$id` via `get_property("id")`
+    /// which only looks in the stored property bag.  The node `id` field is a
+    /// struct-level `u128`, not a stored property, so `get_property("id")` always
+    /// returned `None` → `unwrap_or(false)` → every node filtered out → empty result.
+    ///
+    /// Fix: `matches_properties` in `tools.rs` now handles the special keys `"id"`
+    /// and `"label"` by reading the struct-level fields directly and comparing the
+    /// filter UUID string against `item.id()`.
+    #[test]
+    #[serial_test::serial]
+    fn out_where_eq_id_returns_destination_node_when_edge_exists() {
+        let (graph, _dir) = make_test_graph();
+        let a_id = add_node(&graph, "Source");
+        let b_id = add_node(&graph, "Destination");
+        add_edge(&graph, &a_id, &b_id, "MEMBER_OF");
+
+        // This is the exact pattern used by simorgh's ensure_edge check:
+        // traverse from `a` via MEMBER_OF, then filter for nodes whose $id == b_id.
+        let body = format!(
+            r#"{{
+            "request_type": "read",
+            "query": {{
+                "queries": [{{"Query": {{"name": "exists", "steps": [
+                    {{"N": {{"Ids": ["{a_id}"]}}}},
+                    {{"Out": "MEMBER_OF"}},
+                    {{"Where": {{"Eq": ["$id", {{"String": "{b_id}"}}]}}}},
+                    {{"Id": null}}
+                ], "condition": null}}}}],
+                "returns": ["exists"]
+            }}
+        }}"#
+        );
+
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("Out+Where query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        let ids = json
+            .get("exists")
+            .and_then(|e| e.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .expect("exists.ids must be an array");
+
+        assert_eq!(
+            ids.len(),
+            1,
+            "Out+Where must find the destination node when the edge exists; got {} ids — \
+             false-negative bug: $id comparison against struct-level id field was broken",
+            ids.len()
+        );
+        assert_eq!(
+            ids[0].as_str().unwrap_or(""),
+            b_id,
+            "the returned id must be the destination node's id (b_id)"
+        );
+    }
+
+    /// Complement test: `Out + Where {Eq: ["$id", wrong_id]}` must return empty
+    /// when no edge connects to that target — i.e., the fix must not over-match.
+    #[test]
+    #[serial_test::serial]
+    fn out_where_eq_id_returns_empty_when_no_matching_edge() {
+        let (graph, _dir) = make_test_graph();
+        let a_id = add_node(&graph, "Source");
+        let b_id = add_node(&graph, "Destination");
+        let c_id = add_node(&graph, "Unrelated");
+        add_edge(&graph, &a_id, &b_id, "MEMBER_OF");
+
+        // Query for c_id (not connected to a via MEMBER_OF) — must return empty.
+        let body = format!(
+            r#"{{
+            "request_type": "read",
+            "query": {{
+                "queries": [{{"Query": {{"name": "exists", "steps": [
+                    {{"N": {{"Ids": ["{a_id}"]}}}},
+                    {{"Out": "MEMBER_OF"}},
+                    {{"Where": {{"Eq": ["$id", {{"String": "{c_id}"}}]}}}},
+                    {{"Id": null}}
+                ], "condition": null}}}}],
+                "returns": ["exists"]
+            }}
+        }}"#
+        );
+
+        let resp = v1_compat_handler(HandlerInput {
+            request: make_read_request(body),
+            graph: graph.clone(),
+        })
+        .expect("Out+Where query must not return an error");
+
+        let json: sonic_rs::Value =
+            sonic_rs::from_slice(&resp.body).expect("response must be valid JSON");
+
+        let ids = json
+            .get("exists")
+            .and_then(|e| e.get("ids"))
+            .and_then(|ids| ids.as_array())
+            .expect("exists.ids must be an array");
+
+        assert_eq!(
+            ids.len(),
+            0,
+            "Out+Where must return empty when no edge to the target exists; got {} ids",
+            ids.len()
+        );
+    }
+
     // ── Bug-fix tests: Count and Limit ───────────────────────────────────────────
 
     /// `"Count"` as a bare step must return `{"total": {"count": N}}`, not the full
